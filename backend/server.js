@@ -24,7 +24,6 @@ app.use(
         origin: (origin, callback) => {
             if (!origin) return callback(null, true);
             if (origin === frontendOrigin) return callback(null, true);
-            if (/\.vercel\.app$/i.test(origin)) return callback(null, true);
             callback(null, true);
         },
     }),

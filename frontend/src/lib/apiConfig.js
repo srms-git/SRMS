@@ -2,8 +2,7 @@
  * API base URL for production and development.
  *
  * - Local dev: defaults to `/api` (Vite proxy → backend on :5000).
- * - Vercel/prod: set `VITE_API_URL` to your hosted API, e.g.
- *   https://your-api.onrender.com/api
+ * - Production: set `VITE_API_URL` to your API base (must include `/api`).
  */
 export function getApiBaseUrl() {
   const fromEnv = import.meta.env.VITE_API_URL?.trim();
@@ -31,5 +30,5 @@ export function getApiSetupHint() {
   if (import.meta.env.DEV) {
     return 'Start the API with "npm run dev" from the frontend folder.';
   }
-  return "Set VITE_API_URL in Vercel (e.g. https://your-backend.onrender.com/api) and redeploy.";
+  return "Set VITE_API_URL to your API URL (including /api) and rebuild the frontend.";
 }
