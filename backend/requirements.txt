@@ -1,0 +1,5 @@
+# PDF → Excel converter API (Flask + pdfplumber + pandas + openpyxl)
+flask>=3.1.0,<4
+pdfplumber>=0.11.0,<0.12
+pandas>=2.2.0,<3
+openpyxl>=3.1.0,<4
