@@ -1,4 +1,6 @@
-const API_BASE = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "")
+import { getApiClientBaseUrl } from "@/lib/apiConfig";
+
+const API_BASE = getApiClientBaseUrl();
 
 function toDateOnly(value) {
   if (!value) return null

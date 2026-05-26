@@ -1,0 +1,13 @@
+# Deploy backend: connect repo at https://render.com → New Blueprint Instance
+# Then set secrets in Render dashboard (MONGO_URI, JWT_SECRET, SMTP_*, etc.)
+services:
+  - type: web
+    name: srms-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
