@@ -2,12 +2,13 @@
 import { Banknote, Bell, CalendarClock, ChevronRight, ClipboardList, ListChecks, Megaphone } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
-import aboutSectionImage from "@/assets/aboutsystemBackground.png"
-import heroImage from "@/assets/hero.png"
+import picture1 from "@/assets/picture-1.png"
+import picture2 from "@/assets/picture-2.png"
+import picture3 from "@/assets/picture-3.png"
+import picture4 from "@/assets/picture-4.png"
 import marsuLogo from "@/assets/marsuLogo.png"
 import navHeroBackground from "@/assets/navbackground.png"
 import orgLogo from "@/assets/orgLogo.png"
-import sgfaLogo from "@/assets/SGFAO_logo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
 import { LANDING_FEATURED_BATCHES } from "@/lib/landingFeaturedBatches"
@@ -399,26 +400,27 @@ const ABOUT_WHEEL_COOLDOWN_MS = 1100
 
 const aboutSlideshowSlides = [
   {
-    src: aboutSectionImage,
-    alt: "Scholarship and financial assistance programs at MARSU",
+    src: picture1,
+    alt: "OSGFA - banner",
     objectFit: "cover",
   },
   {
-    src: heroImage,
-    alt: "Marinduque State University campus",
+    src: picture2,
+    alt: "Group Chat - QR",
     objectFit: "cover",
   },
   {
-    src: navHeroBackground,
-    alt: "MARSU campus grounds and facilities",
+    src: picture3,
+    alt: "Organization Activities - 1",
     objectFit: "cover",
   },
   {
-    src: sgfaLogo,
-    alt: "Office of Scholarships, Grants, and Financial Assistance logo",
-    objectFit: "contain",
-    className: "bg-gradient-to-br from-white via-slate-50 to-indigo-50 p-8",
+    src: picture4,
+    alt: "Organization Activities - 2",
+    objectFit: "cover",
   },
+
+
 ]
 
 function getCoverflowOffset(index, activeIndex, length) {
