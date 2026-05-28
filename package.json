@@ -1,0 +1,14 @@
+{
+  "name": "srms",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "dev": "npm --prefix frontend run dev",
+    "start:backend": "npm --prefix backend start"
+  }
+}
+

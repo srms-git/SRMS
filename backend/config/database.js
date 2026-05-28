@@ -1,5 +1,8 @@
 const mongoose = require('mongoose');
 
+const globalCacheKey = '__srms_mongoose_cache__';
+const globalCache = globalThis[globalCacheKey] || (globalThis[globalCacheKey] = { conn: null, promise: null });
+
 function getDbName() {
     const fromEnv = String(process.env.MONGO_DB_NAME || '').trim();
     if (fromEnv) return fromEnv;
@@ -21,10 +24,31 @@ async function connectDatabase() {
         throw new Error('MONGO_URI is not set in environment.');
     }
 
+    if (isConnected()) {
+        return mongoose.connection;
+    }
+
+    if (globalCache.conn) {
+        return globalCache.conn;
+    }
+
     const dbName = getDbName();
-    await mongoose.connect(uri, { dbName });
-    console.log(`Database connected (${dbName}) — collections include "users"`);
-    return mongoose.connection;
+    if (!globalCache.promise) {
+        globalCache.promise = mongoose
+            .connect(uri, { dbName })
+            .then(() => mongoose.connection)
+            .then((conn) => {
+                globalCache.conn = conn;
+                return conn;
+            })
+            .catch((err) => {
+                globalCache.promise = null;
+                throw err;
+            });
+    }
+
+    const conn = await globalCache.promise;
+    return conn;
 }
 
 module.exports = {
