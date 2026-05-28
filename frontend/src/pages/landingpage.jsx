@@ -1590,7 +1590,7 @@ export default function LandingPage() {
 
         <section
           id="process"
-          className="relative w-full scroll-mt-17 overflow-visible border-y py-10 sm:py-12 lg:py-14"
+          className="relative w-full scroll-mt-17 overflow-visible border-y pt-10 pb-28 sm:pt-12 sm:pb-32 lg:pt-14 lg:pb-36"
           style={{ borderColor: borderNavySoft, backgroundImage: gradientLightBlueViolet }}
         >
           <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
