@@ -1,18 +1,15 @@
 /**
  * API base URL for production and development.
  *
- * - Local dev: defaults to `/api` (Vite proxy → backend on :5000).
- * - Production: set `VITE_API_URL` to your API base (must include `/api`).
+ * - Default: `/api` (Vite proxy in dev; same-origin on Vercel).
+ * - Override: set `VITE_API_URL` when the API is hosted elsewhere.
  */
 export function getApiBaseUrl() {
   const fromEnv = import.meta.env.VITE_API_URL?.trim();
   if (fromEnv) {
     return fromEnv.replace(/\/$/, "");
   }
-  if (import.meta.env.DEV) {
-    return "/api";
-  }
-  return "";
+  return "/api";
 }
 
 /** Same as apiClient: ensures path ends with `/api`. */
@@ -28,7 +25,7 @@ export function isApiConfigured() {
 
 export function getApiSetupHint() {
   if (import.meta.env.DEV) {
-    return 'Start the API with "npm run dev" from the frontend folder.';
+    return 'Start the API with "pnpm dev" from the project root (or frontend folder).';
   }
-  return "Set VITE_API_URL to your API URL (including /api) and rebuild the frontend.";
+  return "Check that the backend is deployed and reachable at /api, or set VITE_API_URL and rebuild.";
 }
