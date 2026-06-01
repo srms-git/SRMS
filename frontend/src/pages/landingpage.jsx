@@ -54,14 +54,39 @@ const gradientHeroMesh = `
   radial-gradient(ellipse 70% 50% at 15% 20%, rgba(255, 255, 255, 0.07) 0%, transparent 48%)
 `
 
+function HeroBackgroundLayers() {
+  return (
+    <>
+      <img
+        src={navHeroBackground}
+        alt=""
+        className="h-full w-full object-cover object-[center_88%]"
+        decoding="async"
+      />
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `${gradientHeroMesh}, linear-gradient(180deg, rgba(4, 19, 61, 0.78) 0%, rgba(4, 19, 61, 0.68) 18%, rgba(8, 31, 92, 0.56) 42%, rgba(4, 19, 61, 0.45) 62%, rgba(4, 19, 61, 0.38) 78%, rgba(4, 19, 61, 0.32) 100%)`,
+        }}
+      />
+      <div
+        className="absolute inset-x-0 bottom-0 h-40 sm:h-52 lg:h-64"
+        style={{
+          background: `linear-gradient(to top, ${bvIce} 0%, rgba(224, 231, 255, 0.95) 10%, rgba(199, 210, 254, 0.82) 26%, rgba(139, 152, 206, 0.55) 48%, rgba(8, 31, 92, 0.42) 68%, rgba(4, 19, 61, 0.22) 86%, transparent 100%)`,
+        }}
+      />
+    </>
+  )
+}
+
 const HERO_TYPEWRITER_TITLES = [
   {
     line1: "Centralized Access to",
-    line2: "Scholarship Information and Assistance...",
+    line2: "Scholarship Information and Assistance. . .",
   },
   {
     line1: "Stay Updated with",
-    line2: "Official Announcements and Batch Records...",
+    line2: "Official Announcements and Batch Records. . .",
   },
 ]
 const HERO_TYPEWRITER_CHAR_MS = 62
@@ -171,7 +196,7 @@ function HeroTypewriterTitle() {
 const featuredBatchScrollerTrackClassName = "min-h-[12.25rem] items-center sm:min-h-[13rem]"
 
 const featuredBatchCardSlotClassName =
-  "relative z-0 shrink-0 self-center w-[300px] h-[10.5rem] transition-[width,height] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none hover:z-20 hover:w-[368px] hover:h-[12.75rem] sm:w-[328px] sm:h-[11rem] sm:hover:w-[408px] sm:hover:h-[13rem]"
+  "relative z-0 shrink-0 self-center w-[min(100%,268px)] h-[10rem] transition-[width,height] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none hover:z-20 hover:w-[368px] hover:h-[12.75rem] sm:w-[300px] sm:h-[10.5rem] sm:hover:w-[368px] sm:hover:h-[12.75rem] md:w-[328px] md:h-[11rem] md:hover:w-[408px] md:hover:h-[13rem]"
 
 function getBatchCardAccent(program) {
   if (program === "TDP") {
@@ -551,6 +576,7 @@ function AboutImageSlideshow({ slides }) {
   const wheelAccumulatorRef = useRef(0)
   const wheelResetTimerRef = useRef(0)
   const containerRef = useRef(null)
+  const touchStartXRef = useRef(null)
 
   const goTo = useCallback(
     (index) => {
@@ -609,22 +635,41 @@ function AboutImageSlideshow({ slides }) {
 
   if (slides.length === 0) return null
 
+  const handleTouchStart = (event) => {
+    touchStartXRef.current = event.touches[0]?.clientX ?? null
+  }
+
+  const handleTouchEnd = (event) => {
+    const startX = touchStartXRef.current
+    touchStartXRef.current = null
+    if (startX == null) return
+
+    const endX = event.changedTouches[0]?.clientX
+    if (endX == null) return
+
+    const delta = endX - startX
+    if (Math.abs(delta) < 48) return
+    stepSlide(delta > 0 ? -1 : 1)
+  }
+
   return (
     <div
       ref={containerRef}
-      className="relative order-1 w-full overflow-hidden overscroll-none touch-none outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:order-1"
+      className="relative order-1 w-full overflow-hidden overscroll-none outline-none touch-pan-y [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:order-1 lg:touch-none"
       role="region"
       aria-label="About the organization photo slideshow"
       aria-roledescription="carousel"
       tabIndex={0}
       onMouseLeave={() => setHoveredIndex(null)}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
       onKeyDown={(e) => {
         if (e.key === "ArrowRight") stepSlide(1)
         if (e.key === "ArrowLeft") stepSlide(-1)
       }}
     >
       <div
-        className="relative h-[345px] w-full overflow-hidden outline-none sm:h-[385px] lg:h-[420px]"
+        className="relative h-[280px] w-full overflow-hidden outline-none sm:h-[385px] lg:h-[420px]"
         style={{ perspective: "1200px" }}
         aria-live="polite"
       >
@@ -1437,135 +1482,132 @@ export default function LandingPage() {
     { programLabel: "TDP", items: LANDING_FEATURED_BATCHES.filter((b) => b.program === "TDP") },
   ].filter((row) => row.items.length > 0)
 
-  return (
-    <div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white" style={{ color: textBodyOnLight }}>
-      <div
-        className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[min(88vh,680px)] overflow-hidden"
-        style={{ backgroundColor: navyDeep }}
-        aria-hidden
-      >
-        <img
-          src={navHeroBackground}
-          alt=""
-          className="h-full w-full object-cover object-[center_88%]"
-          decoding="async"
-        />
-        <div
-          className="absolute inset-0"
-          style={{
-            background: `${gradientHeroMesh}, linear-gradient(180deg, rgba(4, 19, 61, 0.78) 0%, rgba(4, 19, 61, 0.68) 18%, rgba(8, 31, 92, 0.56) 42%, rgba(4, 19, 61, 0.45) 62%, rgba(4, 19, 61, 0.38) 78%, rgba(4, 19, 61, 0.32) 100%)`,
-          }}
-        />
-        <div
-          className="absolute inset-x-0 bottom-0 h-40 sm:h-52 lg:h-64"
-          style={{
-            background: `linear-gradient(to top, ${bvIce} 0%, rgba(224, 231, 255, 0.95) 10%, rgba(199, 210, 254, 0.82) 26%, rgba(139, 152, 206, 0.55) 48%, rgba(8, 31, 92, 0.42) 68%, rgba(4, 19, 61, 0.22) 86%, transparent 100%)`,
-          }}
-        />
+  const heroContent = (
+    <div className="grid w-full items-center gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
+      <div className="mx-auto max-w-2xl space-y-4 text-center sm:space-y-6 lg:mx-0 lg:max-w-none lg:text-left">
+        <p className="inline-flex max-w-full flex-wrap items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-medium tracking-wide text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md sm:px-3.5 sm:py-1.5 sm:text-xs lg:justify-start">
+          Scholarship Records Management System (SRMS)
+        </p>
+
+        <HeroTypewriterTitle />
+
+        <p className="text-pretty text-justify text-sm leading-relaxed text-white/80 sm:text-base lg:max-w-xl">
+          Access scholarship announcements, application guidelines, batch information, and important updates
+          from the MARSU – Office of the Scholarship Grants and Financial Assistance in one centralized
+          platform.
+        </p>
+
+        <div className="mx-auto grid w-full max-w-md grid-cols-2 gap-2 sm:gap-3 lg:mx-0 lg:flex lg:max-w-none lg:justify-start lg:gap-3">
+          <Button
+            type="button"
+            className="h-auto min-h-11 w-full min-w-0 flex-row items-center justify-start gap-1.5 rounded-full border-0 px-2.5 py-2.5 text-left text-[11px] leading-snug font-semibold whitespace-normal text-white shadow-[0_12px_32px_rgba(8,31,92,0.45)] transition hover:-translate-y-0.5 hover:brightness-110 sm:gap-2 sm:px-4 sm:text-sm lg:h-11 lg:w-auto lg:justify-center lg:px-6"
+            style={{ backgroundImage: gradientNavyButton }}
+            onClick={() => scrollToSection("announcements")}
+          >
+            <Megaphone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden />
+            <span className="min-w-0 flex-1">View announcements</span>
+            <ChevronRight className="hidden h-4 w-4 shrink-0 opacity-90 sm:block" aria-hidden />
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-auto min-h-11 w-full min-w-0 flex-row items-center justify-start gap-1.5 rounded-full border-white/30 bg-white/10 px-2.5 py-2.5 text-left text-[11px] leading-snug font-semibold whitespace-normal text-white backdrop-blur-md transition hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/18 sm:gap-2 sm:px-4 sm:text-sm lg:h-11 lg:w-auto lg:justify-center lg:px-6"
+            onClick={() => scrollToSection("batch-list")}
+          >
+            <ListChecks className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden />
+            <span className="min-w-0 flex-1">Browse batch list</span>
+          </Button>
+        </div>
       </div>
 
-      <div className="pointer-events-none fixed inset-x-0 top-0 z-10 h-[min(88vh,680px)] text-white">
-        <div className="pointer-events-auto mx-auto flex h-full w-full max-w-7xl items-center px-4 pb-12 pt-28 sm:px-6 sm:pb-14 sm:pt-32 lg:px-8 lg:pb-16 lg:pt-36">
-          <div className="grid w-full items-center gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
-            <div className="mx-auto max-w-2xl space-y-6 text-center lg:mx-0 lg:max-w-none lg:text-left">
-              <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-medium tracking-wide text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md">
-                Scholarship Records Management System (SRMS)
-              </p>
+      <div className="mx-auto w-full max-w-md space-y-3 sm:space-y-4 lg:max-w-none">
+        <div
+          className="flex flex-wrap items-center justify-center gap-4 sm:gap-7"
+          role="group"
+          aria-label="Partner and institution logos"
+        >
+          <img
+            src={orgLogo}
+            alt="Scholarship Grants &amp; Financial Assistance Office, Marinduque State University"
+            className="h-[4.25rem] w-[4.25rem] object-contain drop-shadow-lg sm:h-[6rem] sm:w-[6rem]"
+            decoding="async"
+          />
+          <img
+            src={marsuLogo}
+            alt="Marinduque State University seal"
+            className="h-[3.75rem] w-[3.75rem] object-contain drop-shadow-lg sm:h-[5.5rem] sm:w-[5.5rem]"
+            decoding="async"
+          />
+          <img
+            src={systemLogo}
+            alt="Scholarship Records Management System emblem"
+            className="h-[4.25rem] w-[4.25rem] object-contain drop-shadow-lg sm:h-[6rem] sm:w-[6rem]"
+            decoding="async"
+          />
+        </div>
 
-              <HeroTypewriterTitle />
-
-              <p className="text-pretty text-justify text-sm leading-relaxed text-white/80 sm:text-base lg:max-w-xl">
-                Access scholarship announcements, application guidelines, batch information, and important updates
-                from the MARSU – Office of the Scholarship Grants and Financial Assistance in one centralized
-                platform.
-              </p>
-
-              <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
-                <Button
-                  type="button"
-                  className="h-11 w-full rounded-full border-0 px-6 text-sm font-semibold text-white shadow-[0_12px_32px_rgba(8,31,92,0.45)] transition hover:-translate-y-0.5 hover:brightness-110 sm:w-auto"
-                  style={{ backgroundImage: gradientNavyButton }}
-                  onClick={() => scrollToSection("announcements")}
-                >
-                  <Megaphone className="mr-2 h-4 w-4" aria-hidden />
-                  View announcements
-                  <ChevronRight className="ml-1 h-4 w-4 opacity-90" aria-hidden />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 w-full rounded-full border-white/30 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-md transition hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/18 sm:w-auto"
-                  onClick={() => scrollToSection("batch-list")}
-                >
-                  <ListChecks className="mr-2 h-4 w-4" aria-hidden />
-                  Browse batch list
-                </Button>
-              </div>
+        <div className="flex flex-col gap-2.5 sm:gap-3">
+          <div className="group flex items-start gap-3 rounded-2xl border border-sky-300/30 bg-white/[0.02] p-3.5 text-left shadow-[0_4px_24px_rgba(4,19,61,0.08)] backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-sky-300/45 hover:bg-white/[0.04] sm:gap-3.5 sm:p-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-sky-400/10 ring-1 ring-sky-300/25 sm:size-[3.25rem]" aria-hidden>
+              <Globe className="size-5 text-sky-200 sm:size-7" />
             </div>
-
-            <div className="mx-auto w-full max-w-md space-y-4 lg:max-w-none">
-              <div
-                className="flex flex-wrap items-center justify-center gap-5 sm:gap-7"
-                role="group"
-                aria-label="Partner and institution logos"
-              >
-                <img
-                  src={orgLogo}
-                  alt="Scholarship Grants &amp; Financial Assistance Office, Marinduque State University"
-                  className="h-[5rem] w-[5rem] object-contain drop-shadow-lg sm:h-[6rem] sm:w-[6rem]"
-                  decoding="async"
-                />
-                <img
-                  src={marsuLogo}
-                  alt="Marinduque State University seal"
-                  className="h-[4.5rem] w-[4.5rem] object-contain drop-shadow-lg sm:h-[5.5rem] sm:w-[5.5rem]"
-                  decoding="async"
-                />
-                <img
-                  src={systemLogo}
-                  alt="Scholarship Records Management System emblem"
-                  className="h-[5rem] w-[5rem] object-contain drop-shadow-lg sm:h-[6rem] sm:w-[6rem]"
-                  decoding="async"
-                />
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <div className="group flex items-start gap-3.5 rounded-2xl border border-sky-300/30 bg-white/[0.02] p-4 text-left shadow-[0_4px_24px_rgba(4,19,61,0.08)] backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-sky-300/45 hover:bg-white/[0.04]">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sky-400/10 ring-1 ring-sky-300/25 sm:size-[3.25rem]" aria-hidden>
-                    <Globe className="size-6 text-sky-200 sm:size-7" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-base font-semibold text-white">Accessible</p>
-                    <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
-                      Quick access to scholarship information, announcements, and application updates.
-                    </p>
-                  </div>
-                </div>
-                <div className="group flex items-start gap-3.5 rounded-2xl border border-violet-300/30 bg-white/[0.02] p-4 text-left shadow-[0_4px_24px_rgba(4,19,61,0.08)] backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-violet-300/45 hover:bg-white/[0.04]">
-                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-violet-400/10 ring-1 ring-violet-300/25 sm:size-[3.25rem]" aria-hidden>
-                    <LayoutList className="size-6 text-violet-200 sm:size-7" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-base font-semibold text-white">Organized</p>
-                    <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
-                      Centralized records and batch listings for easier student monitoring and reference.
-                    </p>
-                  </div>
-                </div>
-              </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white sm:text-base">Accessible</p>
+              <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
+                Quick access to scholarship information, announcements, and application updates.
+              </p>
+            </div>
+          </div>
+          <div className="group flex items-start gap-3 rounded-2xl border border-violet-300/30 bg-white/[0.02] p-3.5 text-left shadow-[0_4px_24px_rgba(4,19,61,0.08)] backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-violet-300/45 hover:bg-white/[0.04] sm:gap-3.5 sm:p-4">
+            <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-violet-400/10 ring-1 ring-violet-300/25 sm:size-[3.25rem]" aria-hidden>
+              <LayoutList className="size-5 text-violet-200 sm:size-7" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white sm:text-base">Organized</p>
+              <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
+                Centralized records and batch listings for easier student monitoring and reference.
+              </p>
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white" style={{ color: textBodyOnLight }}>
+      <div
+        className="pointer-events-none fixed inset-x-0 top-0 z-0 hidden h-[min(88vh,680px)] overflow-hidden lg:block"
+        style={{ backgroundColor: navyDeep }}
+        aria-hidden
+      >
+        <HeroBackgroundLayers />
       </div>
 
       <LandingPublicHeader variant="cover" onSectionNavigate={scrollToSection} />
 
       <main className="relative w-full min-w-0 overflow-x-hidden">
-        <section id="hero" className="relative min-h-[min(88vh,680px)] w-full">
+        <section id="hero" className="relative w-full overflow-hidden lg:min-h-[min(88vh,680px)]">
+          <div
+            className="pointer-events-none absolute inset-0 z-0 overflow-hidden lg:hidden"
+            style={{ backgroundColor: navyDeep }}
+            aria-hidden
+          >
+            <HeroBackgroundLayers />
+          </div>
+
+          <div className="relative z-10 text-white lg:pointer-events-none lg:fixed lg:inset-x-0 lg:top-0 lg:z-10 lg:h-[min(88vh,680px)]">
+            <div className="pointer-events-auto mx-auto w-full max-w-7xl px-4 pb-10 pt-24 sm:px-6 sm:pb-12 sm:pt-28 lg:flex lg:h-full lg:items-center lg:px-8 lg:pb-16 lg:pt-36">
+              {heroContent}
+            </div>
+          </div>
+
+          <div className="hidden min-h-[min(88vh,680px)] lg:block" aria-hidden />
+
           <button
             type="button"
             onClick={() => scrollToSection("about")}
-            className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent motion-reduce:animate-none sm:bottom-6"
+            className="relative z-20 mx-auto mb-5 flex text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent motion-reduce:animate-none sm:mb-6 lg:absolute lg:bottom-6 lg:left-1/2 lg:mb-0 lg:-translate-x-1/2"
             aria-label="Scroll to About the Organization"
           >
             <ChevronDown className="h-7 w-7 animate-bounce drop-shadow-[0_2px_8px_rgba(4,19,61,0.45)] sm:h-8 sm:w-8" aria-hidden />
@@ -1626,7 +1668,7 @@ export default function LandingPage() {
               >
                 Campus updates
               </p>
-              <h2 className="relative mt-4 flex items-center gap-3 text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
+              <h2 className="relative mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
                 <span
                   className="bg-clip-text text-transparent"
                   style={{
@@ -1762,7 +1804,7 @@ export default function LandingPage() {
               >
                 How it works
               </p>
-              <h2 className="relative mt-4 flex items-center gap-3 text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
+              <h2 className="relative mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
                 <span
                   className="flex size-10 shrink-0 items-center justify-center rounded-xl shadow-[0_8px_20px_-8px_rgba(8,31,92,0.45)] ring-2 ring-white/80 sm:size-11"
                   style={{ backgroundImage: gradientNavyButton }}
