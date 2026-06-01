@@ -1,8 +1,13 @@
-import { useLayoutEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { ArrowLeft, Layers, Search, SlidersHorizontal } from "lucide-react"
 
-import { LANDING_FEATURED_BATCHES } from "@/lib/landingFeaturedBatches"
+import { fetchAllGrantees } from "@/lib/granteesApi"
+import {
+  buildLandingBatchCards,
+  LANDING_BATCH_VISIBILITY_CHANGED_EVENT,
+  readStoredLandingBatchVisibility,
+} from "@/lib/landingFeaturedBatches"
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
@@ -139,6 +144,8 @@ export default function ViewAllBatch() {
   const [programFilter, setProgramFilter] = useState("__")
   const [academicYearFilter, setAcademicYearFilter] = useState("__")
   const [batchSeriesFilter, setBatchSeriesFilter] = useState("__")
+  const [granteesRawData, setGranteesRawData] = useState([])
+  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
 
   useLayoutEffect(() => {
     const scroller = document.getElementById("admin-main-scroll")
@@ -148,30 +155,64 @@ export default function ViewAllBatch() {
     document.body.scrollTop = 0
   }, [])
 
+  useEffect(() => {
+    const syncLandingVisibility = () => setLandingVisibility(readStoredLandingBatchVisibility())
+    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
+    window.addEventListener("storage", syncLandingVisibility)
+    return () => {
+      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
+      window.removeEventListener("storage", syncLandingVisibility)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadGrantees = async () => {
+      try {
+        const data = await fetchAllGrantees()
+        if (!cancelled) setGranteesRawData(data)
+      } catch (error) {
+        console.error("Failed to load batch list:", error)
+        if (!cancelled) setGranteesRawData([])
+      }
+    }
+
+    loadGrantees()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const landingBatches = useMemo(
+    () => buildLandingBatchCards(granteesRawData, landingVisibility),
+    [granteesRawData, landingVisibility],
+  )
+
   const uniquePrograms = useMemo(
-    () => [...new Set(LANDING_FEATURED_BATCHES.map((batch) => String(batch.program ?? "").trim()).filter(Boolean))].sort(),
-    [],
+    () => [...new Set(landingBatches.map((batch) => String(batch.program ?? "").trim()).filter(Boolean))].sort(),
+    [landingBatches],
   )
 
   const uniqueAcademicYears = useMemo(
-    () => [...new Set(LANDING_FEATURED_BATCHES.map((batch) => String(batch.schoolYear ?? "").trim()).filter(Boolean))].sort().reverse(),
-    [],
+    () => [...new Set(landingBatches.map((batch) => String(batch.schoolYear ?? "").trim()).filter(Boolean))].sort().reverse(),
+    [landingBatches],
   )
 
   const uniqueBatchSeries = useMemo(
     () =>
       [
         ...new Set(
-          LANDING_FEATURED_BATCHES.map((batch) => String(batch.batchNo ?? "").split(".")[0]?.trim()).filter(Boolean),
+          landingBatches.map((batch) => String(batch.batchNo ?? "").split(".")[0]?.trim()).filter(Boolean),
         ),
       ].sort((a, b) => Number(b) - Number(a)),
-    [],
+    [landingBatches],
   )
 
   const filteredBatches = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
 
-    return LANDING_FEATURED_BATCHES.filter((batch) => {
+    return landingBatches.filter((batch) => {
       if (programFilter !== "__" && programFilter !== "" && String(batch.program ?? "") !== programFilter) return false
       if (academicYearFilter !== "__" && academicYearFilter !== "" && String(batch.schoolYear ?? "") !== academicYearFilter) {
         return false
@@ -190,7 +231,7 @@ export default function ViewAllBatch() {
         String(batch.grantees ?? "").includes(q)
       )
     })
-  }, [searchTerm, programFilter, academicYearFilter, batchSeriesFilter])
+  }, [searchTerm, programFilter, academicYearFilter, batchSeriesFilter, landingBatches])
 
   return (
     <div className="min-h-screen w-full" style={{ backgroundImage: gradientLightBlueViolet, color: textBodyOnLight }}>

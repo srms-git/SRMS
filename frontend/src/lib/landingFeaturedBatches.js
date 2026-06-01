@@ -1,4 +1,9 @@
-/** Public landing featured / full batch list (mock until API-backed). */
+import { buildBatchesFromGrantees } from "@/lib/granteesApi"
+
+export const LANDING_BATCH_VISIBILITY_STORAGE_KEY = "srmsLandingBatchVisibility"
+export const LANDING_BATCH_VISIBILITY_CHANGED_EVENT = "srms-landing-batch-visibility-changed"
+
+/** @deprecated Mock list kept for reference; landing page uses live grantee data + visibility settings. */
 export const LANDING_FEATURED_BATCHES = [
   {
     batchNo: "21.1",
@@ -141,3 +146,120 @@ export const LANDING_FEATURED_BATCHES = [
     grantees: 201,
   },
 ]
+
+export function getBatchLandingKey(batch) {
+  const batchNo = String(batch?.batchNo ?? "").trim()
+  const program = String(batch?.program ?? "").trim().toUpperCase()
+  const schoolYear = String(batch?.schoolYear ?? batch?.academicYear ?? "").trim()
+  return `${batchNo}|${program}|${schoolYear}`
+}
+
+function normalizeVisibilityKeys(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean)
+}
+
+export function readStoredLandingBatchVisibility() {
+  const raw = localStorage.getItem(LANDING_BATCH_VISIBILITY_STORAGE_KEY)
+  if (!raw) return new Set()
+  try {
+    const parsed = JSON.parse(raw)
+    return new Set(normalizeVisibilityKeys(parsed))
+  } catch {
+    return new Set()
+  }
+}
+
+export function writeStoredLandingBatchVisibility(keys) {
+  const normalized = normalizeVisibilityKeys(keys)
+  localStorage.setItem(LANDING_BATCH_VISIBILITY_STORAGE_KEY, JSON.stringify(normalized))
+  window.dispatchEvent(new CustomEvent(LANDING_BATCH_VISIBILITY_CHANGED_EVENT))
+  return new Set(normalized)
+}
+
+export function isBatchVisibleOnLanding(batch, visibilitySet = readStoredLandingBatchVisibility()) {
+  const key = getBatchLandingKey(batch)
+  if (!key || key === "||") return false
+  return visibilitySet.has(key)
+}
+
+export function setLandingBatchVisibility(batch, visible) {
+  const key = getBatchLandingKey(batch)
+  if (!key || key === "||") return readStoredLandingBatchVisibility()
+
+  const next = new Set(readStoredLandingBatchVisibility())
+  if (visible) {
+    next.add(key)
+  } else {
+    next.delete(key)
+  }
+  return writeStoredLandingBatchVisibility([...next])
+}
+
+export function renameLandingBatchVisibility(originalBatch, updatedBatch) {
+  const oldKey = getBatchLandingKey(originalBatch)
+  const newKey = getBatchLandingKey(updatedBatch)
+  if (!oldKey || oldKey === "||" || !newKey || newKey === "||" || oldKey === newKey) {
+    return readStoredLandingBatchVisibility()
+  }
+
+  const next = new Set(readStoredLandingBatchVisibility())
+  if (next.has(oldKey)) {
+    next.delete(oldKey)
+    next.add(newKey)
+  }
+  return writeStoredLandingBatchVisibility([...next])
+}
+
+export function toggleLandingBatchVisibility(batch) {
+  const visible = isBatchVisibleOnLanding(batch)
+  return setLandingBatchVisibility(batch, !visible)
+}
+
+export function formatLandingBatchCreatedAt(value) {
+  if (!value) return "Date added: —"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "Date added: —"
+  return `Date added: ${date.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })}`
+}
+
+export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandingBatchVisibility()) {
+  const batches = buildBatchesFromGrantees(grantees)
+  const granteeCounts = new Map()
+  const seen = new Set()
+
+  for (const item of grantees ?? []) {
+    const batchNo = String(item.batchNo ?? "").trim()
+    const program = String(item.program ?? "").trim().toUpperCase()
+    if (!batchNo || !program) continue
+    const key = `${batchNo}|${program}`
+    granteeCounts.set(key, (granteeCounts.get(key) ?? 0) + 1)
+  }
+
+  const cards = []
+  for (const batch of batches) {
+    if (!isBatchVisibleOnLanding(batch, visibilitySet)) continue
+
+    const landingKey = getBatchLandingKey(batch)
+    if (!landingKey || landingKey === "||" || seen.has(landingKey)) continue
+    seen.add(landingKey)
+
+    const program = String(batch.program ?? "").trim().toUpperCase()
+    const granteesCount = granteeCounts.get(`${batch.batchNo}|${program}`) ?? 0
+    cards.push({
+      batchNo: batch.batchNo,
+      schoolYear: batch.schoolYear,
+      program,
+      createdAt: formatLandingBatchCreatedAt(batch.createdAt),
+      grantees: granteesCount,
+    })
+  }
+
+  return cards
+}

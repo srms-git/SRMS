@@ -9,7 +9,6 @@ import {
   Fingerprint,
   GraduationCap,
   Layers,
-  Mail,
   MoreHorizontal,
   Receipt,
   Search,
@@ -17,9 +16,13 @@ import {
   User,
 } from "lucide-react"
 
-import { loadMergedBeneficiaryRecords } from "@/lib/beneficiariesStore"
+import { loadMergedBeneficiaryRecords, saveBeneficiaryRecords } from "@/lib/beneficiariesStore"
+import { fetchGranteesForBatch } from "@/lib/granteesApi"
 import { SemesterClaimCell } from "@/components/grantee/semester-claim-display"
-import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
+import {
+  LANDING_PAGE_SETTINGS_CHANGED_EVENT,
+  readLandingPagePrivacyPreferences,
+} from "@/lib/landingPageSettings"
 import {
   ensureSemesterClaimTimestamps,
   semesterClaimsForRow,
@@ -35,6 +38,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
+
+const REDACTED_PLACEHOLDER = "••••"
 
 /** Same shapes as BatchInfo mock + academicYear for URL filtering when no stored records match. */
 const MOCK_BATCH_TABLE_ROWS = [
@@ -212,26 +217,31 @@ function RequirementSemesterCell({ progress }) {
   )
 }
 
-function BatchRecordView({ row, formatStudentId }) {
+function BatchRecordView({ row, landingPrivacy }) {
   const claimed = String(row?.status ?? "") === "Claimed"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const programInferred = inferProgramFromRecord(row)
   const requirementDefs = programInferred === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
+  const displayFullName = landingPrivacy.showFullNameInLandingBatchList ? row.fullName : REDACTED_PLACEHOLDER
+  const displayStudentId = landingPrivacy.showStudentIdInLandingBatchList ? row.studentId : REDACTED_PLACEHOLDER
+  const displayAwardNumber = landingPrivacy.showAwardNumberInLandingBatchList ? row.awardNumber : REDACTED_PLACEHOLDER
+  const displayEnrolledProgram = landingPrivacy.showEnrolledProgramInLandingBatchList
+    ? row.enrolledProgram
+    : REDACTED_PLACEHOLDER
+  const displayYearLevel = landingPrivacy.showYearLevelInLandingBatchList ? row.yearLevel : REDACTED_PLACEHOLDER
   const levelListForNorm = claims.map((c) => c.yearLevel)
   const requirementChecklist = normalizeRequirementChecklistByYearSem(row, requirementDefs, levelListForNorm)
   const requirementTableRows = levelListForNorm.length > 0 ? levelListForNorm : row?.yearLevel ? [row.yearLevel] : []
   const detailItems = [
     { label: "Batch number", value: row.batchNo, icon: Layers },
-    { label: "Student ID", value: row.studentId, icon: User },
+    { label: "Student ID", value: displayStudentId, icon: User },
     { label: "Sequence no.", value: row.seqNo, icon: Fingerprint },
-    { label: "Award number", value: row.awardNumber, icon: Receipt, mono: true },
-    { label: "Enrolled program", value: row.enrolledProgram, icon: BookOpen },
-    { label: "Current year level", value: row.yearLevel, icon: GraduationCap },
+    { label: "Award number", value: displayAwardNumber, icon: Receipt, mono: true },
+    { label: "Enrolled program", value: displayEnrolledProgram, icon: BookOpen },
+    { label: "Current year level", value: displayYearLevel, icon: GraduationCap },
     { label: "Academic year", value: row.academicYear ?? "—", icon: CalendarDays },
-    { label: "Phone number", value: row.phoneNumber ?? "—", icon: Receipt },
-    { label: "Email address", value: row.email ?? "—", icon: Mail, subtle: true },
     { label: "Record last updated", value: formatDisplayDate(row.lastUpdated), icon: CalendarDays },
   ]
 
@@ -245,11 +255,13 @@ function BatchRecordView({ row, formatStudentId }) {
           </div>
           <div className="min-w-0 flex-1 space-y-1.5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{granteeKindLabel}</p>
-            <h3 className="text-base font-semibold leading-snug text-slate-900 dark:text-white">{row.fullName || "—"}</h3>
+            <h3 className="text-base font-semibold leading-snug text-slate-900 dark:text-white">
+              {displayFullName || "—"}
+            </h3>
             <p className="text-xs text-slate-600 dark:text-slate-300">
               <span className="font-medium text-slate-700 dark:text-slate-200">Student ID</span>{" "}
               <span className="font-mono text-[13px] text-[#081F5C] dark:text-[#7eb0ff]">
-                {formatStudentId(row.studentId, "listCard")}
+                {displayStudentId || "—"}
               </span>
             </p>
             <div className="flex flex-wrap items-center gap-2 pt-0.5">
@@ -266,10 +278,10 @@ function BatchRecordView({ row, formatStudentId }) {
                 Overall: {row.status || "—"}
               </Badge>
               <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-medium">
-                {row.enrolledProgram || "Program"}
+                {displayEnrolledProgram || "Program"}
               </Badge>
               <Badge variant="outline" className="h-6 rounded-full px-2.5 text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                {row.yearLevel || "Year level"}
+                {displayYearLevel || "Year level"}
               </Badge>
             </div>
           </div>
@@ -460,7 +472,6 @@ function BatchRecordView({ row, formatStudentId }) {
 }
 
 export default function LandingPageBatch() {
-  const { formatStudentId } = useOsgfaPrivacySettings()
   const [params] = useSearchParams()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("__")
@@ -469,10 +480,23 @@ export default function LandingPageBatch() {
   const [page, setPage] = useState(1)
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [activeRowKey, setActiveRowKey] = useState(null)
+  const [loadingRecords, setLoadingRecords] = useState(false)
+  const [didFetchRecords, setDidFetchRecords] = useState(false)
+  const [landingPrivacy, setLandingPrivacy] = useState(() => readLandingPagePrivacyPreferences())
 
   const batchNo = String(params.get("batchNo") ?? "").trim()
   const program = String(params.get("program") ?? "").trim().toUpperCase()
   const academicYear = String(params.get("academicYear") ?? "").trim()
+
+  useEffect(() => {
+    const syncLandingPrivacy = () => setLandingPrivacy(readLandingPagePrivacyPreferences())
+    window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
+    window.addEventListener("storage", syncLandingPrivacy)
+    return () => {
+      window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
+      window.removeEventListener("storage", syncLandingPrivacy)
+    }
+  }, [])
 
   useEffect(() => {
     const scroller = document.getElementById("admin-main-scroll")
@@ -480,7 +504,42 @@ export default function LandingPageBatch() {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
   }, [batchNo, program, academicYear])
 
-  const [records] = useState(() => loadMergedBeneficiaryRecords([]))
+  const [records, setRecords] = useState(() => loadMergedBeneficiaryRecords([]))
+
+  useEffect(() => {
+    let cancelled = false
+
+    // Only require batchNo + program; academicYear can be optional and will widen results.
+    const shouldFetch = Boolean(batchNo && program)
+    if (!shouldFetch) {
+      return
+    }
+
+    setLoadingRecords(true)
+    setDidFetchRecords(false)
+
+    const run = async () => {
+      try {
+        const rows = await fetchGranteesForBatch({ program, batchNo, academicYear })
+        if (cancelled) return
+        setRecords(rows)
+        saveBeneficiaryRecords(rows)
+      } catch (error) {
+        // Fall back to any previously stored local data.
+        console.error("Failed to load landing batch records:", error)
+        if (cancelled) return
+        setRecords(loadMergedBeneficiaryRecords([]))
+      } finally {
+        if (!cancelled) setDidFetchRecords(true)
+        if (!cancelled) setLoadingRecords(false)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [batchNo, program, academicYear])
 
   const filteredStored = useMemo(() => {
     return records.filter((r) => {
@@ -506,8 +565,9 @@ export default function LandingPageBatch() {
     })
   }, [batchNo, program, academicYear])
 
-  const displayedRows = filteredStored.length > 0 ? filteredStored : mockForParams
-  const showingMockRows = filteredStored.length === 0 && mockForParams.length > 0
+  const displayedRows =
+    filteredStored.length > 0 ? filteredStored : loadingRecords ? [] : didFetchRecords ? [] : mockForParams
+  const showingMockRows = !loadingRecords && !didFetchRecords && filteredStored.length === 0 && mockForParams.length > 0
 
   const uniquePrograms = useMemo(
     () => [...new Set(displayedRows.map((row) => String(row.enrolledProgram ?? "").trim()).filter(Boolean))].sort(),
@@ -680,7 +740,7 @@ export default function LandingPageBatch() {
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6">
-            <div className="max-h-[min(420px,55vh)] overflow-auto [scrollbar-gutter:stable]">
+            <div className="max-h-[min(720px,72vh)] overflow-auto [scrollbar-gutter:stable]">
               <table className="w-full min-w-[900px] text-xs sm:text-sm [&_th]:px-2 [&_th]:py-2.5 [&_td]:px-2 [&_td]:py-2.5 sm:[&_th]:px-3 sm:[&_td]:px-3">
                 <thead className="sticky top-0 z-1 bg-slate-100/95 text-slate-700 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-200">
                   <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:text-left [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide dark:[&>th]:border-white/10">
@@ -696,6 +756,13 @@ export default function LandingPageBatch() {
                 </thead>
 
                 <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
+                  {loadingRecords ? (
+                    <tr>
+                      <td colSpan={colspan} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
+                        Loading records for this batch…
+                      </td>
+                    </tr>
+                  ) : null}
                   {pagedRows.map((row) => (
                     <tr
                       key={rowKey(row)}
@@ -706,14 +773,20 @@ export default function LandingPageBatch() {
                       </td>
                       <td className="w-[80px] whitespace-nowrap font-medium text-pink-600 dark:text-pink-400">{row.seqNo || "—"}</td>
                       <td className="w-[110px] whitespace-nowrap text-blue-600 dark:text-sky-300">
-                        {formatStudentId(row.studentId, "listCard")}
+                        {landingPrivacy.showStudentIdInLandingBatchList ? row.studentId || "—" : REDACTED_PLACEHOLDER}
                       </td>
                       <td className="w-[260px] max-w-[260px] truncate whitespace-nowrap font-mono text-xs sm:text-sm">
-                        {row.awardNumber || "—"}
+                        {landingPrivacy.showAwardNumberInLandingBatchList ? row.awardNumber || "—" : REDACTED_PLACEHOLDER}
                       </td>
-                      <td className="w-[240px] max-w-[240px] truncate whitespace-nowrap font-medium">{row.fullName || "—"}</td>
-                      <td className="w-[140px] max-w-[140px] truncate whitespace-nowrap">{row.enrolledProgram || "—"}</td>
-                      <td className="w-[120px] whitespace-nowrap">{row.yearLevel || "—"}</td>
+                      <td className="w-[240px] max-w-[240px] truncate whitespace-nowrap font-medium">
+                        {landingPrivacy.showFullNameInLandingBatchList ? row.fullName || "—" : REDACTED_PLACEHOLDER}
+                      </td>
+                      <td className="w-[140px] max-w-[140px] truncate whitespace-nowrap">
+                        {landingPrivacy.showEnrolledProgramInLandingBatchList ? row.enrolledProgram || "—" : REDACTED_PLACEHOLDER}
+                      </td>
+                      <td className="w-[120px] whitespace-nowrap">
+                        {landingPrivacy.showYearLevelInLandingBatchList ? row.yearLevel || "—" : REDACTED_PLACEHOLDER}
+                      </td>
                       <td className="text-center">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -745,7 +818,7 @@ export default function LandingPageBatch() {
                       </td>
                     </tr>
                   ) : null}
-                  {tableRows.length === 0 ? (
+                  {!loadingRecords && tableRows.length === 0 ? (
                     <tr>
                       <td colSpan={colspan} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
                         No records found for this batch or your current filters.
@@ -801,7 +874,7 @@ export default function LandingPageBatch() {
               </DialogHeader>
 
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-1 [scrollbar-gutter:stable]">
-                {activeRow ? <BatchRecordView row={activeRow} formatStudentId={formatStudentId} /> : null}
+                {activeRow ? <BatchRecordView row={activeRow} landingPrivacy={landingPrivacy} /> : null}
               </div>
 
               {activeRow ? (

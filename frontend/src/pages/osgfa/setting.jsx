@@ -1,26 +1,60 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
+  AlertCircle,
+  ArrowDown,
+  ArrowUp,
   Bell,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
+  GitBranch,
   HelpCircle,
   Lock,
+  Plus,
   Settings as SettingsIcon,
   Shield,
-  SlidersHorizontal,
+  Trash2,
   User,
+  XCircle,
 } from "lucide-react"
 import PasswordField from "@/components/PasswordField"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { OSGFA_SETTINGS_CHANGED_EVENT, readStoredSettings, writeStoredSettings } from "@/lib/osgfaSettings"
+import { cn } from "@/lib/utils"
+import {
+  createEmptyWorkflowStep,
+  DEFAULT_PROCESS_WORKFLOW,
+  DEFAULT_WORKFLOW_STEP_COLOR,
+  DEFAULT_WORKFLOW_STEP_COLOR_LIGHT,
+  normalizeProcessWorkflowSteps,
+  PROCESS_WORKFLOW_ICON_OPTIONS,
+  readStoredProcessWorkflow,
+  validateProcessWorkflow,
+  writeStoredProcessWorkflow,
+  WORKFLOW_ICON_MAP,
+} from "@/lib/processWorkflowSettings"
+import {
+  LANDING_PAGE_SETTINGS_CHANGED_EVENT,
+  readStoredLandingPageSettings,
+  writeStoredLandingPageSettings,
+} from "@/lib/landingPageSettings"
 import authService from "@/services/authService"
 
 const SECTIONS = {
   PROFILE: "profile",
   PASSWORD: "password",
-  MODULES: "modules",
+  WORKFLOW: "workflow",
+  LANDING_SETTINGS: "landing-settings",
   NOTIFICATIONS: "notifications",
-  PRIVACY: "privacy",
+  OSGFA_PRIVACY: "osgfa-privacy",
   SUPPORT: "support",
 }
 
@@ -63,6 +97,222 @@ function buildProfileForm(user) {
   }
 }
 
+function captureWorkflowStepPositions(container) {
+  if (!container) return new Map()
+  const positions = new Map()
+  for (const child of container.children) {
+    const id = child.getAttribute("data-workflow-step-id")
+    if (id) positions.set(id, child.getBoundingClientRect())
+  }
+  return positions
+}
+
+function playWorkflowStepFlip(container, beforePositions) {
+  if (!container || !beforePositions?.size) return
+  requestAnimationFrame(() => {
+    for (const child of container.children) {
+      const id = child.getAttribute("data-workflow-step-id")
+      const first = id ? beforePositions.get(id) : null
+      if (!first) continue
+      const last = child.getBoundingClientRect()
+      const deltaY = first.top - last.top
+      if (Math.abs(deltaY) < 1) continue
+      child.style.transform = `translateY(${deltaY}px)`
+      child.style.transition = "transform 0s"
+      requestAnimationFrame(() => {
+        child.style.transition = "transform 0.4s cubic-bezier(0.22, 1, 0.36, 1)"
+        child.style.transform = "translateY(0)"
+        const clearInlineStyles = () => {
+          child.style.transition = ""
+          child.style.transform = ""
+          child.removeEventListener("transitionend", clearInlineStyles)
+        }
+        child.addEventListener("transitionend", clearInlineStyles)
+      })
+    }
+  })
+}
+
+function WorkflowStepEditor({
+  step,
+  index,
+  total,
+  isEditing,
+  onStartEdit,
+  onChange,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  canRemove,
+}) {
+  const StepIcon = WORKFLOW_ICON_MAP[step.icon] ?? WORKFLOW_ICON_MAP.ListChecks
+  const headingPreview = step.title.trim() || "New step (add a heading)"
+
+  return (
+    <article
+      data-workflow-step-id={step.id}
+      className={cn(
+        "overflow-hidden rounded-xl border bg-white shadow-sm",
+        isEditing ? "border-[#081F5C]/35 shadow-md ring-1 ring-[#081F5C]/15" : "border-[#081F5C]/12 shadow-sm",
+      )}
+    >
+      <header
+        className={cn(
+          "flex flex-wrap items-center gap-3 px-4 py-3 transition-colors duration-300",
+          isEditing ? "border-b border-[#081F5C]/8" : "",
+        )}
+        style={{ backgroundImage: "linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%)" }}
+      >
+        <button
+          type="button"
+          onClick={onStartEdit}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-expanded={isEditing}
+        >
+          <ChevronRight
+            className={cn(
+              "h-4 w-4 shrink-0 text-[#081F5C]/60 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+              isEditing && "rotate-90",
+            )}
+            aria-hidden
+          />
+          <span
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-white shadow-sm"
+            style={{
+              backgroundImage: `linear-gradient(135deg, ${DEFAULT_WORKFLOW_STEP_COLOR} 0%, ${DEFAULT_WORKFLOW_STEP_COLOR_LIGHT} 100%)`,
+            }}
+          >
+            <StepIcon className="h-4 w-4" aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="block text-[11px] font-semibold uppercase tracking-wider text-[#081F5C]/60">
+              Step {index + 1} of {total}
+            </span>
+            <span className="block truncate text-sm font-semibold text-gray-900">{headingPreview}</span>
+          </span>
+        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={index === 0}
+            onClick={(event) => {
+              event.stopPropagation()
+              onMoveUp()
+            }}
+            title="Move step up"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ArrowUp className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Move up</span>
+          </button>
+          <button
+            type="button"
+            disabled={index === total - 1}
+            onClick={(event) => {
+              event.stopPropagation()
+              onMoveDown()
+            }}
+            title="Move step down"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ArrowDown className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Move down</span>
+          </button>
+          <button
+            type="button"
+            disabled={!canRemove}
+            onClick={(event) => {
+              event.stopPropagation()
+              onRemove()
+            }}
+            title="Remove step"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-red-200 bg-white text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+            <span className="sr-only">Remove</span>
+          </button>
+        </div>
+      </header>
+
+      <div
+        className={cn("workflow-step-panel grid", isEditing ? "grid-rows-[1fr]" : "grid-rows-[0fr]")}
+        aria-hidden={!isEditing}
+      >
+        <div className={cn("min-h-0 overflow-hidden", !isEditing && "pointer-events-none")}>
+          <div className="space-y-4 p-4">
+            <div className="rounded-lg border border-dashed border-[#081F5C]/15 bg-slate-50/80 p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#081F5C]/55">Preview</p>
+              <p className="mt-1 text-sm font-semibold text-[#081F5C]">{headingPreview}</p>
+              <p className="mt-1 line-clamp-3 text-xs leading-relaxed text-gray-600">
+                {step.description.trim() || "Instructions will appear here once you add them."}
+              </p>
+            </div>
+
+            <div>
+              <label htmlFor={`workflow-title-${step.id}`} className="mb-1 block text-sm font-medium text-gray-800">
+                Step heading
+              </label>
+              <input
+                id={`workflow-title-${step.id}`}
+                type="text"
+                value={step.title}
+                onChange={(event) => onChange({ title: event.target.value })}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none transition focus:border-[#1447a6] focus:ring-2 focus:ring-[#1447a6]/20"
+                placeholder="e.g. Submit the required documents"
+                maxLength={120}
+              />
+            </div>
+
+            <div>
+              <label htmlFor={`workflow-desc-${step.id}`} className="mb-1 block text-sm font-medium text-gray-800">
+                Instructions for students
+              </label>
+              <textarea
+                id={`workflow-desc-${step.id}`}
+                rows={3}
+                value={step.description}
+                onChange={(event) => onChange({ description: event.target.value })}
+                className="w-full resize-y rounded-lg border border-gray-300 px-3 py-2 text-sm leading-relaxed outline-none transition focus:border-[#1447a6] focus:ring-2 focus:ring-[#1447a6]/20"
+                placeholder="What should students do at this stage?"
+                maxLength={600}
+              />
+              <p className="mt-1 text-right text-[11px] text-gray-400">{step.description.length}/600</p>
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs font-medium text-gray-700">Icon</p>
+              <div className="flex flex-wrap gap-1">
+                {PROCESS_WORKFLOW_ICON_OPTIONS.map((option) => {
+                  const Icon = WORKFLOW_ICON_MAP[option.value]
+                  const selected = step.icon === option.value
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      title={option.label}
+                      onClick={() => onChange({ icon: option.value })}
+                      className={cn(
+                        "inline-flex size-8 items-center justify-center rounded-md border transition",
+                        selected
+                          ? "border-[#081F5C] bg-[#081F5C]/10 text-[#081F5C] ring-1 ring-[#081F5C]/30"
+                          : "border-gray-200 bg-white text-gray-500 hover:border-[#081F5C]/25 hover:bg-slate-50",
+                      )}
+                      aria-pressed={selected}
+                      aria-label={option.label}
+                    >
+                      <Icon className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 export default function Setting() {
   const navigate = useNavigate()
   const [active, setActive] = useState(SECTIONS.PROFILE)
@@ -88,9 +338,22 @@ export default function Setting() {
     confirmPassword: "",
   })
   const [settings, setSettings] = useState(() => readStoredSettings())
+  const [landingSettings, setLandingSettings] = useState(() => readStoredLandingPageSettings())
   const [profileNotice, setProfileNotice] = useState({ type: "", message: "" })
   const [passwordNotice, setPasswordNotice] = useState({ type: "", message: "" })
   const [settingsNotice, setSettingsNotice] = useState({ type: "", message: "" })
+  const [workflowDraft, setWorkflowDraft] = useState(() => readStoredProcessWorkflow())
+  const [editingWorkflowStepId, setEditingWorkflowStepId] = useState(null)
+  const workflowListRef = useRef(null)
+  const workflowFlipBeforeRef = useRef(null)
+  const workflowShouldFlipRef = useRef(false)
+  const [workflowSaving, setWorkflowSaving] = useState(false)
+  const [workflowAlert, setWorkflowAlert] = useState({
+    open: false,
+    type: "success",
+    title: "",
+    message: "",
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -143,13 +406,130 @@ export default function Setting() {
     }
   }, [])
 
+  useEffect(() => {
+    const syncLandingSettings = () => setLandingSettings(readStoredLandingPageSettings())
+    window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingSettings)
+    window.addEventListener("storage", syncLandingSettings)
+    return () => {
+      window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingSettings)
+      window.removeEventListener("storage", syncLandingSettings)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (active !== SECTIONS.WORKFLOW) return
+    const draft = readStoredProcessWorkflow()
+    setWorkflowDraft(draft)
+    setEditingWorkflowStepId((currentId) => {
+      if (currentId && draft.steps.some((step) => step.id === currentId)) return currentId
+      return draft.steps[0]?.id ?? null
+    })
+  }, [active])
+
+  useLayoutEffect(() => {
+    if (!workflowShouldFlipRef.current) return
+    workflowShouldFlipRef.current = false
+    playWorkflowStepFlip(workflowListRef.current, workflowFlipBeforeRef.current)
+    workflowFlipBeforeRef.current = null
+  }, [workflowDraft.steps])
+
   const displayName = useMemo(() => getUserDisplayName(user), [user])
   const initials = useMemo(() => getUserInitial(user), [user])
   const roleLabel = useMemo(() => getUserRoleLabel(user), [user])
 
+  const showWorkflowAlert = (type, title, message) => {
+    setWorkflowAlert({ open: true, type, title, message })
+  }
+
+  const updateWorkflowStep = (index, patch) => {
+    setWorkflowDraft((prev) => ({
+      ...prev,
+      steps: prev.steps.map((step, stepIndex) => (stepIndex === index ? { ...step, ...patch } : step)),
+    }))
+  }
+
+  const moveWorkflowStep = (index, direction) => {
+    workflowFlipBeforeRef.current = captureWorkflowStepPositions(workflowListRef.current)
+    workflowShouldFlipRef.current = true
+    setWorkflowDraft((prev) => {
+      const nextIndex = index + direction
+      if (nextIndex < 0 || nextIndex >= prev.steps.length) return prev
+      const steps = [...prev.steps]
+      const [moved] = steps.splice(index, 1)
+      steps.splice(nextIndex, 0, moved)
+      return { steps: normalizeProcessWorkflowSteps(steps) }
+    })
+  }
+
+  const removeWorkflowStep = (index) => {
+    setWorkflowDraft((prev) => {
+      const removedId = prev.steps[index]?.id
+      const steps = normalizeProcessWorkflowSteps(prev.steps.filter((_, stepIndex) => stepIndex !== index))
+      setEditingWorkflowStepId((currentId) => {
+        if (currentId !== removedId) return currentId
+        const nextIndex = Math.min(index, Math.max(0, steps.length - 1))
+        return steps[nextIndex]?.id ?? null
+      })
+      return { steps }
+    })
+  }
+
+  const addWorkflowStep = () => {
+    const newStep = createEmptyWorkflowStep(workflowDraft.steps.length)
+    setWorkflowDraft((prev) => ({
+      steps: normalizeProcessWorkflowSteps([...prev.steps, newStep]),
+    }))
+    setEditingWorkflowStepId(newStep.id)
+  }
+
+  const handleResetWorkflow = () => {
+    const steps = DEFAULT_PROCESS_WORKFLOW.steps.map((step) => ({ ...step }))
+    setWorkflowDraft({ steps })
+    setEditingWorkflowStepId(steps[0]?.id ?? null)
+    showWorkflowAlert(
+      "info",
+      "Defaults loaded",
+      "The default timeline steps are loaded in the editor. Click Save changes to publish them on the landing page.",
+    )
+  }
+
+  const handleSaveWorkflow = async (event) => {
+    event.preventDefault()
+    const { valid, errors, normalized } = validateProcessWorkflow(workflowDraft)
+    if (!valid) {
+      showWorkflowAlert("error", "Could not save", errors.join(" "))
+      return
+    }
+
+    setWorkflowSaving(true)
+    try {
+      const saved = writeStoredProcessWorkflow(normalized)
+      setWorkflowDraft(saved)
+      showWorkflowAlert(
+        "success",
+        "Changes saved",
+        "Process / Workflow content was updated. Visitors will see the new steps on the public landing page.",
+      )
+    } catch {
+      showWorkflowAlert(
+        "error",
+        "Save failed",
+        "Unable to save workflow settings. Check browser storage permissions and try again.",
+      )
+    } finally {
+      setWorkflowSaving(false)
+    }
+  }
+
   const saveSettings = (nextSettings, noticeMessage = "System settings saved.") => {
     setSettings(nextSettings)
     writeStoredSettings(nextSettings)
+    setSettingsNotice({ type: "success", message: noticeMessage })
+  }
+
+  const saveLandingSettings = (nextSettings, noticeMessage = "Landing page settings saved.") => {
+    setLandingSettings(nextSettings)
+    writeStoredLandingPageSettings(nextSettings)
     setSettingsNotice({ type: "success", message: noticeMessage })
   }
 
@@ -371,12 +751,36 @@ export default function Setting() {
                 <div className="mt-2 space-y-2 pl-10">
                   <button
                     type="button"
-                    onClick={() => setActive(SECTIONS.MODULES)}
+                    onClick={() => setActive(SECTIONS.WORKFLOW)}
                     className={`block w-full rounded-md py-1 text-left transition ${
-                      active === SECTIONS.MODULES ? "font-semibold text-[#081F5C]" : "text-gray-700 hover:text-[#081F5C]"
+                      active === SECTIONS.WORKFLOW
+                        ? "font-semibold text-[#081F5C]"
+                        : "text-gray-700 hover:text-[#081F5C]"
                     }`}
                   >
-                    Modules
+                    Process / Workflow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActive(SECTIONS.LANDING_SETTINGS)}
+                    className={`block w-full rounded-md py-1 text-left transition ${
+                      active === SECTIONS.LANDING_SETTINGS
+                        ? "font-semibold text-[#081F5C]"
+                        : "text-gray-700 hover:text-[#081F5C]"
+                    }`}
+                  >
+                    Landing Settings
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActive(SECTIONS.OSGFA_PRIVACY)}
+                    className={`block w-full rounded-md py-1 text-left transition ${
+                      active === SECTIONS.OSGFA_PRIVACY
+                        ? "font-semibold text-[#081F5C]"
+                        : "text-gray-700 hover:text-[#081F5C]"
+                    }`}
+                  >
+                    OSGFA Privacy
                   </button>
                   <button
                     type="button"
@@ -388,15 +792,6 @@ export default function Setting() {
                     }`}
                   >
                     Notifications
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActive(SECTIONS.PRIVACY)}
-                    className={`block w-full rounded-md py-1 text-left transition ${
-                      active === SECTIONS.PRIVACY ? "font-semibold text-[#081F5C]" : "text-gray-700 hover:text-[#081F5C]"
-                    }`}
-                  >
-                    Privacy
                   </button>
                 </div>
               )}
@@ -603,69 +998,107 @@ export default function Setting() {
             </section>
           )}
 
-          {active === SECTIONS.MODULES && (
+          {active === SECTIONS.WORKFLOW && (
             <section className="space-y-4">
               <div className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4 text-blue-700" />
-                <h3 className="text-base font-semibold text-gray-900">SRMS Module Defaults</h3>
+                <GitBranch className="h-4 w-4 text-blue-700" />
+                <h3 className="text-base font-semibold text-gray-900">Landing Page — Process / Workflow</h3>
               </div>
+              <p className="text-sm text-gray-600">
+                Manage the timeline steps students see under <span className="font-medium">Process / Workflow</span> on
+                the public landing page. The section heading and intro text are fixed; only the steps below can be
+                changed.
+              </p>
 
-              {settingsNotice.message && (
-                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                  {settingsNotice.message}
-                </div>
-              )}
-
-              <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50/70 p-4">
-                <div>
-                  <label className="mb-1 block text-xs text-gray-600">Default scholarship tab</label>
-                  <select
-                    value={settings.modules.defaultScholarshipView}
-                    onChange={(event) =>
-                      saveSettings({
-                        ...settings,
-                        modules: { ...settings.modules, defaultScholarshipView: event.target.value },
-                      })
-                    }
-                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+              <form className="space-y-4" onSubmit={handleSaveWorkflow}>
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#081F5C]/10 bg-[#081F5C]/5 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">
+                      {workflowDraft.steps.length} timeline step{workflowDraft.steps.length === 1 ? "" : "s"}
+                    </p>
+                    <p className="text-xs text-gray-500">Click a step to edit it. Use the arrows to reorder.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addWorkflowStep}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#081F5C] px-3.5 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#0b2b73]"
                   >
-                    <option value="tes">TES</option>
-                    <option value="tdp">TDP</option>
-                  </select>
+                    <Plus className="h-4 w-4" aria-hidden />
+                    Add step
+                  </button>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs text-gray-600">Default batch filter</label>
-                  <select
-                    value={settings.modules.defaultBatchFilter}
-                    onChange={(event) =>
-                      saveSettings({
-                        ...settings,
-                        modules: { ...settings.modules, defaultBatchFilter: event.target.value },
-                      })
-                    }
-                    className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                <div ref={workflowListRef} className="workflow-step-list space-y-3">
+                  {workflowDraft.steps.map((step, index) => (
+                    <WorkflowStepEditor
+                      key={step.id}
+                      step={step}
+                      index={index}
+                      total={workflowDraft.steps.length}
+                      isEditing={editingWorkflowStepId === step.id}
+                      onStartEdit={() => setEditingWorkflowStepId((currentId) => (currentId === step.id ? null : step.id))}
+                      canRemove={workflowDraft.steps.length > 1}
+                      onChange={(patch) => updateWorkflowStep(index, patch)}
+                      onMoveUp={() => moveWorkflowStep(index, -1)}
+                      onMoveDown={() => moveWorkflowStep(index, 1)}
+                      onRemove={() => removeWorkflowStep(index)}
+                    />
+                  ))}
+                </div>
+
+                <div className="sticky bottom-0 z-10 -mx-1 flex flex-wrap gap-2 rounded-xl border border-[#081F5C]/10 bg-white/95 px-3 py-3 shadow-[0_-8px_24px_-12px_rgba(8,31,92,0.15)] backdrop-blur-sm">
+                  <button
+                    type="submit"
+                    disabled={workflowSaving}
+                    className="rounded-lg bg-linear-to-r from-[#04133d] to-[#0b2b73] px-5 py-2.5 text-sm font-medium text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <option value="active">Active batch</option>
-                    <option value="all">All batches</option>
-                    <option value="archived">Archived only</option>
-                  </select>
+                    {workflowSaving ? "Saving…" : "Save changes"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetWorkflow}
+                    disabled={workflowSaving}
+                    className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-800 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Reset to defaults
+                  </button>
                 </div>
+              </form>
 
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Auto open latest batch in Batch Info page</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.modules.autoOpenLatestBatch}
-                    onChange={(event) =>
-                      saveSettings({
-                        ...settings,
-                        modules: { ...settings.modules, autoOpenLatestBatch: event.target.checked },
-                      })
-                    }
-                  />
-                </label>
-              </div>
+              <Dialog open={workflowAlert.open} onOpenChange={(open) => setWorkflowAlert((prev) => ({ ...prev, open }))}>
+                <DialogContent className="border border-slate-200 bg-white sm:max-w-md">
+                  <DialogHeader className="items-center text-center sm:items-center sm:text-center">
+                    <div
+                      className={`mb-1 flex size-12 items-center justify-center rounded-full ${
+                        workflowAlert.type === "success"
+                          ? "bg-green-100 text-green-700"
+                          : workflowAlert.type === "error"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-blue-100 text-blue-700"
+                      }`}
+                    >
+                      {workflowAlert.type === "success" ? (
+                        <CheckCircle2 className="size-7" aria-hidden />
+                      ) : workflowAlert.type === "error" ? (
+                        <XCircle className="size-7" aria-hidden />
+                      ) : (
+                        <AlertCircle className="size-7" aria-hidden />
+                      )}
+                    </div>
+                    <DialogTitle>{workflowAlert.title}</DialogTitle>
+                    <DialogDescription className="text-center">{workflowAlert.message}</DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter className="sm:justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setWorkflowAlert((prev) => ({ ...prev, open: false }))}
+                      className="rounded-md bg-linear-to-r from-[#04133d] to-[#0b2b73] px-4 py-2 text-sm text-white transition hover:brightness-110"
+                    >
+                      OK
+                    </button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </section>
           )}
 
@@ -742,15 +1175,15 @@ export default function Setting() {
             </section>
           )}
 
-          {active === SECTIONS.PRIVACY && (
+          {active === SECTIONS.LANDING_SETTINGS && (
             <section className="space-y-4">
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-blue-700" />
-                <h3 className="text-base font-semibold text-gray-900">Privacy and Display</h3>
+                <h3 className="text-base font-semibold text-gray-900">Landing Settings</h3>
               </div>
               <p className="text-sm text-gray-600">
-                Control how grantee identifiers and summary counts appear across OSGFA grantee lists, record cards, and
-                dashboard-style stat panels. Changes apply immediately on this device.
+                Manage what visitors see in the public landing page batch list. Changes apply immediately on this
+                device.
               </p>
 
               {settingsNotice.message && (
@@ -759,8 +1192,248 @@ export default function Setting() {
                 </div>
               )}
 
-              <div className="space-y-3">
-                <label className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm">
+              <div className="space-y-3 rounded-xl border border-[#081F5C]/10 bg-[#081F5C]/5 p-4">
+                <p className="text-sm font-semibold text-gray-900">Public Batch List privacy</p>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Mask batch numbers in the public list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.maskBatchNumberInPublicList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            maskBatchNumberInPublicList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Hide grantee counts in the public list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.hideGranteeCountInPublicList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            hideGranteeCountInPublicList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <p className="text-sm font-semibold text-gray-900">Batch list display</p>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show program tags (TES/TDP)</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showProgramTag}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showProgramTag: event.target.checked,
+                          },
+                        },
+                        "Landing page settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show academic year badge</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showAcademicYear}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showAcademicYear: event.target.checked,
+                          },
+                        },
+                        "Landing page settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show date added label</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showDateAdded}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showDateAdded: event.target.checked,
+                          },
+                        },
+                        "Landing page settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show student ID in landing batch list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showStudentIdInLandingBatchList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showStudentIdInLandingBatchList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show award number in landing batch list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showAwardNumberInLandingBatchList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showAwardNumberInLandingBatchList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show fullname in landing batch list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showFullNameInLandingBatchList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showFullNameInLandingBatchList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show enrolled program in landing batch list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showEnrolledProgramInLandingBatchList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showEnrolledProgramInLandingBatchList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show year level in landing batch list</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showYearLevelInLandingBatchList}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showYearLevelInLandingBatchList: event.target.checked,
+                          },
+                        },
+                        "Landing page privacy settings saved.",
+                      )
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <p className="text-sm font-semibold text-gray-900">Navigation</p>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                  <span>Show "View all" button</span>
+                  <input
+                    type="checkbox"
+                    checked={landingSettings.privacy.showViewAllBatchesLink}
+                    onChange={(event) =>
+                      saveLandingSettings(
+                        {
+                          ...landingSettings,
+                          privacy: {
+                            ...landingSettings.privacy,
+                            showViewAllBatchesLink: event.target.checked,
+                          },
+                        },
+                        "Landing page settings saved.",
+                      )
+                    }
+                  />
+                </label>
+              </div>
+            </section>
+          )}
+
+          {active === SECTIONS.OSGFA_PRIVACY && (
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Shield className="h-4 w-4 text-blue-700" />
+                <h3 className="text-base font-semibold text-gray-900">OSGFA Privacy</h3>
+              </div>
+              <p className="text-sm text-gray-600">
+                Control privacy behavior for internal OSGFA workspace pages on this device.
+              </p>
+
+              {settingsNotice.message && (
+                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  {settingsNotice.message}
+                </div>
+              )}
+
+              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                <p className="text-sm font-semibold text-gray-900">OSGFA workspace privacy</p>
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
                   <span>Mask student ID in list cards</span>
                   <input
                     type="checkbox"
@@ -771,12 +1444,12 @@ export default function Setting() {
                           ...settings,
                           privacy: { ...settings.privacy, maskStudentIdInLists: event.target.checked },
                         },
-                        "Privacy preferences saved.",
+                        "OSGFA privacy preferences saved.",
                       )
                     }
                   />
                 </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm">
+                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
                   <span>Hide sensitive statistics on shared screens</span>
                   <input
                     type="checkbox"
@@ -790,7 +1463,7 @@ export default function Setting() {
                             hideSensitiveStatsFromSharedScreens: event.target.checked,
                           },
                         },
-                        "Privacy preferences saved.",
+                        "OSGFA privacy preferences saved.",
                       )
                     }
                   />

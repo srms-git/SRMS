@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Banknote, Bell, CalendarClock, ChevronDown, ChevronRight, ClipboardList, Globe, LayoutList, ListChecks, Megaphone } from "lucide-react"
+import { ChevronDown, ChevronRight, Globe, LayoutList, ListChecks, Megaphone } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
 import picture1 from "@/assets/picture-1.png"
@@ -11,7 +11,24 @@ import navHeroBackground from "@/assets/navbackground.png"
 import orgLogo from "@/assets/orgLogo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
-import { LANDING_FEATURED_BATCHES } from "@/lib/landingFeaturedBatches"
+import { fetchAllGrantees } from "@/lib/granteesApi"
+import {
+  buildLandingBatchCards,
+  getBatchLandingKey,
+  LANDING_BATCH_VISIBILITY_CHANGED_EVENT,
+  readStoredLandingBatchVisibility,
+} from "@/lib/landingFeaturedBatches"
+import {
+  LANDING_PAGE_SETTINGS_CHANGED_EVENT,
+  maskBatchNumber,
+  readLandingPagePrivacyPreferences,
+} from "@/lib/landingPageSettings"
+import {
+  hydrateProcessWorkflowSteps,
+  LANDING_PROCESS_SECTION,
+  PROCESS_WORKFLOW_CHANGED_EVENT,
+  readStoredProcessWorkflow,
+} from "@/lib/processWorkflowSettings"
 import { LandingPublicHeader } from "@/components/LandingPublicHeader"
 import { Button } from "@/components/ui/button"
 
@@ -192,10 +209,22 @@ function getFeaturedBatchCardKey(batch, keyPrefix) {
   return `${keyPrefix}-${batch.batchNo}-${batch.program}-${batch.schoolYear}`
 }
 
-function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }) {
+function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", privacy }) {
+  const uniqueItems = useMemo(() => {
+    const seen = new Set()
+    return items.filter((batch) => {
+      const key = getBatchLandingKey(batch)
+      if (!key || key === "||" || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [items])
+
   const scrollRef = useRef(null)
   const stripRef = useRef(null)
   const chunkWidthRef = useRef(0)
+  const shouldLoopRef = useRef(false)
+  const [shouldLoop, setShouldLoop] = useState(false)
   const hoverPauseRef = useRef(false)
   const interactionPauseUntilRef = useRef(0)
   const programmaticRef = useRef(false)
@@ -213,9 +242,10 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
 
   useEffect(() => {
     scrollRightPrimedRef.current = false
-  }, [items, scrollDirection])
+  }, [uniqueItems, scrollDirection])
 
   const measureStrip = useCallback(() => {
+    const el = scrollRef.current
     const strip = stripRef.current
     const next = strip?.nextElementSibling
     if (strip && next instanceof HTMLElement) {
@@ -225,11 +255,21 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
     } else {
       chunkWidthRef.current = 0
     }
-  }, [])
+
+    if (strip && el) {
+      const nextShouldLoop = uniqueItems.length > 1 && strip.scrollWidth > el.clientWidth + 4
+      shouldLoopRef.current = nextShouldLoop
+      setShouldLoop((prev) => (prev === nextShouldLoop ? prev : nextShouldLoop))
+    } else {
+      shouldLoopRef.current = false
+      setShouldLoop((prev) => (prev === false ? prev : false))
+    }
+  }, [uniqueItems.length])
 
   useLayoutEffect(() => {
     measureStrip()
     const strip = stripRef.current
+    const el = scrollRef.current
     if (!strip || typeof ResizeObserver === "undefined") return undefined
 
     let debounceId = 0
@@ -240,6 +280,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
 
     const ro = new ResizeObserver(scheduleMeasure)
     ro.observe(strip)
+    if (el) ro.observe(el)
 
     const onTransitionEnd = (event) => {
       const target = event.target
@@ -255,7 +296,15 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
       strip.removeEventListener("transitionend", onTransitionEnd, true)
       window.clearTimeout(debounceId)
     }
-  }, [items, measureStrip])
+  }, [uniqueItems, measureStrip])
+
+  useLayoutEffect(() => {
+    if (shouldLoop) return
+    const el = scrollRef.current
+    if (!el) return
+    internalScrollPosRef.current = 0
+    el.scrollLeft = 0
+  }, [shouldLoop, uniqueItems])
 
   const bumpInteractionPause = useCallback(() => {
     interactionPauseUntilRef.current = Date.now() + FEATURED_SCROLL_INTERACTION_PAUSE_MS
@@ -282,6 +331,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
   }, [])
 
   const normalizeLoop = useCallback(() => {
+    if (!shouldLoopRef.current) return
     const el = scrollRef.current
     const chunk = chunkWidthRef.current
     if (!el || chunk <= 0) return
@@ -323,7 +373,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
   }, [bumpInteractionPause])
 
   useEffect(() => {
-    if (items.length === 0) return undefined
+    if (uniqueItems.length === 0 || !shouldLoop) return undefined
     const el = scrollRef.current
     if (!el) return undefined
 
@@ -336,7 +386,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
       const dt = Math.min((now - last) / 1000, FEATURED_SCROLL_MAX_DT)
       last = now
       const chunk = chunkWidthRef.current
-      if (chunk > 0 && !isAutoScrollPaused()) {
+      if (chunk > 0 && shouldLoopRef.current && !isAutoScrollPaused()) {
         if (scrollRight) {
           if (!scrollRightPrimedRef.current) {
             scrollRightPrimedRef.current = true
@@ -359,12 +409,14 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
     return () => {
       cancelAnimationFrame(rafRef.current)
     }
-  }, [items, scrollDirection, isAutoScrollPaused, setScrollProgrammatically])
+  }, [uniqueItems, scrollDirection, shouldLoop, isAutoScrollPaused, setScrollProgrammatically, scrollRight])
 
   const renderCard = (batch, keyPrefix, duplicate) => {
     const cardKey = getFeaturedBatchCardKey(batch, keyPrefix)
     const accent = getBatchCardAccent(batch.program)
-    const batchLabel = String(batch.batchNo ?? "?")
+    const rawBatchLabel = String(batch.batchNo ?? "?")
+    const batchLabel = privacy.maskBatchNumberInPublicList ? maskBatchNumber(rawBatchLabel) : rawBatchLabel
+    const granteeLabel = privacy.hideGranteeCountInPublicList ? "Hidden" : `${batch.grantees} grantees`
 
     return (
       <div
@@ -425,12 +477,14 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-1.5">
-                  <span
-                    className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
-                    style={{ backgroundImage: gradientNavyButton }}
-                  >
-                    {accent.label}
-                  </span>
+                  {privacy.showProgramTag ? (
+                    <span
+                      className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
+                      style={{ backgroundImage: gradientNavyButton }}
+                    >
+                      {accent.label}
+                    </span>
+                  ) : null}
                   <span
                     className="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
                     style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
@@ -442,23 +496,27 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
                 <h3 className="mt-2 text-base font-bold leading-snug sm:text-lg" style={{ color: navy }}>
                   Batch {batchLabel}
                 </h3>
-                <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: textBodyOnLight }}>
-                  {batch.createdAt}
-                </p>
+                {privacy.showDateAdded ? (
+                  <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: textBodyOnLight }}>
+                    {batch.createdAt}
+                  </p>
+                ) : null}
 
                 <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-                  <span
-                    className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]"
-                    style={{ borderColor: borderBvSoft, color: navy }}
-                  >
-                    AY {batch.schoolYear || "—"}
-                  </span>
+                  {privacy.showAcademicYear ? (
+                    <span
+                      className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]"
+                      style={{ borderColor: borderBvSoft, color: navy }}
+                    >
+                      AY {batch.schoolYear || "—"}
+                    </span>
+                  ) : null}
                   <span
                     className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white sm:text-[11px]"
                     style={{ backgroundImage: `linear-gradient(135deg, ${accent.colorLight} 0%, #34d399 100%)` }}
                   >
                     <span className="size-1.5 rounded-full bg-white/90" aria-hidden />
-                    {batch.grantees} grantees
+                    {granteeLabel}
                   </span>
                 </div>
               </div>
@@ -469,7 +527,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
     )
   }
 
-  if (items.length === 0) return null
+  if (uniqueItems.length === 0) return null
 
   return (
     <div className="overflow-x-hidden">
@@ -481,7 +539,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
       </p>
       <div
         ref={scrollRef}
-        onScroll={onScroll}
+        onScroll={shouldLoop ? onScroll : undefined}
         onPointerOver={handleScrollerPointerOver}
         onPointerLeave={handleScrollerPointerLeave}
         onKeyDown={(e) => {
@@ -492,14 +550,16 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
         className={`-mx-1 flex max-w-full gap-4 overflow-x-auto overflow-y-hidden px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${featuredBatchScrollerTrackClassName}`}
         tabIndex={0}
         role="region"
-        aria-label={`${programLabel} batch list, auto-scrolling`}
+        aria-label={`${programLabel} batch list${shouldLoop ? ", auto-scrolling" : ""}`}
       >
         <div ref={stripRef} className="flex shrink-0 items-center gap-4 self-center">
-          {items.map((batch) => renderCard(batch, "a", false))}
+          {uniqueItems.map((batch) => renderCard(batch, "a", false))}
         </div>
-        <div className="flex shrink-0 items-center gap-4 self-center" aria-hidden>
-          {items.map((batch) => renderCard(batch, "b", true))}
-        </div>
+        {shouldLoop ? (
+          <div className="flex shrink-0 items-center gap-4 self-center" aria-hidden>
+            {uniqueItems.map((batch) => renderCard(batch, "b", true))}
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -721,54 +781,6 @@ function AboutImageSlideshow({ slides }) {
     </div>
   )
 }
-
-const scholarshipProcessSteps = [
-  {
-    step: "01",
-    title: "Verify Your Name on the Final List",
-    description:
-      "Check the officially announced final list for the TES/TDP program to confirm if you are included as a beneficiary.",
-    icon: ListChecks,
-    color: "#04133d",
-    colorLight: "#0b2b73",
-  },
-  {
-    step: "02",
-    title: "Wait for the Submission Schedule Announcement",
-    description:
-      "Monitor announcements regarding the schedule assigned to your batch for the submission of the required documents.",
-    icon: CalendarClock,
-    color: "#0b2b73",
-    colorLight: "#1447a6",
-  },
-  {
-    step: "03",
-    title: "Submit the Required Documents",
-    description:
-      "Submit all required requirements at the Office of Scholarships, Grants, and Financial Assistance, located at the 3rd Floor, Auxiliary Building.",
-    icon: ClipboardList,
-    color: "#1447a6",
-    colorLight: "#2a63cc",
-  },
-  {
-    step: "04",
-    title: "Wait for the Payout Schedule Announcement",
-    description:
-      "After submitting your requirements, wait for the official payout schedule announcement posted by the Office of Scholarships, Grants, and Financial Assistance.",
-    icon: Bell,
-    color: "#1e52b0",
-    colorLight: "#3d8fd4",
-  },
-  {
-    step: "05",
-    title: "Claim Your Financial Assistance",
-    description:
-      "Once the payout schedule for your batch is announced, proceed to the Cashier's Office, located on the 1st Floor of the Auxiliary Building, to claim your financial assistance.",
-    icon: Banknote,
-    color: "#2a63cc",
-    colorLight: "#5ba8e8",
-  },
-]
 
 /** Scroll focus band — step reveals only when it enters this viewport slice. */
 const TIMELINE_SCROLL_ROOT_MARGIN = "-8% 0px -28% 0px"
@@ -1048,7 +1060,7 @@ function ProcessWorkflowTimeline({ steps }) {
 
             return (
               <li
-                key={item.step}
+                key={item.id ?? item.step}
                 ref={registerStepRef(index)}
                 data-step-index={index}
                 className={`group relative scroll-mt-20 grid grid-cols-[auto_1fr] content-center items-center gap-x-4 overflow-x-hidden py-3 sm:gap-x-5 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
@@ -1381,6 +1393,64 @@ function BillboardCard({
 export default function LandingPage() {
   const location = useLocation()
   const [announcements, setAnnouncements] = useState([])
+  const [workflowSteps, setWorkflowSteps] = useState(() => readStoredProcessWorkflow().steps)
+  const [granteesRawData, setGranteesRawData] = useState([])
+  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
+  const [landingPrivacy, setLandingPrivacy] = useState(() => readLandingPagePrivacyPreferences())
+
+  const scholarshipProcessSteps = useMemo(
+    () => hydrateProcessWorkflowSteps(workflowSteps),
+    [workflowSteps],
+  )
+
+  useEffect(() => {
+    const syncWorkflow = () => setWorkflowSteps(readStoredProcessWorkflow().steps)
+    window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
+    window.addEventListener("storage", syncWorkflow)
+    return () => {
+      window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
+      window.removeEventListener("storage", syncWorkflow)
+    }
+  }, [])
+
+  useEffect(() => {
+    const syncLandingVisibility = () => setLandingVisibility(readStoredLandingBatchVisibility())
+    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
+    window.addEventListener("storage", syncLandingVisibility)
+    return () => {
+      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
+      window.removeEventListener("storage", syncLandingVisibility)
+    }
+  }, [])
+
+  useEffect(() => {
+    const syncLandingPrivacy = () => setLandingPrivacy(readLandingPagePrivacyPreferences())
+    window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
+    window.addEventListener("storage", syncLandingPrivacy)
+    return () => {
+      window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
+      window.removeEventListener("storage", syncLandingPrivacy)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadGrantees = async () => {
+      try {
+        const data = await fetchAllGrantees()
+        if (!cancelled) setGranteesRawData(data)
+      } catch (error) {
+        console.error("Failed to load landing batches:", error)
+        if (!cancelled) setGranteesRawData([])
+      }
+    }
+
+    loadGrantees()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useLayoutEffect(() => {
     const sectionId = location.hash.replace(/^#/, "")
@@ -1432,10 +1502,13 @@ export default function LandingPage() {
     }
   }
 
-  const featuredBatchesByProgram = [
-    { programLabel: "TES", items: LANDING_FEATURED_BATCHES.filter((b) => b.program === "TES") },
-    { programLabel: "TDP", items: LANDING_FEATURED_BATCHES.filter((b) => b.program === "TDP") },
-  ].filter((row) => row.items.length > 0)
+  const featuredBatchesByProgram = useMemo(() => {
+    const visibleBatches = buildLandingBatchCards(granteesRawData, landingVisibility)
+    return [
+      { programLabel: "TES", items: visibleBatches.filter((b) => b.program === "TES") },
+      { programLabel: "TDP", items: visibleBatches.filter((b) => b.program === "TDP") },
+    ].filter((row) => row.items.length > 0)
+  }, [granteesRawData, landingVisibility])
 
   return (
     <div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white" style={{ color: textBodyOnLight }}>
@@ -1721,14 +1794,16 @@ export default function LandingPage() {
                       Batch List
                     </span>
                   </h2>
-                  <Link
-                    to="/view-all-batches"
-                    className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-white sm:text-sm"
-                    style={{ borderColor: borderBvSoft, color: navy }}
-                  >
-                    View all
-                    <ChevronRight className="size-4" aria-hidden />
-                  </Link>
+                  {landingPrivacy.showViewAllBatchesLink ? (
+                    <Link
+                      to="/view-all-batches"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-white/90 px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:bg-white sm:text-sm"
+                      style={{ borderColor: borderBvSoft, color: navy }}
+                    >
+                      View all
+                      <ChevronRight className="size-4" aria-hidden />
+                    </Link>
+                  ) : null}
                 </div>
                 <p className="mt-2 max-w-none text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
                   View the list of scholarship batches and registered beneficiary records maintained within the Scholarship Records Management System for monitoring and reference purposes.
@@ -1736,14 +1811,24 @@ export default function LandingPage() {
               </div>
 
               <div className="space-y-4">
-                {featuredBatchesByProgram.map(({ programLabel, items }) => (
-                  <FeaturedBatchScroller
-                    key={programLabel}
-                    programLabel={programLabel}
-                    items={items}
-                    scrollDirection={programLabel === "TDP" ? "right" : "left"}
-                  />
-                ))}
+                {featuredBatchesByProgram.length > 0 ? (
+                  featuredBatchesByProgram.map(({ programLabel, items }) => (
+                    <FeaturedBatchScroller
+                      key={programLabel}
+                      programLabel={programLabel}
+                      items={items}
+                      scrollDirection={programLabel === "TDP" ? "right" : "left"}
+                      privacy={landingPrivacy}
+                    />
+                  ))
+                ) : (
+                  <div
+                    className="rounded-2xl border border-dashed px-6 py-10 text-center text-sm"
+                    style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
+                  >
+                    No batches are currently published on the landing page. OSGFA staff can enable batches from the Batches module.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1760,7 +1845,7 @@ export default function LandingPage() {
                 className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wider"
                 style={{ borderColor: borderBvSoft, color: navy }}
               >
-                How it works
+                {LANDING_PROCESS_SECTION.badge}
               </p>
               <h2 className="relative mt-4 flex items-center gap-3 text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
                 <span
@@ -1780,9 +1865,7 @@ export default function LandingPage() {
                 </span>
               </h2>
               <p className="mt-2 max-w-none text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
-                Learn the step-by-step scholarship application process, from submission of requirements and
-                verification to approval and payout coordination. This section helps students understand the
-                procedures, requirements, and important stages of their scholarship application journey.
+                {LANDING_PROCESS_SECTION.description}
               </p>
             </div>
 

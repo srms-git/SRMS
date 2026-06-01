@@ -5,6 +5,8 @@ import {
   ChevronDown,
   CircleAlert,
   CircleCheck,
+  EyeOff,
+  Globe,
   GraduationCap,
   Hash,
   Info,
@@ -26,6 +28,13 @@ import {
   fetchAllGrantees,
   updateBatchMetadata,
 } from "@/lib/granteesApi"
+import {
+  isBatchVisibleOnLanding,
+  LANDING_BATCH_VISIBILITY_CHANGED_EVENT,
+  readStoredLandingBatchVisibility,
+  renameLandingBatchVisibility,
+  setLandingBatchVisibility,
+} from "@/lib/landingFeaturedBatches"
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
@@ -161,6 +170,7 @@ export default function Batches() {
   const [feedbackVariant, setFeedbackVariant] = useState("info")
   const [feedbackTitle, setFeedbackTitle] = useState("")
   const [feedbackMessage, setFeedbackMessage] = useState("")
+  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
 
   const showFeedback = useCallback((variant, title, message) => {
     setFeedbackVariant(variant)
@@ -187,6 +197,16 @@ export default function Batches() {
   useEffect(() => {
     loadGrantees()
   }, [loadGrantees])
+
+  useEffect(() => {
+    const syncLandingVisibility = () => setLandingVisibility(readStoredLandingBatchVisibility())
+    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
+    window.addEventListener("storage", syncLandingVisibility)
+    return () => {
+      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
+      window.removeEventListener("storage", syncLandingVisibility)
+    }
+  }, [])
 
   const batches = useMemo(() => {
     const uniqueMap = new Map()
@@ -358,6 +378,19 @@ export default function Batches() {
         newAcademicYear,
       })
 
+      renameLandingBatchVisibility(
+        {
+          batchNo: editTarget.batchNo,
+          program: editTarget.program,
+          schoolYear: editTarget.schoolYear,
+        },
+        {
+          batchNo: newBatchNo,
+          program: newProgram,
+          schoolYear: newAcademicYear,
+        },
+      )
+
       setEditOpen(false)
       setEditTarget(null)
       await loadGrantees()
@@ -395,6 +428,18 @@ export default function Batches() {
   }
 
   const editAcademicYearPreview = editFromYear && editToYear ? `${editFromYear}-${editToYear}` : "—"
+
+  const handleToggleLandingVisibility = (row) => {
+    const currentlyVisible = isBatchVisibleOnLanding(row, landingVisibility)
+    setLandingBatchVisibility(row, !currentlyVisible)
+    showFeedback(
+      "success",
+      currentlyVisible ? "Batch hidden" : "Batch published",
+      currentlyVisible
+        ? `Batch ${row.batchNo} is no longer shown on the landing page.`
+        : `Batch ${row.batchNo} is now visible on the landing page.`,
+    )
+  }
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
@@ -539,6 +584,7 @@ export default function Batches() {
           {sortedBatches.map((row) => {
             const programKey = String(row.program ?? "").trim().toUpperCase()
             const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
+            const visibleOnLanding = isBatchVisibleOnLanding(row, landingVisibility)
 
             return (
               <div
@@ -559,10 +605,23 @@ export default function Batches() {
                         <MoreHorizontal className="size-4" />
                       </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="min-w-40">
+                    <DropdownMenuContent align="end" className="min-w-36">
                       <DropdownMenuItem className="gap-2" onSelect={() => openBatchEdit(row)}>
                         <Pencil className="size-4 opacity-70" />
-                        Edit batch
+                        Edit
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2" onSelect={() => handleToggleLandingVisibility(row)}>
+                        {visibleOnLanding ? (
+                          <>
+                            <EyeOff className="size-4 opacity-70" />
+                            Hide
+                          </>
+                        ) : (
+                          <>
+                            <Globe className="size-4 opacity-70" />
+                            Publish
+                          </>
+                        )}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -598,6 +657,15 @@ export default function Batches() {
                         </span>
                         <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-100">
                           Grantees: {grantees}
+                        </span>
+                        <span
+                          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                            visibleOnLanding
+                              ? "border-sky-200 bg-sky-50 text-sky-900 dark:border-sky-500/35 dark:bg-sky-500/12 dark:text-sky-100"
+                              : "border-slate-200 bg-slate-50 text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-400"
+                          }`}
+                        >
+                          {visibleOnLanding ? "Published" : "Hidden"}
                         </span>
                       </div>
                     </div>
