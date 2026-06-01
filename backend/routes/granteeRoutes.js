@@ -5,6 +5,9 @@ const granteeController = require('../controllers/granteeController');
 // BATCH OPERATIONS - POST: Process and bulk upsert converted Excel rows
 router.post('/batch-save', granteeController.batchSaveGrantees);
 
+// BATCH OPERATIONS - PATCH: Update batch number, program, and academic year for all grantees in a batch
+router.patch('/batch-update', granteeController.batchUpdateGrantees);
+
 // CREATE - POST: Add a new student record manually
 router.post('/', granteeController.createGrantee);
 

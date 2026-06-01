@@ -336,6 +336,76 @@ export function buildLatestBatchGranteeCards(records, limit = 8) {
   return rows.slice(0, limit)
 }
 
+export async function updateBatchMetadata({
+  originalBatchNo,
+  originalProgram,
+  originalAcademicYear,
+  newBatchNo,
+  newProgram,
+  newAcademicYear,
+}) {
+  const response = await fetch(`${API_BASE}/grantees/batch-update`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      originalBatchNo,
+      originalProgram,
+      originalAcademicYear,
+      newBatchNo,
+      newProgram,
+      newAcademicYear,
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    let message = data.message || "Failed to update batch details."
+    if (response.status === 404 && !data.message) {
+      message = "Batch update is unavailable. Restart the backend server and try again."
+    }
+    const err = new Error(message)
+    err.code = data.code
+    err.status = response.status
+    throw err
+  }
+  return data
+}
+
+/** True when another batch already uses the same batch number within the same program. */
+export function batchNumberConflictsInProgram(records, { batchNo, program, excludeBatch } = {}) {
+  const targetBatchNo = String(batchNo ?? "").trim()
+  const targetProgram = String(program ?? "").trim().toUpperCase()
+  if (!targetBatchNo || !targetProgram) return false
+
+  const excludeBatchNo = String(excludeBatch?.batchNo ?? "").trim()
+  const excludeProgram = String(excludeBatch?.program ?? "").trim().toUpperCase()
+  const excludeYear = String(excludeBatch?.academicYear ?? excludeBatch?.schoolYear ?? "").trim()
+
+  const seen = new Set()
+  for (const row of records ?? []) {
+    const rowBatchNo = String(row?.batchNo ?? "").trim()
+    const rowProgram = String(row?.program ?? "").trim().toUpperCase() || inferProgramFromRecord(row)
+    const rowYear = String(row?.academicYear ?? "").trim()
+    if (!rowBatchNo || !rowProgram) continue
+
+    const key = `${rowBatchNo}|${rowProgram}|${rowYear}`
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    if (rowBatchNo !== targetBatchNo || rowProgram !== targetProgram) continue
+    if (
+      excludeBatchNo &&
+      excludeProgram &&
+      rowBatchNo === excludeBatchNo &&
+      rowProgram === excludeProgram &&
+      rowYear === excludeYear
+    ) {
+      continue
+    }
+    return true
+  }
+  return false
+}
+
 export async function batchSaveGrantees({ program, batchNo, academicYear, granteeRows }) {
   const response = await fetch(`${API_BASE}/grantees/batch-save`, {
     method: "POST",

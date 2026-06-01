@@ -17,6 +17,115 @@ function mapBatchRow(row, program, batchNo, academicYear) {
     };
 }
 
+function buildOriginalBatchFilter(originalBatchNo, originalProgram, originalAcademicYear) {
+    const parts = [
+        { batchNo: String(originalBatchNo).trim() },
+        buildProgramFilter(String(originalProgram).trim().toUpperCase()),
+    ];
+
+    const academicYear = String(originalAcademicYear ?? '').trim();
+    if (academicYear) {
+        parts.push({ academicYear });
+    }
+
+    const filtered = parts.filter((part) => Object.keys(part).length > 0);
+    if (filtered.length === 0) return {};
+    if (filtered.length === 1) return filtered[0];
+    return { $and: filtered };
+}
+
+exports.batchUpdateGrantees = async (req, res) => {
+    try {
+        const {
+            originalBatchNo,
+            originalProgram,
+            originalAcademicYear,
+            newBatchNo,
+            newProgram,
+            newAcademicYear,
+        } = req.body;
+
+        if (!originalBatchNo || !originalProgram || !originalAcademicYear) {
+            return res.status(400).json({
+                message: 'originalBatchNo, originalProgram, and originalAcademicYear are required.',
+            });
+        }
+
+        if (!newBatchNo || !newProgram || !newAcademicYear) {
+            return res.status(400).json({
+                message: 'newBatchNo, newProgram, and newAcademicYear are required.',
+            });
+        }
+
+        const normalizedNewProgram = String(newProgram).trim().toUpperCase();
+        const normalizedNewBatchNo = String(newBatchNo).trim();
+        const normalizedNewAcademicYear = String(newAcademicYear).trim();
+        const grantCycle = `${normalizedNewProgram} · AY ${normalizedNewAcademicYear}`;
+
+        const originalFilter = buildOriginalBatchFilter(
+            originalBatchNo,
+            originalProgram,
+            originalAcademicYear,
+        );
+        const granteesToUpdate = await Grantee.find(originalFilter);
+
+        if (granteesToUpdate.length === 0) {
+            return res.status(404).json({ message: 'No grantees found for the specified batch.' });
+        }
+
+        const granteeIds = granteesToUpdate.map((doc) => doc._id);
+        const duplicate = await Grantee.findOne({
+            batchNo: normalizedNewBatchNo,
+            ...buildProgramFilter(normalizedNewProgram),
+            _id: { $nin: granteeIds },
+        }).select('_id');
+
+        if (duplicate) {
+            return res.status(409).json({
+                message: `Batch number ${normalizedNewBatchNo} already exists for the ${normalizedNewProgram} program.`,
+                code: 'BATCH_NUMBER_CONFLICT',
+            });
+        }
+
+        await Grantee.updateMany(
+            { _id: { $in: granteeIds } },
+            {
+                $set: {
+                    batchNo: normalizedNewBatchNo,
+                    program: normalizedNewProgram,
+                    academicYear: normalizedNewAcademicYear,
+                    grantCycle,
+                },
+            },
+        );
+
+        await ClaimHistory.updateMany(
+            { granteeId: { $in: granteeIds } },
+            {
+                $set: {
+                    batchNo: normalizedNewBatchNo,
+                    program: normalizedNewProgram,
+                    academicYear: normalizedNewAcademicYear,
+                },
+            },
+        );
+
+        return res.status(200).json({
+            message: 'Batch details updated successfully.',
+            count: granteesToUpdate.length,
+            batchNo: normalizedNewBatchNo,
+            program: normalizedNewProgram,
+            academicYear: normalizedNewAcademicYear,
+        });
+    } catch (error) {
+        console.error('batchUpdateGrantees error:', error);
+        const status = error?.statusCode ?? 500;
+        return res.status(status).json({
+            message: error.message || 'Failed to update batch details.',
+        });
+    }
+};
+
 exports.batchSaveGrantees = async (req, res) => {
     try {
         const { program, batchNo, academicYear, granteeRows } = req.body;
