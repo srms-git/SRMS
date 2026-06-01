@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
-import { Banknote, Bell, CalendarClock, ChevronRight, ClipboardList, ListChecks, Megaphone } from "lucide-react"
+import { Banknote, Bell, CalendarClock, ChevronDown, ChevronRight, ClipboardList, Globe, LayoutList, ListChecks, Megaphone } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
 import picture1 from "@/assets/picture-1.png"
@@ -53,6 +53,119 @@ const gradientHeroMesh = `
   radial-gradient(ellipse 55% 45% at 88% 92%, ${navyGlow}44 0%, transparent 52%),
   radial-gradient(ellipse 70% 50% at 15% 20%, rgba(255, 255, 255, 0.07) 0%, transparent 48%)
 `
+
+const HERO_TYPEWRITER_TITLES = [
+  {
+    line1: "Centralized Access to",
+    line2: "Scholarship Information and Assistance...",
+  },
+  {
+    line1: "Stay Updated with",
+    line2: "Official Announcements and Batch Records...",
+  },
+]
+const HERO_TYPEWRITER_CHAR_MS = 62
+const HERO_TYPEWRITER_LINE_PAUSE_MS = 520
+const HERO_TYPEWRITER_HOLD_MS = 10000
+const HERO_TYPEWRITER_FADE_MS = 900
+
+function HeroTypewriterCursor({ className = "text-white" }) {
+  return (
+    <span
+      className={`ml-1 inline-block h-[0.72em] w-[1.5px] rounded-full bg-current animate-pulse align-middle motion-reduce:hidden shadow-[0_0_10px_currentColor] ${className}`}
+      aria-hidden
+    />
+  )
+}
+
+function HeroTypewriterTitle() {
+  const [titleIndex, setTitleIndex] = useState(0)
+  const [line1Count, setLine1Count] = useState(0)
+  const [line2Count, setLine2Count] = useState(0)
+  const [phase, setPhase] = useState("typing1")
+  const [reducedMotion, setReducedMotion] = useState(false)
+
+  const currentTitle = HERO_TYPEWRITER_TITLES[titleIndex]
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const syncReducedMotion = () => setReducedMotion(mediaQuery.matches)
+    syncReducedMotion()
+    mediaQuery.addEventListener("change", syncReducedMotion)
+    return () => mediaQuery.removeEventListener("change", syncReducedMotion)
+  }, [])
+
+  useEffect(() => {
+    if (reducedMotion) {
+      setLine1Count(HERO_TYPEWRITER_TITLES[0].line1.length)
+      setLine2Count(HERO_TYPEWRITER_TITLES[0].line2.length)
+      setTitleIndex(0)
+      setPhase("hold")
+      return undefined
+    }
+
+    let timerId = 0
+    const { line1: fullLine1, line2: fullLine2 } = currentTitle
+
+    if (phase === "typing1") {
+      if (line1Count < fullLine1.length) {
+        timerId = window.setTimeout(() => setLine1Count((count) => count + 1), HERO_TYPEWRITER_CHAR_MS)
+      } else {
+        timerId = window.setTimeout(() => setPhase("typing2"), HERO_TYPEWRITER_LINE_PAUSE_MS)
+      }
+    } else if (phase === "typing2") {
+      if (line2Count < fullLine2.length) {
+        timerId = window.setTimeout(() => setLine2Count((count) => count + 1), HERO_TYPEWRITER_CHAR_MS)
+      } else {
+        timerId = window.setTimeout(() => setPhase("hold"), HERO_TYPEWRITER_LINE_PAUSE_MS)
+      }
+    } else if (phase === "hold") {
+      timerId = window.setTimeout(() => setPhase("fadeOut"), HERO_TYPEWRITER_HOLD_MS)
+    } else if (phase === "fadeOut") {
+      timerId = window.setTimeout(() => {
+        setLine1Count(0)
+        setLine2Count(0)
+        setTitleIndex((index) => (index + 1) % HERO_TYPEWRITER_TITLES.length)
+        setPhase("typing1")
+      }, HERO_TYPEWRITER_FADE_MS)
+    }
+
+    return () => window.clearTimeout(timerId)
+  }, [phase, line1Count, line2Count, reducedMotion, currentTitle])
+
+  const line1 = currentTitle.line1.slice(0, line1Count)
+  const line2 = currentTitle.line2.slice(0, line2Count)
+  const isFading = phase === "fadeOut"
+  const showLine1Cursor = !reducedMotion && phase === "typing1"
+  const showLine2Cursor = !reducedMotion && phase === "typing2"
+
+  return (
+    <h1
+      className="text-[clamp(1.65rem,3.75vw,2.85rem)] font-extrabold leading-[1.12] tracking-tight text-white"
+      aria-label={`${currentTitle.line1} ${currentTitle.line2}`}
+    >
+      <div
+        className={`space-y-1 transition-opacity duration-[900ms] ease-out motion-reduce:transition-none sm:space-y-1.5 ${
+          isFading ? "opacity-0" : "opacity-100"
+        }`}
+      >
+        <span className="block font-extrabold text-white">
+          {line1}
+          {showLine1Cursor ? <HeroTypewriterCursor className="text-white" /> : null}
+        </span>
+        <span
+          className="block min-h-[1.12em] bg-clip-text font-extrabold text-transparent"
+          style={{
+            backgroundImage: `linear-gradient(115deg, #ffffff 0%, ${bvPeriwinkle} 42%, ${bvSoft} 88%)`,
+          }}
+        >
+          {line2}
+          {showLine2Cursor ? <HeroTypewriterCursor className="text-sky-200" /> : null}
+        </span>
+      </div>
+    </h1>
+  )
+}
 
 /** Center-anchored slot: height grows evenly toward top and bottom. */
 const featuredBatchScrollerTrackClassName = "min-h-[12.25rem] items-center sm:min-h-[13rem]"
@@ -359,7 +472,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
   if (items.length === 0) return null
 
   return (
-    <div>
+    <div className="overflow-x-hidden">
       <p
         className="mb-2 inline-flex rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] sm:text-xs"
         style={{ borderColor: borderBvSoft, color: navy }}
@@ -376,7 +489,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left" }
             bumpInteractionPause()
           }
         }}
-        className={`-mx-1 flex gap-4 overflow-x-auto overflow-y-visible px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${featuredBatchScrollerTrackClassName}`}
+        className={`-mx-1 flex max-w-full gap-4 overflow-x-auto overflow-y-hidden px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${featuredBatchScrollerTrackClassName}`}
         tabIndex={0}
         role="region"
         aria-label={`${programLabel} batch list, auto-scrolling`}
@@ -499,7 +612,7 @@ function AboutImageSlideshow({ slides }) {
   return (
     <div
       ref={containerRef}
-      className="relative order-2 w-full overflow-hidden overscroll-none touch-none outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:order-2"
+      className="relative order-1 w-full overflow-hidden overscroll-none touch-none outline-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:order-1"
       role="region"
       aria-label="About the organization photo slideshow"
       aria-roledescription="carousel"
@@ -511,17 +624,17 @@ function AboutImageSlideshow({ slides }) {
       }}
     >
       <div
-        className="relative mx-auto h-[330px] w-full max-w-3xl overflow-hidden outline-none sm:h-[365px] lg:h-[420px] lg:max-w-4xl"
+        className="relative h-[345px] w-full overflow-hidden outline-none sm:h-[385px] lg:h-[420px]"
         style={{ perspective: "1200px" }}
         aria-live="polite"
       >
         <div
-          className="pointer-events-none absolute -left-16 -top-16 size-36 rounded-full opacity-60 blur-3xl"
+          className="pointer-events-none absolute -left-6 -top-10 size-32 rounded-full opacity-60 blur-3xl sm:-left-10 sm:-top-12 sm:size-36"
           style={{ background: "radial-gradient(circle, rgba(20,71,166,0.35) 0%, transparent 72%)" }}
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -bottom-20 -right-14 size-44 rounded-full opacity-55 blur-3xl"
+          className="pointer-events-none absolute -bottom-12 -right-6 size-36 rounded-full opacity-55 blur-3xl sm:-bottom-16 sm:-right-10 sm:size-44"
           style={{ background: "radial-gradient(circle, rgba(165,180,252,0.42) 0%, transparent 74%)" }}
           aria-hidden
         />
@@ -530,20 +643,38 @@ function AboutImageSlideshow({ slides }) {
           if (Math.abs(offset) > 1) return null
 
           const isCenter = offset === 0
+          const isLeftSide = offset === -1
           const isHovered = hoveredIndex === index
           const baseScale = isCenter ? 1.04 : 0.84
           const scale = isHovered ? (isCenter ? 1.1 : 0.95) : baseScale
-          const translateX = offset * 38
+          const translateX = offset * 36
           const zIndex = isHovered ? 30 : 20 - Math.abs(offset) * 5
+
+          const slidePositionClass = isLeftSide
+            ? "left-0"
+            : isCenter
+              ? "left-[calc(50%-0.125rem)] sm:left-[calc(50%-0.25rem)] lg:left-[calc(50%-0.375rem)]"
+              : "left-1/2"
+
+          const slideTransform = isLeftSide
+            ? isHovered
+              ? `translateY(-50%) translateX(-0.75rem) scale(${scale})`
+              : `translateY(-50%) scale(${scale})`
+            : isCenter
+              ? `translate(-50%, -50%) scale(${scale})`
+              : `translate(-50%, -50%) translateX(${translateX}%) scale(${scale})`
+
+          const slideTransformOrigin = isLeftSide ? "left center" : "center center"
 
           return (
             <article
               key={slide.alt}
-              className={`absolute left-1/2 top-1/2 aspect-4/3 w-[min(84%,340px)] overflow-hidden rounded-[1.4rem] border border-white/50 transition-[transform,opacity,box-shadow,filter] duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] will-change-transform sm:w-[min(82%,360px)] lg:w-[min(80%,380px)] ${
+              className={`absolute top-1/2 aspect-4/3 w-[min(84%,325px)] overflow-hidden rounded-[1.4rem] border border-white/50 transition-[transform,opacity,box-shadow,filter] duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] will-change-transform sm:w-[min(82%,345px)] lg:w-[min(80%,370px)] ${slidePositionClass} ${
                 !isCenter ? "cursor-pointer" : "cursor-default"
               }`}
               style={{
-                transform: `translate(-50%, -50%) translateX(${translateX}%) scale(${scale})`,
+                transform: slideTransform,
+                transformOrigin: slideTransformOrigin,
                 zIndex,
                 opacity: isCenter || isHovered ? 1 : 0.84,
                 boxShadow: isCenter
@@ -808,15 +939,6 @@ function ProcessWorkflowTimelineStepCard({
             >
               Step {index + 1} of {total}
             </span>
-            {isActive ? (
-              <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white sm:text-xs"
-                style={{ backgroundImage: gradientNavyButton }}
-              >
-                <span className="size-1.5 animate-pulse rounded-full bg-emerald-300" aria-hidden />
-                Now viewing
-              </span>
-            ) : null}
           </div>
 
           <h3 className="relative mt-4 text-base font-bold leading-snug sm:text-lg lg:text-xl" style={{ color: navy }}>
@@ -889,15 +1011,15 @@ function ProcessWorkflowTimeline({ steps }) {
   const { inFocus, activeIndex, registerStepRef, progress, animationMode } = useTimelineScrollReveal(steps.length)
 
   return (
-    <div className="relative mt-8 lg:mt-12">
+    <div className="relative mt-8 overflow-x-hidden lg:mt-12">
       <div
-        className="pointer-events-none absolute -inset-x-6 -top-8 bottom-0 rounded-[2rem] opacity-70 sm:-inset-x-10"
+        className="pointer-events-none absolute inset-x-0 -top-8 bottom-0 rounded-[2rem] opacity-70"
         style={{ backgroundImage: gradientLightBlueViolet }}
         aria-hidden
       />
 
       <div
-        className="relative mx-auto w-full max-w-3xl overflow-visible lg:max-w-5xl xl:max-w-6xl"
+        className="relative mx-auto w-full max-w-3xl overflow-x-hidden lg:max-w-5xl xl:max-w-6xl"
         role="list"
         aria-label="Scholarship application process steps"
       >
@@ -917,7 +1039,7 @@ function ProcessWorkflowTimeline({ steps }) {
           />
         </div>
 
-        <ol className="relative space-y-0 overflow-visible">
+        <ol className="relative space-y-0 overflow-x-hidden">
           {steps.map((item, index) => {
             const isLast = index === steps.length - 1
             const isEven = index % 2 === 0
@@ -929,7 +1051,7 @@ function ProcessWorkflowTimeline({ steps }) {
                 key={item.step}
                 ref={registerStepRef(index)}
                 data-step-index={index}
-                className={`group relative scroll-mt-20 grid grid-cols-[auto_1fr] content-center items-center gap-x-4 overflow-visible py-3 sm:gap-x-5 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
+                className={`group relative scroll-mt-20 grid grid-cols-[auto_1fr] content-center items-center gap-x-4 overflow-x-hidden py-3 sm:gap-x-5 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
                   isLast ? "pb-1" : "pb-2 sm:pb-3"
                 }`}
               >
@@ -943,7 +1065,7 @@ function ProcessWorkflowTimeline({ steps }) {
                 />
 
                 <div
-                  className={`col-start-2 row-start-1 w-full min-w-0 overflow-visible lg:max-w-lg xl:max-w-xl ${
+                  className={`col-start-2 row-start-1 w-full min-w-0 overflow-x-hidden lg:max-w-lg xl:max-w-xl ${
                     isEven
                       ? "lg:col-start-1 lg:justify-self-end lg:pr-4"
                       : "lg:col-start-3 lg:justify-self-start lg:pl-4"
@@ -1316,116 +1438,155 @@ export default function LandingPage() {
   ].filter((row) => row.items.length > 0)
 
   return (
-    <div className="min-h-screen w-full min-w-0 bg-white" style={{ color: textBodyOnLight }}>
-      <LandingPublicHeader onSectionNavigate={scrollToSection} />
-
-      <main className="w-full min-w-0">
-        <section
-          id="hero"
-          className="relative w-full min-h-[min(72vh,560px)] overflow-hidden text-white"
+    <div className="min-h-screen w-full max-w-full min-w-0 overflow-x-hidden bg-white" style={{ color: textBodyOnLight }}>
+      <div
+        className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[min(88vh,680px)] overflow-hidden"
+        style={{ backgroundColor: navyDeep }}
+        aria-hidden
+      >
+        <img
+          src={navHeroBackground}
+          alt=""
+          className="h-full w-full object-cover object-[center_88%]"
+          decoding="async"
+        />
+        <div
+          className="absolute inset-0"
           style={{
-            backgroundColor: navyDeep,
-            backgroundImage: `url(${navHeroBackground})`,
-            backgroundSize: "cover",
-            backgroundPosition: "center bottom",
-            backgroundRepeat: "no-repeat",
+            background: `${gradientHeroMesh}, linear-gradient(180deg, rgba(4, 19, 61, 0.78) 0%, rgba(4, 19, 61, 0.68) 18%, rgba(8, 31, 92, 0.56) 42%, rgba(4, 19, 61, 0.45) 62%, rgba(4, 19, 61, 0.38) 78%, rgba(4, 19, 61, 0.32) 100%)`,
           }}
-        >
-          <div
-            className="pointer-events-none absolute inset-0 z-0"
-            style={{
-              background: `${gradientHeroMesh}, linear-gradient(180deg, rgba(4, 19, 61, 0.82) 0%, rgba(4, 19, 61, 0.48) 38%, rgba(4, 19, 61, 0.22) 62%, rgba(4, 19, 61, 0.5) 100%)`,
-            }}
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute inset-0 z-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                "linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.06) 50%, transparent 60%)",
-              backgroundSize: "200% 200%",
-            }}
-            aria-hidden
-          />
-          <div className="relative z-10 mx-auto w-full max-w-4xl px-4 py-12 text-center sm:px-6 lg:px-8 lg:py-16">
-            <div className="mx-auto space-y-5">
-              <p
-                className="mx-auto inline-flex rounded-full border border-white/35 px-3 py-1 text-xs font-medium text-white shadow-sm backdrop-blur-sm"
-                style={{
-                  backgroundImage: `linear-gradient(120deg, ${navyMuted}e6 0%, ${navy}cc 55%, ${navyBright}cc 100%)`,
-                }}
-              >
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 h-40 sm:h-52 lg:h-64"
+          style={{
+            background: `linear-gradient(to top, ${bvIce} 0%, rgba(224, 231, 255, 0.95) 10%, rgba(199, 210, 254, 0.82) 26%, rgba(139, 152, 206, 0.55) 48%, rgba(8, 31, 92, 0.42) 68%, rgba(4, 19, 61, 0.22) 86%, transparent 100%)`,
+          }}
+        />
+      </div>
+
+      <div className="pointer-events-none fixed inset-x-0 top-0 z-10 h-[min(88vh,680px)] text-white">
+        <div className="pointer-events-auto mx-auto flex h-full w-full max-w-7xl items-center px-4 pb-12 pt-28 sm:px-6 sm:pb-14 sm:pt-32 lg:px-8 lg:pb-16 lg:pt-36">
+          <div className="grid w-full items-center gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
+            <div className="mx-auto max-w-2xl space-y-6 text-center lg:mx-0 lg:max-w-none lg:text-left">
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-medium tracking-wide text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] backdrop-blur-md">
                 Scholarship Records Management System (SRMS)
               </p>
 
-              <h1 className="text-[clamp(0.95rem,2.6vw+0.5rem,3rem)] font-bold leading-tight text-white lg:leading-[1.15]">
-                <span className="block whitespace-nowrap">
-                  Centralized Access to Scholarship
-                </span>
-                <span
-                  className="block whitespace-nowrap bg-clip-text text-transparent"
-                  style={{
-                    backgroundImage: `linear-gradient(120deg, #ffffff 0%, ${bvPeriwinkle} 55%, ${bvSoft} 100%)`,
-                  }}
+              <HeroTypewriterTitle />
+
+              <p className="text-pretty text-justify text-sm leading-relaxed text-white/80 sm:text-base lg:max-w-xl">
+                Access scholarship announcements, application guidelines, batch information, and important updates
+                from the MARSU – Office of the Scholarship Grants and Financial Assistance in one centralized
+                platform.
+              </p>
+
+              <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center lg:justify-start">
+                <Button
+                  type="button"
+                  className="h-11 w-full rounded-full border-0 px-6 text-sm font-semibold text-white shadow-[0_12px_32px_rgba(8,31,92,0.45)] transition hover:-translate-y-0.5 hover:brightness-110 sm:w-auto"
+                  style={{ backgroundImage: gradientNavyButton }}
+                  onClick={() => scrollToSection("announcements")}
                 >
-                  Information and Assistance
-                </span>
-              </h1>
-
-              <div className="mx-auto max-w-2xl space-y-2 text-sm text-white/75 sm:text-base">
-                <p>Access scholarship announcements, application guidelines, batch information, and important updates from the MARSU - Office of the Scholarship Grants and Financial Assistance in one centralized platform.</p>
-        
+                  <Megaphone className="mr-2 h-4 w-4" aria-hidden />
+                  View announcements
+                  <ChevronRight className="ml-1 h-4 w-4 opacity-90" aria-hidden />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-11 w-full rounded-full border-white/30 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-md transition hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/18 sm:w-auto"
+                  onClick={() => scrollToSection("batch-list")}
+                >
+                  <ListChecks className="mr-2 h-4 w-4" aria-hidden />
+                  Browse batch list
+                </Button>
               </div>
+            </div>
 
+            <div className="mx-auto w-full max-w-md space-y-4 lg:max-w-none">
               <div
-                className="flex flex-wrap items-center justify-center gap-4 sm:gap-6"
+                className="flex flex-wrap items-center justify-center gap-5 sm:gap-7"
                 role="group"
                 aria-label="Partner and institution logos"
               >
                 <img
                   src={orgLogo}
                   alt="Scholarship Grants &amp; Financial Assistance Office, Marinduque State University"
-                  className="h-16 w-16 object-contain drop-shadow-lg sm:h-20 sm:w-20"
+                  className="h-[5rem] w-[5rem] object-contain drop-shadow-lg sm:h-[6rem] sm:w-[6rem]"
                   decoding="async"
                 />
                 <img
                   src={marsuLogo}
                   alt="Marinduque State University seal"
-                  className="h-16 w-16 object-contain drop-shadow-lg sm:h-20 sm:w-20"
+                  className="h-[4.5rem] w-[4.5rem] object-contain drop-shadow-lg sm:h-[5.5rem] sm:w-[5.5rem]"
                   decoding="async"
                 />
                 <img
                   src={systemLogo}
                   alt="Scholarship Records Management System emblem"
-                  className="h-16 w-16 object-contain drop-shadow-lg sm:h-20 sm:w-20"
+                  className="h-[5rem] w-[5rem] object-contain drop-shadow-lg sm:h-[6rem] sm:w-[6rem]"
                   decoding="async"
                 />
               </div>
 
-              <div className="grid grid-cols-1 gap-3 pt-4 text-center text-xs text-white/75 sm:grid-cols-2 sm:text-sm">
-                <div className="rounded-xl border border-white/15 bg-white/5 p-3 backdrop-blur-sm">
-                  <p className="text-lg font-semibold text-white">Accessible</p>
-                  <p>Quick access to scholarship information, announcements, and application updates</p>
+              <div className="flex flex-col gap-3">
+                <div className="group flex items-start gap-3.5 rounded-2xl border border-sky-300/30 bg-white/[0.02] p-4 text-left shadow-[0_4px_24px_rgba(4,19,61,0.08)] backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-sky-300/45 hover:bg-white/[0.04]">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-sky-400/10 ring-1 ring-sky-300/25 sm:size-[3.25rem]" aria-hidden>
+                    <Globe className="size-6 text-sky-200 sm:size-7" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-semibold text-white">Accessible</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
+                      Quick access to scholarship information, announcements, and application updates.
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-white/15 bg-white/5 p-3 backdrop-blur-sm">
-                  <p className="text-lg font-semibold text-white">Organized</p>
-                  <p>Centralized records and batch listings for easier student monitoring and reference.</p>
+                <div className="group flex items-start gap-3.5 rounded-2xl border border-violet-300/30 bg-white/[0.02] p-4 text-left shadow-[0_4px_24px_rgba(4,19,61,0.08)] backdrop-blur-md transition duration-300 hover:-translate-y-0.5 hover:border-violet-300/45 hover:bg-white/[0.04]">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-violet-400/10 ring-1 ring-violet-300/25 sm:size-[3.25rem]" aria-hidden>
+                    <LayoutList className="size-6 text-violet-200 sm:size-7" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-semibold text-white">Organized</p>
+                    <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
+                      Centralized records and batch listings for easier student monitoring and reference.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      <LandingPublicHeader variant="cover" onSectionNavigate={scrollToSection} />
+
+      <main className="relative w-full min-w-0 overflow-x-hidden">
+        <section id="hero" className="relative min-h-[min(88vh,680px)] w-full">
+          <button
+            type="button"
+            onClick={() => scrollToSection("about")}
+            className="absolute bottom-5 left-1/2 z-20 -translate-x-1/2 text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent motion-reduce:animate-none sm:bottom-6"
+            aria-label="Scroll to About the Organization"
+          >
+            <ChevronDown className="h-7 w-7 animate-bounce drop-shadow-[0_2px_8px_rgba(4,19,61,0.45)] sm:h-8 sm:w-8" aria-hidden />
+          </button>
         </section>
 
         <section
           id="about"
-          className="w-full scroll-mt-17 border-y"
-          style={{ borderColor: borderNavySoft, backgroundImage: gradientLightBlueViolet }}
+          className="relative z-40 w-full scroll-mt-17 overflow-x-hidden border-b"
+          style={{
+            borderColor: borderNavySoft,
+            backgroundImage: `linear-gradient(180deg, ${bvIce} 0%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
+          }}
         >
-          <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
-            <div className="grid items-center gap-8 overflow-visible lg:grid-cols-2 lg:gap-12">
-              <AboutImageSlideshow slides={aboutSlideshowSlides} />
+          <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-8 sm:px-6 sm:pb-12 sm:pt-10 lg:px-8 lg:py-12">
+            <div className="grid items-center gap-5 overflow-x-hidden lg:grid-cols-2 lg:gap-6">
+              <div className="order-1 min-w-0 overflow-hidden lg:mx-0">
+                <AboutImageSlideshow slides={aboutSlideshowSlides} />
+              </div>
 
-              <div className="order-1 lg:order-1">
+              <div className="order-2 min-w-0">
                 <h2 className="relative text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
                   <span
                     className="bg-clip-text text-transparent"
@@ -1454,7 +1615,7 @@ export default function LandingPage() {
 
         <section
           id="announcements"
-          className="w-full scroll-mt-17 border-b bg-white py-10 sm:py-12 lg:py-14"
+          className="relative z-40 w-full scroll-mt-17 border-b bg-white py-10 sm:py-12 lg:py-14"
           style={{ borderColor: borderNavySoft }}
         >
           <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -1537,11 +1698,11 @@ export default function LandingPage() {
 
         <section
           id="contact"
-          className="w-full py-10 sm:py-12 lg:py-14"
+          className="relative z-40 w-full py-10 sm:py-12 lg:py-14"
           style={{ backgroundImage: gradientLightBlueViolet }}
         >
           <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div id="batch-list" className="mb-6 scroll-mt-28 overflow-visible">
+            <div id="batch-list" className="mb-6 scroll-mt-28 overflow-x-hidden">
               <div className="mb-4 w-full lg:mb-5">
                 <p
                   className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wider"
@@ -1590,7 +1751,7 @@ export default function LandingPage() {
 
         <section
           id="process"
-          className="relative w-full scroll-mt-17 overflow-visible border-y pt-10 pb-28 sm:pt-12 sm:pb-32 lg:pt-14 lg:pb-36"
+          className="relative z-40 w-full scroll-mt-17 overflow-x-hidden border-y pt-10 pb-28 sm:pt-12 sm:pb-32 lg:pt-14 lg:pb-36"
           style={{ borderColor: borderNavySoft, backgroundImage: gradientLightBlueViolet }}
         >
           <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -1630,7 +1791,7 @@ export default function LandingPage() {
         </section>
       </main>
 
-      <footer className="w-full border-t border-white/10 text-white" style={{ backgroundImage: gradientNavyFooter }}>
+      <footer className="relative z-40 w-full border-t border-white/10 text-white" style={{ backgroundImage: gradientNavyFooter }}>
         <div className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 sm:py-8 lg:px-8">
           <div className="space-y-1.5 pb-6 text-center sm:text-left">
             <div
