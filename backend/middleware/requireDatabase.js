@@ -1,12 +1,15 @@
-const { isConnected } = require('../config/database');
+const { connectDatabase } = require('../config/database');
 
-function requireDatabase(req, res, next) {
-    if (!isConnected()) {
+async function requireDatabase(req, res, next) {
+    try {
+        await connectDatabase();
+        return next();
+    } catch (err) {
+        console.error('Database connection failed:', err?.message || err);
         return res.status(503).json({
             message: 'Database is unavailable. Please try again in a moment.',
         });
     }
-    return next();
 }
 
 module.exports = requireDatabase;

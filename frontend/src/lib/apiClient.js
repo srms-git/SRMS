@@ -1,8 +1,7 @@
 import axios from "axios";
+import { getApiClientBaseUrl } from "@/lib/apiConfig";
 
-// Default to /api so Vite dev proxy forwards to the backend (see vite.config.js).
-const rawBaseUrl = (import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "");
-const normalizedBaseUrl = /\/api$/i.test(rawBaseUrl) ? rawBaseUrl : `${rawBaseUrl}/api`;
+const normalizedBaseUrl = getApiClientBaseUrl();
 
 const apiClient = axios.create({
   baseURL: normalizedBaseUrl,

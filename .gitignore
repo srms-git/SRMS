@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build / cache
+dist/
+__pycache__/
+*.pyc
+
+# Environment (keep .env.example)
+.env
+.env.local
+.env.*.local
+
+# Runtime uploads / generated output
+backend/uploads/
+backend/outputs/
+frontend/outputs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vercel

@@ -1,8 +1,9 @@
 import axios from 'axios';
 import apiClient from '@/lib/apiClient';
+import { getApiBaseUrl, getApiSetupHint, isApiConfigured } from '@/lib/apiConfig';
 
-const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
-const API_URL = `${API_BASE}/auth`;
+const API_BASE = getApiBaseUrl();
+const API_URL = API_BASE ? `${API_BASE}/auth` : '';
 
 export const USER_UPDATED_EVENT = 'srms-user-updated';
 
@@ -11,14 +12,20 @@ function notifyUserUpdated() {
 }
 
 function toRequestError(error, fallbackMessage) {
+    if (!isApiConfigured()) {
+        return new Error(`API URL is not configured. ${getApiSetupHint()}`);
+    }
+    if (error.response?.status === 405) {
+        return new Error(
+            `API request was blocked (405). ${getApiSetupHint()}`,
+        );
+    }
     if (!error.response) {
         const isNetwork =
             error.code === 'ERR_NETWORK' ||
             String(error.message || '').toLowerCase().includes('network error');
         if (isNetwork) {
-            return new Error(
-                'Cannot reach the server. Start the API with "npm run dev" from the frontend folder (or "npm run dev --prefix ../backend").',
-            );
+            return new Error(`Cannot reach the server. ${getApiSetupHint()}`);
         }
     }
     const message = error.response?.data?.message || error.message || fallbackMessage;
@@ -32,6 +39,9 @@ const authService = {
      * @param {string} password 
      */
     login: async (email, password) => {
+        if (!API_URL) {
+            throw new Error(`API URL is not configured. ${getApiSetupHint()}`);
+        }
         try {
             const response = await axios.post(`${API_URL}/login`, { email, password });
             

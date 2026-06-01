@@ -1,4 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api"
+import { getApiClientBaseUrl } from "@/lib/apiConfig";
+
+const API_BASE =
+  getApiClientBaseUrl() ||
+  (import.meta.env.DEV ? "http://localhost:5000/api" : "");
 
 export function mapArchivedBatchFromApi(doc) {
   if (!doc || typeof doc !== "object") return null
