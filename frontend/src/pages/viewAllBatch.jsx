@@ -2,12 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { ArrowLeft, Layers, Search, SlidersHorizontal } from "lucide-react"
 
-import { fetchAllGrantees } from "@/lib/granteesApi"
-import {
-  buildLandingBatchCards,
-  LANDING_BATCH_VISIBILITY_CHANGED_EVENT,
-  readStoredLandingBatchVisibility,
-} from "@/lib/landingFeaturedBatches"
+import { usePublishedLandingBatches } from "@/lib/landingFeaturedBatches"
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
@@ -144,8 +139,7 @@ export default function ViewAllBatch() {
   const [programFilter, setProgramFilter] = useState("__")
   const [academicYearFilter, setAcademicYearFilter] = useState("__")
   const [batchSeriesFilter, setBatchSeriesFilter] = useState("__")
-  const [granteesRawData, setGranteesRawData] = useState([])
-  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
+  const { batches: landingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
 
   useLayoutEffect(() => {
     const scroller = document.getElementById("admin-main-scroll")
@@ -154,40 +148,6 @@ export default function ViewAllBatch() {
     document.documentElement.scrollTop = 0
     document.body.scrollTop = 0
   }, [])
-
-  useEffect(() => {
-    const syncLandingVisibility = () => setLandingVisibility(readStoredLandingBatchVisibility())
-    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
-    window.addEventListener("storage", syncLandingVisibility)
-    return () => {
-      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
-      window.removeEventListener("storage", syncLandingVisibility)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadGrantees = async () => {
-      try {
-        const data = await fetchAllGrantees()
-        if (!cancelled) setGranteesRawData(data)
-      } catch (error) {
-        console.error("Failed to load batch list:", error)
-        if (!cancelled) setGranteesRawData([])
-      }
-    }
-
-    loadGrantees()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const landingBatches = useMemo(
-    () => buildLandingBatchCards(granteesRawData, landingVisibility),
-    [granteesRawData, landingVisibility],
-  )
 
   const uniquePrograms = useMemo(
     () => [...new Set(landingBatches.map((batch) => String(batch.program ?? "").trim()).filter(Boolean))].sort(),
@@ -338,7 +298,11 @@ export default function ViewAllBatch() {
           </div>
         </div>
 
-        {filteredBatches.length === 0 ? (
+        {landingBatchesLoading ? (
+          <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-10 text-center text-sm shadow-sm ring-1 ring-slate-900/3" style={{ color: textBodyOnLight }}>
+            Loading published batches…
+          </div>
+        ) : filteredBatches.length === 0 ? (
           <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-10 text-center text-sm shadow-sm ring-1 ring-slate-900/3" style={{ color: textBodyOnLight }}>
             No batches match your filters or search.
           </div>

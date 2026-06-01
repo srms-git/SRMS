@@ -36,15 +36,18 @@ import {
   DEFAULT_WORKFLOW_STEP_COLOR_LIGHT,
   normalizeProcessWorkflowSteps,
   PROCESS_WORKFLOW_ICON_OPTIONS,
+  loadProcessWorkflow,
+  persistProcessWorkflow,
+  PROCESS_WORKFLOW_CHANGED_EVENT,
   readStoredProcessWorkflow,
   validateProcessWorkflow,
-  writeStoredProcessWorkflow,
   WORKFLOW_ICON_MAP,
 } from "@/lib/processWorkflowSettings"
 import {
   LANDING_PAGE_SETTINGS_CHANGED_EVENT,
+  loadLandingPageSettings,
+  persistLandingPageSettings,
   readStoredLandingPageSettings,
-  writeStoredLandingPageSettings,
 } from "@/lib/landingPageSettings"
 import authService from "@/services/authService"
 
@@ -407,12 +410,50 @@ export default function Setting() {
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+
+    loadLandingPageSettings().then((settings) => {
+      if (!cancelled) setLandingSettings(settings)
+    })
+
     const syncLandingSettings = () => setLandingSettings(readStoredLandingPageSettings())
     window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingSettings)
     window.addEventListener("storage", syncLandingSettings)
+
     return () => {
+      cancelled = true
       window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingSettings)
       window.removeEventListener("storage", syncLandingSettings)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    loadProcessWorkflow().then((config) => {
+      if (cancelled) return
+      setWorkflowDraft(config)
+      setEditingWorkflowStepId((currentId) => {
+        if (currentId && config.steps.some((step) => step.id === currentId)) return currentId
+        return config.steps[0]?.id ?? null
+      })
+    })
+
+    const syncWorkflow = () => {
+      const draft = readStoredProcessWorkflow()
+      setWorkflowDraft(draft)
+      setEditingWorkflowStepId((currentId) => {
+        if (currentId && draft.steps.some((step) => step.id === currentId)) return currentId
+        return draft.steps[0]?.id ?? null
+      })
+    }
+    window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
+    window.addEventListener("storage", syncWorkflow)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
+      window.removeEventListener("storage", syncWorkflow)
     }
   }, [])
 
@@ -503,18 +544,20 @@ export default function Setting() {
 
     setWorkflowSaving(true)
     try {
-      const saved = writeStoredProcessWorkflow(normalized)
+      const saved = await persistProcessWorkflow(normalized)
       setWorkflowDraft(saved)
       showWorkflowAlert(
         "success",
         "Changes saved",
         "Process / Workflow content was updated. Visitors will see the new steps on the public landing page.",
       )
-    } catch {
+    } catch (error) {
       showWorkflowAlert(
         "error",
         "Save failed",
-        "Unable to save workflow settings. Check browser storage permissions and try again.",
+        error?.response?.data?.message ??
+          error?.message ??
+          "Unable to save workflow settings. Check that the backend is running and try again.",
       )
     } finally {
       setWorkflowSaving(false)
@@ -527,10 +570,21 @@ export default function Setting() {
     setSettingsNotice({ type: "success", message: noticeMessage })
   }
 
-  const saveLandingSettings = (nextSettings, noticeMessage = "Landing page settings saved.") => {
+  const saveLandingSettings = async (nextSettings, noticeMessage = "Landing page settings saved.") => {
     setLandingSettings(nextSettings)
-    writeStoredLandingPageSettings(nextSettings)
-    setSettingsNotice({ type: "success", message: noticeMessage })
+    try {
+      await persistLandingPageSettings(nextSettings)
+      setSettingsNotice({ type: "success", message: noticeMessage })
+    } catch (error) {
+      console.error("Failed to save landing page settings:", error)
+      setSettingsNotice({
+        type: "error",
+        message:
+          error?.response?.data?.message ??
+          error?.message ??
+          "Could not save landing page settings. Check that the backend is running.",
+      })
+    }
   }
 
   const handleSaveProfile = async (event) => {
@@ -1182,12 +1236,18 @@ export default function Setting() {
                 <h3 className="text-base font-semibold text-gray-900">Landing Settings</h3>
               </div>
               <p className="text-sm text-gray-600">
-                Manage what visitors see in the public landing page batch list. Changes apply immediately on this
-                device.
+                Manage what visitors see in the public landing page batch list. Changes apply for all visitors once
+                saved.
               </p>
 
               {settingsNotice.message && (
-                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                <div
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    settingsNotice.type === "error"
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-green-200 bg-green-50 text-green-700"
+                  }`}
+                >
                   {settingsNotice.message}
                 </div>
               )}

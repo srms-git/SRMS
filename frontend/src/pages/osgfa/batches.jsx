@@ -30,10 +30,9 @@ import {
 } from "@/lib/granteesApi"
 import {
   isBatchVisibleOnLanding,
-  LANDING_BATCH_VISIBILITY_CHANGED_EVENT,
-  readStoredLandingBatchVisibility,
   renameLandingBatchVisibility,
   setLandingBatchVisibility,
+  useLandingBatchVisibility,
 } from "@/lib/landingFeaturedBatches"
 
 const selectShellClass =
@@ -170,7 +169,7 @@ export default function Batches() {
   const [feedbackVariant, setFeedbackVariant] = useState("info")
   const [feedbackTitle, setFeedbackTitle] = useState("")
   const [feedbackMessage, setFeedbackMessage] = useState("")
-  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
+  const landingVisibility = useLandingBatchVisibility()
 
   const showFeedback = useCallback((variant, title, message) => {
     setFeedbackVariant(variant)
@@ -197,16 +196,6 @@ export default function Batches() {
   useEffect(() => {
     loadGrantees()
   }, [loadGrantees])
-
-  useEffect(() => {
-    const syncLandingVisibility = () => setLandingVisibility(readStoredLandingBatchVisibility())
-    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
-    window.addEventListener("storage", syncLandingVisibility)
-    return () => {
-      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
-      window.removeEventListener("storage", syncLandingVisibility)
-    }
-  }, [])
 
   const batches = useMemo(() => {
     const uniqueMap = new Map()
@@ -378,7 +367,7 @@ export default function Batches() {
         newAcademicYear,
       })
 
-      renameLandingBatchVisibility(
+      await renameLandingBatchVisibility(
         {
           batchNo: editTarget.batchNo,
           program: editTarget.program,
@@ -429,16 +418,30 @@ export default function Batches() {
 
   const editAcademicYearPreview = editFromYear && editToYear ? `${editFromYear}-${editToYear}` : "—"
 
-  const handleToggleLandingVisibility = (row) => {
+  const handleToggleLandingVisibility = async (row) => {
     const currentlyVisible = isBatchVisibleOnLanding(row, landingVisibility)
-    setLandingBatchVisibility(row, !currentlyVisible)
-    showFeedback(
-      "success",
-      currentlyVisible ? "Batch hidden" : "Batch published",
-      currentlyVisible
-        ? `Batch ${row.batchNo} is no longer shown on the landing page.`
-        : `Batch ${row.batchNo} is now visible on the landing page.`,
-    )
+    const programKey = String(row?.program ?? "").trim().toUpperCase()
+    const granteeCount = granteeCountsByBatchProgram.get(`${row?.batchNo}|${programKey}`) ?? 0
+
+    try {
+      await setLandingBatchVisibility(row, !currentlyVisible, granteeCount)
+      showFeedback(
+        "success",
+        currentlyVisible ? "Batch hidden" : "Batch published",
+        currentlyVisible
+          ? `Batch ${row.batchNo} is no longer shown on the landing page.`
+          : `Batch ${row.batchNo} is now visible on the landing page.`,
+      )
+    } catch (error) {
+      console.error("Failed to update landing batch visibility:", error)
+      showFeedback(
+        "warning",
+        "Update failed",
+        error?.response?.data?.message ??
+          error?.message ??
+          "Could not save landing batch visibility. Check that the backend is running.",
+      )
+    }
   }
 
   return (

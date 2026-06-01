@@ -1,151 +1,16 @@
+import { useCallback, useEffect, useState } from "react"
+
+import apiClient from "@/lib/apiClient"
 import { buildBatchesFromGrantees } from "@/lib/granteesApi"
 
 export const LANDING_BATCH_VISIBILITY_STORAGE_KEY = "srmsLandingBatchVisibility"
 export const LANDING_BATCH_VISIBILITY_CHANGED_EVENT = "srms-landing-batch-visibility-changed"
+export const LANDING_BATCHES_CHANGED_EVENT = "srms-landing-batches-changed"
 
-/** @deprecated Mock list kept for reference; landing page uses live grantee data + visibility settings. */
-export const LANDING_FEATURED_BATCHES = [
-  {
-    batchNo: "21.1",
-    schoolYear: "2025-2026",
-    program: "TES",
-    createdAt: "Date added: May 4, 2026",
-    grantees: 512,
-  },
-  {
-    batchNo: "21.3",
-    schoolYear: "2025-2026",
-    program: "TES",
-    createdAt: "Date added: May 6, 2026",
-    grantees: 478,
-  },
-  {
-    batchNo: "21.4",
-    schoolYear: "2025-2026",
-    program: "TES",
-    createdAt: "Date added: May 7, 2026",
-    grantees: 391,
-  },
-  {
-    batchNo: "20.1",
-    schoolYear: "2024-2025",
-    program: "TES",
-    createdAt: "Date added: Apr 30, 2026",
-    grantees: 502,
-  },
-  {
-    batchNo: "20.2",
-    schoolYear: "2024-2025",
-    program: "TES",
-    createdAt: "Date added: May 2, 2026",
-    grantees: 438,
-  },
-  {
-    batchNo: "20.4",
-    schoolYear: "2024-2025",
-    program: "TES",
-    createdAt: "Date added: May 8, 2026",
-    grantees: 455,
-  },
-  {
-    batchNo: "19.4",
-    schoolYear: "2023-2024",
-    program: "TES",
-    createdAt: "Date added: Apr 28, 2026",
-    grantees: 620,
-  },
-  {
-    batchNo: "19.2",
-    schoolYear: "2023-2024",
-    program: "TES",
-    createdAt: "Date added: Apr 22, 2026",
-    grantees: 588,
-  },
-  {
-    batchNo: "19.1",
-    schoolYear: "2023-2024",
-    program: "TES",
-    createdAt: "Date added: Apr 18, 2026",
-    grantees: 540,
-  },
-  {
-    batchNo: "18.3",
-    schoolYear: "2022-2023",
-    program: "TES",
-    createdAt: "Date added: Apr 10, 2026",
-    grantees: 497,
-  },
-  {
-    batchNo: "21.2",
-    schoolYear: "2025-2026",
-    program: "TDP",
-    createdAt: "Date added: May 5, 2026",
-    grantees: 286,
-  },
-  {
-    batchNo: "21.5",
-    schoolYear: "2025-2026",
-    program: "TDP",
-    createdAt: "Date added: May 9, 2026",
-    grantees: 312,
-  },
-  {
-    batchNo: "21.6",
-    schoolYear: "2025-2026",
-    program: "TDP",
-    createdAt: "Date added: May 10, 2026",
-    grantees: 268,
-  },
-  {
-    batchNo: "20.3",
-    schoolYear: "2024-2025",
-    program: "TDP",
-    createdAt: "Date added: May 3, 2026",
-    grantees: 194,
-  },
-  {
-    batchNo: "20.5",
-    schoolYear: "2024-2025",
-    program: "TDP",
-    createdAt: "Date added: May 11, 2026",
-    grantees: 221,
-  },
-  {
-    batchNo: "20.6",
-    schoolYear: "2024-2025",
-    program: "TDP",
-    createdAt: "Date added: May 12, 2026",
-    grantees: 205,
-  },
-  {
-    batchNo: "19.5",
-    schoolYear: "2023-2024",
-    program: "TDP",
-    createdAt: "Date added: Apr 26, 2026",
-    grantees: 178,
-  },
-  {
-    batchNo: "19.3",
-    schoolYear: "2023-2024",
-    program: "TDP",
-    createdAt: "Date added: Apr 20, 2026",
-    grantees: 163,
-  },
-  {
-    batchNo: "18.2",
-    schoolYear: "2022-2023",
-    program: "TDP",
-    createdAt: "Date added: Apr 8, 2026",
-    grantees: 189,
-  },
-  {
-    batchNo: "18.1",
-    schoolYear: "2022-2023",
-    program: "TDP",
-    createdAt: "Date added: Apr 5, 2026",
-    grantees: 201,
-  },
-]
+function notifyLandingBatchesChanged() {
+  window.dispatchEvent(new CustomEvent(LANDING_BATCHES_CHANGED_EVENT))
+  window.dispatchEvent(new CustomEvent(LANDING_BATCH_VISIBILITY_CHANGED_EVENT))
+}
 
 export function getBatchLandingKey(batch) {
   const batchNo = String(batch?.batchNo ?? "").trim()
@@ -172,50 +37,10 @@ export function readStoredLandingBatchVisibility() {
   }
 }
 
-export function writeStoredLandingBatchVisibility(keys) {
+function writeStoredLandingBatchVisibility(keys) {
   const normalized = normalizeVisibilityKeys(keys)
   localStorage.setItem(LANDING_BATCH_VISIBILITY_STORAGE_KEY, JSON.stringify(normalized))
-  window.dispatchEvent(new CustomEvent(LANDING_BATCH_VISIBILITY_CHANGED_EVENT))
   return new Set(normalized)
-}
-
-export function isBatchVisibleOnLanding(batch, visibilitySet = readStoredLandingBatchVisibility()) {
-  const key = getBatchLandingKey(batch)
-  if (!key || key === "||") return false
-  return visibilitySet.has(key)
-}
-
-export function setLandingBatchVisibility(batch, visible) {
-  const key = getBatchLandingKey(batch)
-  if (!key || key === "||") return readStoredLandingBatchVisibility()
-
-  const next = new Set(readStoredLandingBatchVisibility())
-  if (visible) {
-    next.add(key)
-  } else {
-    next.delete(key)
-  }
-  return writeStoredLandingBatchVisibility([...next])
-}
-
-export function renameLandingBatchVisibility(originalBatch, updatedBatch) {
-  const oldKey = getBatchLandingKey(originalBatch)
-  const newKey = getBatchLandingKey(updatedBatch)
-  if (!oldKey || oldKey === "||" || !newKey || newKey === "||" || oldKey === newKey) {
-    return readStoredLandingBatchVisibility()
-  }
-
-  const next = new Set(readStoredLandingBatchVisibility())
-  if (next.has(oldKey)) {
-    next.delete(oldKey)
-    next.add(newKey)
-  }
-  return writeStoredLandingBatchVisibility([...next])
-}
-
-export function toggleLandingBatchVisibility(batch) {
-  const visible = isBatchVisibleOnLanding(batch)
-  return setLandingBatchVisibility(batch, !visible)
 }
 
 export function formatLandingBatchCreatedAt(value) {
@@ -229,6 +54,213 @@ export function formatLandingBatchCreatedAt(value) {
   })}`
 }
 
+export function mapLandingBatchRecordToCard(row) {
+  return {
+    batchNo: String(row?.batchNo ?? "").trim(),
+    schoolYear: String(row?.academicYear ?? row?.schoolYear ?? "").trim(),
+    program: String(row?.program ?? "").trim().toUpperCase(),
+    createdAt: formatLandingBatchCreatedAt(row?.publishedAt ?? row?.createdAt),
+    grantees: Number(row?.granteeCount ?? row?.grantees) || 0,
+  }
+}
+
+function buildBatchPayload(batch, granteeCount) {
+  return {
+    batchNo: String(batch?.batchNo ?? "").trim(),
+    program: String(batch?.program ?? "").trim().toUpperCase(),
+    academicYear: String(batch?.schoolYear ?? batch?.academicYear ?? "").trim(),
+    granteeCount: Number.isFinite(granteeCount) ? granteeCount : undefined,
+  }
+}
+
+export async function fetchPublishedLandingBatches() {
+  const response = await apiClient.get("/landing-batches", { params: { published: true } })
+  const rows = Array.isArray(response.data) ? response.data : []
+  return rows.map(mapLandingBatchRecordToCard)
+}
+
+export async function fetchPublishedLandingBatchKeys() {
+  const cards = await fetchPublishedLandingBatches()
+  return new Set(cards.map((batch) => getBatchLandingKey(batch)))
+}
+
+function updateCachedVisibility(batch, visible) {
+  const key = getBatchLandingKey(batch)
+  if (!key || key === "||") return readStoredLandingBatchVisibility()
+
+  const cached = readStoredLandingBatchVisibility()
+  if (visible) cached.add(key)
+  else cached.delete(key)
+  writeStoredLandingBatchVisibility([...cached])
+  return cached
+}
+
+export async function publishLandingBatch(batch, granteeCount) {
+  const payload = buildBatchPayload(batch, granteeCount)
+  await apiClient.post("/landing-batches/publish", payload)
+  updateCachedVisibility(batch, true)
+  notifyLandingBatchesChanged()
+}
+
+export async function unpublishLandingBatch(batch) {
+  const payload = buildBatchPayload(batch)
+  await apiClient.post("/landing-batches/unpublish", payload)
+  updateCachedVisibility(batch, false)
+  notifyLandingBatchesChanged()
+}
+
+export async function renameLandingBatchOnServer(originalBatch, updatedBatch) {
+  await apiClient.patch("/landing-batches/rename", {
+    original: {
+      batchNo: originalBatch.batchNo,
+      program: originalBatch.program,
+      academicYear: originalBatch.schoolYear ?? originalBatch.academicYear,
+    },
+    updated: {
+      batchNo: updatedBatch.batchNo,
+      program: updatedBatch.program,
+      academicYear: updatedBatch.schoolYear ?? updatedBatch.academicYear,
+    },
+  })
+  notifyLandingBatchesChanged()
+}
+
+export function usePublishedLandingBatches() {
+  const [batches, setBatches] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    try {
+      const published = await fetchPublishedLandingBatches()
+      setBatches(published)
+      writeStoredLandingBatchVisibility(published.map((batch) => getBatchLandingKey(batch)))
+    } catch (error) {
+      console.error("Failed to load published landing batches:", error)
+      setBatches([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      setLoading(true)
+      try {
+        const published = await fetchPublishedLandingBatches()
+        if (cancelled) return
+        setBatches(published)
+        writeStoredLandingBatchVisibility(published.map((batch) => getBatchLandingKey(batch)))
+      } catch (error) {
+        console.error("Failed to load published landing batches:", error)
+        if (!cancelled) setBatches([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+
+    const onChange = () => {
+      void refresh()
+    }
+    window.addEventListener(LANDING_BATCHES_CHANGED_EVENT, onChange)
+    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, onChange)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(LANDING_BATCHES_CHANGED_EVENT, onChange)
+      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, onChange)
+    }
+  }, [refresh])
+
+  return { batches, loading, refresh }
+}
+
+export function useLandingBatchVisibility() {
+  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
+
+  useEffect(() => {
+    let cancelled = false
+
+    fetchPublishedLandingBatchKeys()
+      .then((keys) => {
+        if (!cancelled) {
+          writeStoredLandingBatchVisibility([...keys])
+          setLandingVisibility(keys)
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to load landing batch visibility:", error)
+      })
+
+    const sync = () => setLandingVisibility(readStoredLandingBatchVisibility())
+    window.addEventListener(LANDING_BATCHES_CHANGED_EVENT, sync)
+    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, sync)
+    window.addEventListener("storage", sync)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(LANDING_BATCHES_CHANGED_EVENT, sync)
+      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+
+  return landingVisibility
+}
+
+export function isBatchVisibleOnLanding(batch, visibilitySet = readStoredLandingBatchVisibility()) {
+  const key = getBatchLandingKey(batch)
+  if (!key || key === "||") return false
+  return visibilitySet.has(key)
+}
+
+export async function setLandingBatchVisibility(batch, visible, granteeCount) {
+  const key = getBatchLandingKey(batch)
+  if (!key || key === "||") return readStoredLandingBatchVisibility()
+
+  if (visible) {
+    await publishLandingBatch(batch, granteeCount)
+  } else {
+    await unpublishLandingBatch(batch)
+  }
+
+  try {
+    return await fetchPublishedLandingBatchKeys()
+  } catch {
+    return readStoredLandingBatchVisibility()
+  }
+}
+
+export async function renameLandingBatchVisibility(originalBatch, updatedBatch) {
+  const oldKey = getBatchLandingKey(originalBatch)
+  const newKey = getBatchLandingKey(updatedBatch)
+  if (!oldKey || oldKey === "||" || !newKey || newKey === "||" || oldKey === newKey) {
+    return readStoredLandingBatchVisibility()
+  }
+
+  const cached = readStoredLandingBatchVisibility()
+  if (!cached.has(oldKey)) {
+    return cached
+  }
+
+  await renameLandingBatchOnServer(originalBatch, updatedBatch)
+
+  cached.delete(oldKey)
+  cached.add(newKey)
+  writeStoredLandingBatchVisibility([...cached])
+  return cached
+}
+
+export async function toggleLandingBatchVisibility(batch, granteeCount) {
+  const visible = isBatchVisibleOnLanding(batch)
+  return setLandingBatchVisibility(batch, !visible, granteeCount)
+}
+
+/** @deprecated Prefer fetchPublishedLandingBatches() for the public landing batch list. */
 export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandingBatchVisibility()) {
   const batches = buildBatchesFromGrantees(grantees)
   const granteeCounts = new Map()
@@ -244,7 +276,7 @@ export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandi
 
   const cards = []
   for (const batch of batches) {
-    if (!isBatchVisibleOnLanding(batch, visibilitySet)) continue
+    if (!visibilitySet.has(getBatchLandingKey(batch))) continue
 
     const landingKey = getBatchLandingKey(batch)
     if (!landingKey || landingKey === "||" || seen.has(landingKey)) continue

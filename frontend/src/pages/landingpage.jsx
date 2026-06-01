@@ -11,23 +11,15 @@ import navHeroBackground from "@/assets/navbackground.png"
 import orgLogo from "@/assets/orgLogo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
-import { fetchAllGrantees } from "@/lib/granteesApi"
 import {
-  buildLandingBatchCards,
   getBatchLandingKey,
-  LANDING_BATCH_VISIBILITY_CHANGED_EVENT,
-  readStoredLandingBatchVisibility,
+  usePublishedLandingBatches,
 } from "@/lib/landingFeaturedBatches"
-import {
-  LANDING_PAGE_SETTINGS_CHANGED_EVENT,
-  maskBatchNumber,
-  readLandingPagePrivacyPreferences,
-} from "@/lib/landingPageSettings"
+import { maskBatchNumber, useLandingPagePrivacy } from "@/lib/landingPageSettings"
 import {
   hydrateProcessWorkflowSteps,
   LANDING_PROCESS_SECTION,
-  PROCESS_WORKFLOW_CHANGED_EVENT,
-  readStoredProcessWorkflow,
+  useProcessWorkflowSteps,
 } from "@/lib/processWorkflowSettings"
 import { LandingPublicHeader } from "@/components/LandingPublicHeader"
 import { Button } from "@/components/ui/button"
@@ -1438,64 +1430,14 @@ function BillboardCard({
 export default function LandingPage() {
   const location = useLocation()
   const [announcements, setAnnouncements] = useState([])
-  const [workflowSteps, setWorkflowSteps] = useState(() => readStoredProcessWorkflow().steps)
-  const [granteesRawData, setGranteesRawData] = useState([])
-  const [landingVisibility, setLandingVisibility] = useState(() => readStoredLandingBatchVisibility())
-  const [landingPrivacy, setLandingPrivacy] = useState(() => readLandingPagePrivacyPreferences())
+  const workflowSteps = useProcessWorkflowSteps()
+  const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
+  const landingPrivacy = useLandingPagePrivacy()
 
   const scholarshipProcessSteps = useMemo(
     () => hydrateProcessWorkflowSteps(workflowSteps),
     [workflowSteps],
   )
-
-  useEffect(() => {
-    const syncWorkflow = () => setWorkflowSteps(readStoredProcessWorkflow().steps)
-    window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
-    window.addEventListener("storage", syncWorkflow)
-    return () => {
-      window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
-      window.removeEventListener("storage", syncWorkflow)
-    }
-  }, [])
-
-  useEffect(() => {
-    const syncLandingVisibility = () => setLandingVisibility(readStoredLandingBatchVisibility())
-    window.addEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
-    window.addEventListener("storage", syncLandingVisibility)
-    return () => {
-      window.removeEventListener(LANDING_BATCH_VISIBILITY_CHANGED_EVENT, syncLandingVisibility)
-      window.removeEventListener("storage", syncLandingVisibility)
-    }
-  }, [])
-
-  useEffect(() => {
-    const syncLandingPrivacy = () => setLandingPrivacy(readLandingPagePrivacyPreferences())
-    window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
-    window.addEventListener("storage", syncLandingPrivacy)
-    return () => {
-      window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
-      window.removeEventListener("storage", syncLandingPrivacy)
-    }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadGrantees = async () => {
-      try {
-        const data = await fetchAllGrantees()
-        if (!cancelled) setGranteesRawData(data)
-      } catch (error) {
-        console.error("Failed to load landing batches:", error)
-        if (!cancelled) setGranteesRawData([])
-      }
-    }
-
-    loadGrantees()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   useLayoutEffect(() => {
     const sectionId = location.hash.replace(/^#/, "")
@@ -1548,12 +1490,11 @@ export default function LandingPage() {
   }
 
   const featuredBatchesByProgram = useMemo(() => {
-    const visibleBatches = buildLandingBatchCards(granteesRawData, landingVisibility)
     return [
-      { programLabel: "TES", items: visibleBatches.filter((b) => b.program === "TES") },
-      { programLabel: "TDP", items: visibleBatches.filter((b) => b.program === "TDP") },
+      { programLabel: "TES", items: publishedLandingBatches.filter((b) => b.program === "TES") },
+      { programLabel: "TDP", items: publishedLandingBatches.filter((b) => b.program === "TDP") },
     ].filter((row) => row.items.length > 0)
-  }, [granteesRawData, landingVisibility])
+  }, [publishedLandingBatches])
 
   const heroContent = (
     <div className="grid w-full items-center gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
@@ -1853,7 +1794,14 @@ export default function LandingPage() {
               </div>
 
               <div className="space-y-4">
-                {featuredBatchesByProgram.length > 0 ? (
+                {landingBatchesLoading ? (
+                  <div
+                    className="rounded-2xl border border-dashed px-6 py-10 text-center text-sm"
+                    style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
+                  >
+                    Loading published batches…
+                  </div>
+                ) : featuredBatchesByProgram.length > 0 ? (
                   featuredBatchesByProgram.map(({ programLabel, items }) => (
                     <FeaturedBatchScroller
                       key={programLabel}

@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react"
+
+import apiClient from "@/lib/apiClient"
 import {
   Banknote,
   Bell,
@@ -28,6 +31,17 @@ export const DEFAULT_WORKFLOW_STEP_COLOR_LIGHT = "#1447a6"
 
 export const PROCESS_WORKFLOW_STORAGE_KEY = "srmsProcessWorkflow"
 export const PROCESS_WORKFLOW_CHANGED_EVENT = "srms-process-workflow-changed"
+
+const PROCESS_WORKFLOW_API_PATH = "/landing-batches/process-workflow"
+
+function parseProcessWorkflowResponse(data) {
+  if (!data || typeof data !== "object") return null
+  if (!Array.isArray(data.steps)) return null
+  return {
+    customized: Boolean(data.customized),
+    steps: normalizeProcessWorkflowSteps(data.steps),
+  }
+}
 
 export const PROCESS_WORKFLOW_ICON_OPTIONS = [
   { value: "ListChecks", label: "Checklist" },
@@ -205,6 +219,76 @@ export function writeStoredProcessWorkflow(config) {
   localStorage.setItem(PROCESS_WORKFLOW_STORAGE_KEY, JSON.stringify({ steps }))
   window.dispatchEvent(new CustomEvent(PROCESS_WORKFLOW_CHANGED_EVENT))
   return { steps }
+}
+
+export async function loadProcessWorkflow() {
+  const cached = readStoredProcessWorkflow()
+  try {
+    const response = await apiClient.get(PROCESS_WORKFLOW_API_PATH)
+    const parsed = parseProcessWorkflowResponse(response.data)
+    if (!parsed) return cached
+    if (!parsed.customized) return cached
+    return writeStoredProcessWorkflow({ steps: parsed.steps })
+  } catch (error) {
+    console.error("Failed to load process workflow from server:", error)
+    return cached
+  }
+}
+
+export async function persistProcessWorkflow(config) {
+  const { valid, errors, normalized } = validateProcessWorkflow(config)
+  if (!valid) {
+    const validationError = new Error(errors.join(" "))
+    validationError.errors = errors
+    throw validationError
+  }
+
+  const sentCount = normalized.steps.length
+  let response
+  try {
+    response = await apiClient.put(PROCESS_WORKFLOW_API_PATH, { steps: normalized.steps })
+  } catch (error) {
+    const status = error?.response?.status
+    if (status === 404) {
+      throw new Error(
+        "The API does not support workflow saving yet. Stop any old backend on port 5000, restart with npm run dev, then try again.",
+      )
+    }
+    throw error
+  }
+
+  const parsed = parseProcessWorkflowResponse(response.data)
+  if (!parsed?.customized || parsed.steps.length !== sentCount) {
+    throw new Error(
+      "The server did not confirm your workflow steps. Restart the backend (npm run dev in the backend folder) and try again.",
+    )
+  }
+
+  return writeStoredProcessWorkflow({ steps: parsed.steps })
+}
+
+export function useProcessWorkflowSteps() {
+  const [steps, setSteps] = useState(() => readStoredProcessWorkflow().steps)
+
+  useEffect(() => {
+    let cancelled = false
+
+    loadProcessWorkflow().then((config) => {
+      if (!cancelled) setSteps(config.steps)
+    })
+
+    const sync = () => setSteps(readStoredProcessWorkflow().steps)
+    window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, sync)
+    window.addEventListener("storage", sync)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+
+  return steps
 }
 
 export function hydrateProcessWorkflowSteps(steps) {

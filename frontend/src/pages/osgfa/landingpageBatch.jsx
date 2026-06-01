@@ -19,10 +19,7 @@ import {
 import { loadMergedBeneficiaryRecords, saveBeneficiaryRecords } from "@/lib/beneficiariesStore"
 import { fetchGranteesForBatch } from "@/lib/granteesApi"
 import { SemesterClaimCell } from "@/components/grantee/semester-claim-display"
-import {
-  LANDING_PAGE_SETTINGS_CHANGED_EVENT,
-  readLandingPagePrivacyPreferences,
-} from "@/lib/landingPageSettings"
+import { useLandingPagePrivacy } from "@/lib/landingPageSettings"
 import {
   ensureSemesterClaimTimestamps,
   semesterClaimsForRow,
@@ -482,21 +479,11 @@ export default function LandingPageBatch() {
   const [activeRowKey, setActiveRowKey] = useState(null)
   const [loadingRecords, setLoadingRecords] = useState(false)
   const [didFetchRecords, setDidFetchRecords] = useState(false)
-  const [landingPrivacy, setLandingPrivacy] = useState(() => readLandingPagePrivacyPreferences())
+  const landingPrivacy = useLandingPagePrivacy()
 
   const batchNo = String(params.get("batchNo") ?? "").trim()
   const program = String(params.get("program") ?? "").trim().toUpperCase()
   const academicYear = String(params.get("academicYear") ?? "").trim()
-
-  useEffect(() => {
-    const syncLandingPrivacy = () => setLandingPrivacy(readLandingPagePrivacyPreferences())
-    window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
-    window.addEventListener("storage", syncLandingPrivacy)
-    return () => {
-      window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, syncLandingPrivacy)
-      window.removeEventListener("storage", syncLandingPrivacy)
-    }
-  }, [])
 
   useEffect(() => {
     const scroller = document.getElementById("admin-main-scroll")

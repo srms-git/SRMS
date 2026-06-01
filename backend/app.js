@@ -9,6 +9,8 @@ const archiveRoutes = require('./routes/archiveRoutes');
 const announcementRoutes = require('./routes/announcementRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const claimHistoryRoutes = require('./routes/claimHistoryRoutes');
+const landingSettingsRoutes = require('./routes/landingSettingsRoutes');
+const landingBatchRoutes = require('./routes/landingBatchRoutes');
 
 const app = express();
 
@@ -32,6 +34,8 @@ app.use('/api/archive', requireDatabase, archiveRoutes);
 app.use('/api/announcements', requireDatabase, announcementRoutes);
 app.use('/api/notifications', requireDatabase, notificationRoutes);
 app.use('/api/claim-history', requireDatabase, claimHistoryRoutes);
+app.use('/api/landing-settings', requireDatabase, landingSettingsRoutes);
+app.use('/api/landing-batches', requireDatabase, landingBatchRoutes);
 
 app.get('/api/health', (req, res) => {
     res.json({ ok: true });

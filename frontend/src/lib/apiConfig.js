@@ -9,6 +9,10 @@ export function getApiBaseUrl() {
   if (fromEnv) {
     return fromEnv.replace(/\/$/, "");
   }
+  // In dev, call the Node API directly (avoids Vite proxy + stale port-5000 processes).
+  if (import.meta.env.DEV) {
+    return "http://127.0.0.1:5000";
+  }
   return "/api";
 }
 
@@ -16,6 +20,9 @@ export function getApiBaseUrl() {
 export function getApiClientBaseUrl() {
   const raw = getApiBaseUrl();
   if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) {
+    return /\/api$/i.test(raw) ? raw : `${raw.replace(/\/$/, "")}/api`;
+  }
   return /\/api$/i.test(raw) ? raw : `${raw}/api`;
 }
 
