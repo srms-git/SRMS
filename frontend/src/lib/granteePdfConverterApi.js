@@ -13,6 +13,17 @@ export function getPdfConverterBaseUrl() {
   return "/api/pdf-converter"
 }
 
+function buildPdfConverterUnavailableMessage(base, status) {
+  const usingDefaultLocalProxy = base === "/api/pdf-converter"
+  if (status === 404 && usingDefaultLocalProxy) {
+    return "PDF converter service is not available in production. Set VITE_PDF_CONVERTER_URL in your Vercel project to the deployed Python converter API URL."
+  }
+  if (status === 404) {
+    return `PDF converter endpoint not found (404): ${base}/upload`
+  }
+  return `Server conversion failed (${status}).`
+}
+
 function normalizeBackendImportRow(rawRow) {
   const shaped = mapSheetRowToGranteeShape(rawRow)
   if (shaped.program && !shaped.enrolledProgram) {
@@ -34,7 +45,7 @@ export async function downloadGranteePdfAsXlsx(file) {
   })
 
   if (!res.ok) {
-    let message = `Server conversion failed (${res.status}).`
+    let message = buildPdfConverterUnavailableMessage(base, res.status)
     const ct = res.headers.get("content-type") ?? ""
     try {
       if (ct.includes("application/json")) {
