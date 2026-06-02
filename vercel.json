@@ -4,7 +4,11 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "frontend/dist",
   "routes": [
-    { "src": "/api/pdf-converter/upload", "dest": "/api/pdf-converter/upload.py" },
+    {
+      "src": "^/api/pdf-converter/upload/?$",
+      "methods": ["POST", "OPTIONS"],
+      "dest": "/api/pdf-converter/upload.py"
+    },
     { "src": "/api/(.*)", "dest": "/api/[...path].js" },
     { "handle": "filesystem" },
     { "src": "/(.*)", "dest": "/index.html" }
