@@ -21,6 +21,11 @@ export const DEFAULT_LANDING_PAGE_SETTINGS = {
     showEnrolledProgramInLandingBatchList: true,
     showYearLevelInLandingBatchList: true,
   },
+  contactInfo: {
+    emailAddress: "scholarships@msu.edu.ph",
+    contactNumber: "(042) 000-0000",
+    officeAddress: "Marinduque State University, Boac, Marinduque",
+  },
 }
 
 function mergeLandingPageSettings(parsed) {
@@ -28,6 +33,10 @@ function mergeLandingPageSettings(parsed) {
     privacy: {
       ...DEFAULT_LANDING_PAGE_SETTINGS.privacy,
       ...(parsed?.privacy || {}),
+    },
+    contactInfo: {
+      ...DEFAULT_LANDING_PAGE_SETTINGS.contactInfo,
+      ...(parsed?.contactInfo || {}),
     },
   }
 }
@@ -53,7 +62,17 @@ export async function loadLandingPageSettings() {
   const cached = readStoredLandingPageSettings()
   try {
     const response = await apiClient.get(LANDING_PAGE_SETTINGS_API_PATH)
-    const settings = mergeLandingPageSettings({ privacy: response.data?.privacy })
+    const serverSettings = response?.data ?? {}
+    const settings = mergeLandingPageSettings({
+      privacy: {
+        ...cached.privacy,
+        ...(serverSettings?.privacy || {}),
+      },
+      contactInfo: {
+        ...cached.contactInfo,
+        ...(serverSettings?.contactInfo || {}),
+      },
+    })
     return writeStoredLandingPageSettings(settings)
   } catch (error) {
     console.error("Failed to load landing page settings from server:", error)
@@ -63,7 +82,15 @@ export async function loadLandingPageSettings() {
 
 export async function persistLandingPageSettings(settings) {
   const merged = writeStoredLandingPageSettings(settings)
-  await apiClient.put(LANDING_PAGE_SETTINGS_API_PATH, { privacy: merged.privacy })
+  try {
+    await apiClient.put(LANDING_PAGE_SETTINGS_API_PATH, merged)
+  } catch (error) {
+    // Backward compatibility for servers that still accept only privacy payloads.
+    await apiClient.put(LANDING_PAGE_SETTINGS_API_PATH, { privacy: merged.privacy })
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Landing settings API accepted privacy-only payload.", error)
+    }
+  }
   return merged
 }
 
@@ -93,6 +120,30 @@ export function useLandingPagePrivacy() {
   }, [])
 
   return privacy
+}
+
+export function useLandingPageSettings() {
+  const [settings, setSettings] = useState(() => readStoredLandingPageSettings())
+
+  useEffect(() => {
+    let cancelled = false
+
+    loadLandingPageSettings().then((settings) => {
+      if (!cancelled) setSettings(settings)
+    })
+
+    const sync = () => setSettings(readStoredLandingPageSettings())
+    window.addEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, sync)
+    window.addEventListener("storage", sync)
+
+    return () => {
+      cancelled = true
+      window.removeEventListener(LANDING_PAGE_SETTINGS_CHANGED_EVENT, sync)
+      window.removeEventListener("storage", sync)
+    }
+  }, [])
+
+  return settings
 }
 
 export function maskBatchNumber(batchNo) {

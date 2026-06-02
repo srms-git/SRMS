@@ -11,5 +11,7 @@ router.get('/me', authenticate, authController.getMe);
 router.patch('/profile', authenticate, authController.updateProfile);
 router.post('/change-password/request-otp', authenticate, authController.requestPasswordChangeOtp);
 router.patch('/change-password', authenticate, authController.changePassword);
+router.patch('/cashier-privacy', authenticate, authController.updateCashierPrivacy);
+router.patch('/osgfa-privacy', authenticate, authController.updateOsgfaPrivacy);
 
 module.exports = router;

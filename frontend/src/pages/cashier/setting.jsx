@@ -92,6 +92,7 @@ export default function CashierSetting() {
     confirmPassword: "",
   })
   const [settings, setSettings] = useState(() => readStoredSettings())
+  const [privacySaving, setPrivacySaving] = useState(false)
   const [profileNotice, setProfileNotice] = useState({ type: "", message: "" })
   const [passwordNotice, setPasswordNotice] = useState({ type: "", message: "" })
   const [settingsNotice, setSettingsNotice] = useState({ type: "", message: "" })
@@ -111,6 +112,7 @@ export default function CashierSetting() {
         if (cancelled || !fetchedUser) return
         setUser(fetchedUser)
         setProfileForm(buildProfileForm(fetchedUser))
+        setSettings(readStoredSettings())
       } catch {
         if (cancelled) return
         const storedUser = readStoredUser()
@@ -158,6 +160,30 @@ export default function CashierSetting() {
       return next
     })
     setSettingsNotice({ type: "success", message: noticeMessage })
+  }
+
+  const savePrivacySettings = async (updater, noticeMessage = "Privacy preferences saved.") => {
+    const previous = settings
+    const next = typeof updater === "function" ? updater(previous) : updater
+
+    setSettings(next)
+    writeStoredSettings(next)
+    setPrivacySaving(true)
+    setSettingsNotice({ type: "", message: "" })
+
+    try {
+      await authService.updateCashierPrivacy(next.privacy)
+      setSettingsNotice({ type: "success", message: noticeMessage })
+    } catch (error) {
+      setSettings(previous)
+      writeStoredSettings(previous)
+      setSettingsNotice({
+        type: "error",
+        message: error.message || "Unable to save privacy preferences.",
+      })
+    } finally {
+      setPrivacySaving(false)
+    }
   }
 
   const handleSaveProfile = async (event) => {
@@ -800,11 +826,17 @@ export default function CashierSetting() {
                 </div>
                 <p className="text-sm text-gray-600">
                   Control how grantee identifiers and summary counts appear across cashier grantee lists, record cards,
-                  claim history, and dashboard stat panels. Changes apply immediately on this device.
+                  claim history, and dashboard stat panels. Preferences are saved to your account and sync across devices.
                 </p>
 
                 {settingsNotice.message && (
-                  <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                  <div
+                    className={`rounded-md border px-3 py-2 text-sm ${
+                      settingsNotice.type === "error"
+                        ? "border-red-200 bg-red-50 text-red-700"
+                        : "border-green-200 bg-green-50 text-green-700"
+                    }`}
+                  >
                     {settingsNotice.message}
                   </div>
                 )}
@@ -814,15 +846,13 @@ export default function CashierSetting() {
                     <span>Mask student ID in list cards</span>
                     <input
                       type="checkbox"
+                      disabled={privacySaving}
                       checked={settings.privacy.maskStudentIdInLists}
                       onChange={(event) =>
-                        saveSettings(
-                          (prev) => ({
-                            ...prev,
-                            privacy: { ...prev.privacy, maskStudentIdInLists: event.target.checked },
-                          }),
-                          "Privacy preferences saved.",
-                        )
+                        savePrivacySettings((prev) => ({
+                          ...prev,
+                          privacy: { ...prev.privacy, maskStudentIdInLists: event.target.checked },
+                        }))
                       }
                     />
                   </label>
@@ -830,18 +860,16 @@ export default function CashierSetting() {
                     <span>Hide sensitive statistics on shared screens</span>
                     <input
                       type="checkbox"
+                      disabled={privacySaving}
                       checked={settings.privacy.hideSensitiveStatsFromSharedScreens}
                       onChange={(event) =>
-                        saveSettings(
-                          (prev) => ({
-                            ...prev,
-                            privacy: {
-                              ...prev.privacy,
-                              hideSensitiveStatsFromSharedScreens: event.target.checked,
-                            },
-                          }),
-                          "Privacy preferences saved.",
-                        )
+                        savePrivacySettings((prev) => ({
+                          ...prev,
+                          privacy: {
+                            ...prev.privacy,
+                            hideSensitiveStatsFromSharedScreens: event.target.checked,
+                          },
+                        }))
                       }
                     />
                   </label>

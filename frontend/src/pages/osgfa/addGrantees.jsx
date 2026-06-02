@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import {
   ArrowRight,
+  CalendarDays,
   ChevronDown,
   CircleCheck,
   CircleDashed,
@@ -8,9 +9,11 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  GraduationCap,
   Hash,
   Info,
   Layers,
+  Loader2,
   TableProperties,
   UploadCloud,
 } from "lucide-react"
@@ -50,6 +53,27 @@ function formatCardDate(value) {
 
 /** Same page size as `landingpageBatch` grantee table. */
 const PREVIEW_PAGE_SIZE = 100
+
+const fieldLabelClass = "text-xs font-semibold text-slate-700 dark:text-slate-200"
+const selectFieldClass =
+  "h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm text-slate-800 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/25 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
+const inputFieldClass =
+  "h-11 rounded-xl border-slate-200 bg-white pl-10 pr-3 text-sm shadow-sm focus-visible:ring-[#081F5C]/25 dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-100"
+
+const osgfaCardClass =
+  "relative min-w-0 overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm ring-1 ring-slate-900/5 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/8"
+const osgfaCardGlowClass =
+  "pointer-events-none absolute -right-12 -top-12 h-32 w-32 rounded-full bg-[#081F5C]/8 blur-2xl dark:bg-[#1447a6]/12"
+const osgfaIconWrapClass =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#081F5C]/12 text-[#081F5C] shadow-inner ring-1 ring-[#081F5C]/15 dark:bg-[#081F5C]/25 dark:text-sky-300 dark:ring-white/10"
+const osgfaEyebrowClass = "text-[11px] font-bold uppercase tracking-[0.12em] text-[#081F5C] dark:text-sky-300"
+const osgfaSubPanelClass =
+  "rounded-xl border border-slate-200/80 bg-slate-50/70 dark:border-white/10 dark:bg-slate-950/30"
+const osgfaUploadZoneClass =
+  "group flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-3 py-3 transition-colors hover:border-[#081F5C]/45 hover:bg-slate-100/80 dark:border-white/15 dark:bg-slate-950/30 dark:hover:border-[#081F5C]/40 dark:hover:bg-slate-900/50"
+const osgfaPrimaryBtnClass = "bg-[#081F5C] hover:bg-[#0b2d83] dark:bg-[#081F5C] dark:hover:bg-[#0b2d83]"
+const osgfaStepBadgeClass =
+  "flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#04133d] via-[#081F5C] to-[#1447a6] text-[11px] font-bold text-white shadow-sm"
 
 function newRowId() {
   return globalThis.crypto?.randomUUID?.() ?? `r-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
@@ -97,6 +121,14 @@ function AlertModal({ open, onOpenChange, variant = "info", title, message }) {
         title: title || "Something went wrong",
       }
     }
+    if (variant === "warning") {
+      return {
+        Icon: CircleAlert,
+        iconWrap: "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/50 dark:text-amber-200 dark:ring-amber-500/30",
+        topBar: "from-amber-500 via-amber-600 to-orange-500",
+        title: title || "Action required",
+      }
+    }
     return {
       Icon: Info,
       iconWrap: "bg-[#081F5C]/8 text-[#081F5C] ring-[#081F5C]/15",
@@ -132,6 +164,74 @@ function AlertModal({ open, onOpenChange, variant = "info", title, message }) {
   )
 }
 
+function FormNoticeBanner({ variant = "warning", title, message, onDismiss }) {
+  const meta = useMemo(() => {
+    if (variant === "success") {
+      return {
+        Icon: CircleCheck,
+        iconWrap: "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-500/30",
+        box: "border-emerald-300/80 bg-emerald-50 ring-emerald-500/15 dark:border-emerald-500/35 dark:bg-emerald-950/40",
+        titleClass: "text-emerald-950 dark:text-emerald-100",
+        bodyClass: "text-emerald-900 dark:text-emerald-200/90",
+      }
+    }
+    if (variant === "error") {
+      return {
+        Icon: CircleAlert,
+        iconWrap: "bg-red-50 text-red-700 ring-red-200 dark:bg-red-950/50 dark:text-red-300 dark:ring-red-500/30",
+        box: "border-red-300/80 bg-red-50 ring-red-500/15 dark:border-red-500/35 dark:bg-red-950/40",
+        titleClass: "text-red-950 dark:text-red-100",
+        bodyClass: "text-red-900 dark:text-red-200/90",
+      }
+    }
+    if (variant === "info") {
+      return {
+        Icon: Info,
+        iconWrap: "bg-[#081F5C]/8 text-[#081F5C] ring-[#081F5C]/15 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-500/30",
+        box: "border-[#081F5C]/20 bg-slate-50 ring-[#081F5C]/10 dark:border-sky-500/25 dark:bg-slate-950/50",
+        titleClass: "text-slate-900 dark:text-white",
+        bodyClass: "text-slate-700 dark:text-slate-300",
+      }
+    }
+    return {
+      Icon: CircleAlert,
+      iconWrap: "bg-amber-50 text-amber-800 ring-amber-200 dark:bg-amber-950/50 dark:text-amber-200 dark:ring-amber-500/30",
+      box: "border-amber-300/90 bg-amber-50 ring-amber-500/20 dark:border-amber-500/40 dark:bg-amber-950/45",
+      titleClass: "text-amber-950 dark:text-amber-50",
+      bodyClass: "text-amber-900 dark:text-amber-100/90",
+    }
+  }, [variant])
+
+  const Icon = meta.Icon
+
+  return (
+    <div
+      role="alert"
+      className={`flex items-start gap-3 rounded-xl border px-4 py-3 shadow-sm ring-1 ${meta.box}`}
+    >
+      <span
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ${meta.iconWrap}`}
+        aria-hidden
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1 pt-0.5">
+        {title ? <p className={`text-sm font-semibold ${meta.titleClass}`}>{title}</p> : null}
+        <p className={`text-sm leading-relaxed ${title ? "mt-0.5" : ""} ${meta.bodyClass}`}>{message}</p>
+      </div>
+      {onDismiss ? (
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold text-slate-600 transition hover:bg-black/5 dark:text-slate-300 dark:hover:bg-white/10"
+        >
+          Dismiss
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
   return (
     <div
@@ -158,39 +258,244 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
   )
 }
 
-function UploadField({ id, label, hint, accept, icon: Icon, file, onChange }) {
+function SectionCardHeader({ eyebrow, title, description, icon: Icon, badge }) {
+  return (
+    <div className="flex items-start gap-3 border-b border-slate-100 pb-4 dark:border-white/10">
+      <div className={osgfaIconWrapClass} aria-hidden>
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className={osgfaEyebrowClass}>{eyebrow}</p>
+          {badge ? badge : null}
+        </div>
+        <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+        {description ? (
+          <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function UploadField({ id, label, hint, accept, icon: Icon, file, onChange, compact = false }) {
   return (
     <div className="space-y-2">
-      <label htmlFor={id} className="text-sm font-semibold text-slate-800">
+      <label htmlFor={id} className={fieldLabelClass}>
         {label}
       </label>
 
-      <label
-        htmlFor={id}
-        className="group flex min-h-[118px] cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 px-3 py-3 transition-colors hover:border-[#081F5C]/45 hover:bg-slate-100/80"
-      >
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#081F5C]/10 text-[#081F5C]">
+      <label htmlFor={id} className={`${osgfaUploadZoneClass} ${compact ? "min-h-0" : "min-h-[108px]"}`}>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#081F5C]/10 text-[#081F5C] dark:text-sky-300">
           <Icon className="h-5 w-5" aria-hidden />
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-            <UploadCloud className="h-4 w-4" aria-hidden />
+          <p className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            <UploadCloud className="h-4 w-4 text-[#081F5C] dark:text-sky-300" aria-hidden />
             Click to upload file
           </p>
-          <p className="mt-1 text-xs text-slate-500">{hint}</p>
-          <p className="mt-3 truncate text-xs font-medium text-slate-700">
+          {hint ? <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p> : null}
+          <p className={`truncate text-xs font-medium text-slate-700 dark:text-slate-300 ${hint ? "mt-2" : "mt-1"}`}>
             {file ? file.name : "No file selected"}
           </p>
         </div>
 
-        <span className="rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+        <span className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm dark:border-white/15 dark:bg-slate-900 dark:text-slate-200">
           Browse
         </span>
       </label>
 
       <input id={id} type="file" accept={accept} className="hidden" onChange={onChange} />
     </div>
+  )
+}
+
+const CONVERTER_STEPS = [
+  { step: "1", title: "Upload PDF", detail: "Grantee list from CHED or source PDF" },
+  { step: "2", title: "Convert & download", detail: "Get a formatted .xlsx file" },
+  { step: "3", title: "Import below", detail: "Use the preview section to add grantees" },
+]
+
+function OptionalBadge() {
+  return (
+    <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:bg-slate-950/50 dark:text-slate-300">
+      Optional
+    </span>
+  )
+}
+
+function PdfToExcelConverterPanel({ file, loading, error, onFileChange, onConvert }) {
+  return (
+    <section
+      aria-label="PDF to Excel converter"
+      aria-busy={loading}
+      className={`${osgfaCardClass} flex h-full min-h-0 flex-col p-4`}
+    >
+      <div className={osgfaCardGlowClass} aria-hidden />
+
+      <div className="relative flex min-h-0 flex-1 flex-col space-y-4">
+        <SectionCardHeader
+          eyebrow="Step 1 · Prepare file"
+          title="PDF to Excel converter"
+          description="For PDF lists only — converts to .xlsx for Step 3. Does not save grantees."
+          icon={FileText}
+          badge={
+            <>
+              <OptionalBadge />
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200/80 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-white/10 dark:bg-slate-950/50 dark:text-slate-300">
+                <FileText className="h-3 w-3 text-[#081F5C] dark:text-sky-300" aria-hidden />
+                PDF
+                <ArrowRight className="h-3 w-3 text-slate-400" aria-hidden />
+                <FileSpreadsheet className="h-3 w-3 text-emerald-600 dark:text-emerald-400" aria-hidden />
+                Excel
+              </span>
+            </>
+          }
+        />
+
+        <div className="grid min-h-0 flex-1 min-w-0 gap-3 md:grid-cols-[minmax(0,168px)_minmax(0,1fr)] md:items-stretch">
+          <ol className="flex flex-col gap-1.5 self-start">
+            {CONVERTER_STEPS.map((item) => (
+              <li key={item.step} className={`flex gap-2 p-2.5 ${osgfaSubPanelClass}`}>
+                <span className={osgfaStepBadgeClass} aria-hidden>
+                  {item.step}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">{item.title}</p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{item.detail}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+
+          <div className={`relative flex min-h-0 flex-1 flex-col space-y-2.5 p-3 ${osgfaSubPanelClass}`}>
+            {loading ? (
+              <div
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/90 px-4 dark:bg-slate-950/85"
+                role="status"
+                aria-live="polite"
+              >
+                <Loader2 className="h-8 w-8 animate-spin text-[#081F5C] dark:text-sky-300" aria-hidden />
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Converting to Excel…</p>
+              </div>
+            ) : null}
+
+            <label htmlFor="converterPdf" className={fieldLabelClass}>
+              Grantee list PDF
+            </label>
+
+            <label
+              htmlFor="converterPdf"
+              className={
+                file
+                  ? `group flex min-h-[108px] flex-1 cursor-pointer items-center gap-3 rounded-xl border-2 border-dashed border-emerald-500/70 bg-emerald-50/90 px-3 py-3 ring-2 ring-emerald-500/20 transition-colors dark:border-emerald-400/50 dark:bg-emerald-950/35 dark:ring-emerald-400/15 ${loading ? "pointer-events-none opacity-50" : ""}`
+                  : `${osgfaUploadZoneClass} min-h-[108px] flex-1 ${loading ? "pointer-events-none opacity-50" : ""}`
+              }
+            >
+              <div
+                className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${
+                  file
+                    ? "bg-emerald-600 text-white shadow-sm dark:bg-emerald-500"
+                    : "bg-[#081F5C]/10 text-[#081F5C] dark:text-sky-300"
+                }`}
+              >
+                {file ? <FileText className="h-5 w-5" aria-hidden /> : <UploadCloud className="h-5 w-5" aria-hidden />}
+              </div>
+              <div className="min-w-0 flex-1">
+                {file ? (
+                  <>
+                    <p className="text-xs font-bold uppercase tracking-wide text-emerald-800 dark:text-emerald-300">
+                      PDF attached
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold text-slate-900 dark:text-white" title={file.name}>
+                      {file.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-emerald-700/90 dark:text-emerald-300/80">
+                      Ready to convert — click Browse to replace
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Choose PDF file</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">No file selected</p>
+                  </>
+                )}
+              </div>
+              <span
+                className={`shrink-0 rounded-md border px-2.5 py-1 text-xs font-semibold shadow-sm ${
+                  file
+                    ? "border-emerald-300 bg-white text-emerald-900 dark:border-emerald-500/40 dark:bg-slate-900 dark:text-emerald-200"
+                    : "border-slate-300 bg-white text-slate-700 dark:border-white/15 dark:bg-slate-900 dark:text-slate-200"
+                }`}
+              >
+                {file ? "Replace" : "Browse"}
+              </span>
+            </label>
+            <input
+              id="converterPdf"
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              disabled={loading}
+              onChange={onFileChange}
+            />
+
+            <Button
+              type="button"
+              className={`w-full gap-2 ${osgfaPrimaryBtnClass}`}
+              disabled={!file || loading}
+              onClick={onConvert}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+              ) : (
+                <Download className="h-4 w-4 shrink-0" aria-hidden />
+              )}
+              {loading ? "Converting…" : "Convert & download .xlsx"}
+            </Button>
+
+            {error ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-950/40 dark:text-red-200">
+                {error}
+              </p>
+            ) : (
+              <p className="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                The downloaded file works with the Excel preview uploader in Step 3.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function LatestBatchesAside({ loading, batches, onBatchClick }) {
+  return (
+    <aside className={`${osgfaCardClass} flex h-full min-h-0 flex-col p-4`}>
+      <div className={osgfaCardGlowClass} aria-hidden />
+      <div className="relative mb-3 shrink-0 border-b border-slate-100 pb-3 dark:border-white/10">
+        {/* <p className={osgfaEyebrowClass}>Recent batches</p> */}
+        <h3 className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">Latest added batches</h3>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Click a batch to open its details.</p>
+      </div>
+      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+        {loading ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
+            Loading batches…
+          </p>
+        ) : batches.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
+            No grantee batches saved yet. Add a batch to see it here.
+          </p>
+        ) : (
+          batches.map((row) => (
+            <LatestBatchCard key={`${row.batchNo}-${row.program}`} row={row} onClick={() => onBatchClick(row)} />
+          ))
+        )}
+      </div>
+    </aside>
   )
 }
 
@@ -252,7 +557,7 @@ export default function AddGrantees() {
   const [converterLoading, setConverterLoading] = useState(false)
   const [converterError, setConverterError] = useState("")
   const [previewExcelFile, setPreviewExcelFile] = useState(null)
-  const [notice, setNotice] = useState("")
+  const [formNotice, setFormNotice] = useState(null)
   const [parsedPreviewRows, setParsedPreviewRows] = useState([])
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState("")
@@ -462,7 +767,11 @@ export default function AddGrantees() {
 
   // UPDATED: Directly maps raw Excel fullName straight to the simplified MongoDB schema
   const finalizeSubmit = async () => {
-    setNotice("Saving batch records to MongoDB database...")
+    setFormNotice({
+      variant: "info",
+      title: "Saving grantees",
+      message: "Saving batch records to the database…",
+    })
     
     try {
       const mappedRows = savedGranteeRows.map(row => ({
@@ -483,7 +792,7 @@ export default function AddGrantees() {
 
       await reloadGranteeRecords()
 
-      setNotice(`Successfully saved ${data.count ?? mappedRows.length} grantee(s) to MongoDB.`)
+      setFormNotice(null)
       showAlert("success", `Successfully saved ${data.count ?? mappedRows.length} grantee(s) to MongoDB.`, "Grantees added")
       setProgram("")
       setBatchNo("")
@@ -512,7 +821,7 @@ export default function AddGrantees() {
         friendlyTitle = "Duplicate grantee data"
       }
 
-      setNotice(friendlyMsg)
+      setFormNotice({ variant: "error", title: friendlyTitle, message: friendlyMsg })
       showAlert("error", friendlyMsg, friendlyTitle)
     }
   }
@@ -529,18 +838,23 @@ export default function AddGrantees() {
       !String(toYear).trim() ||
       !previewExcelFile
     ) {
-      setNotice(
+      const title = "Missing required fields"
+      const message =
         "Please complete Program, Batch Number, Academic Year, and upload an Excel file (.xlsx) in the Preview section."
-      )
+      setFormNotice({ variant: "warning", title, message })
+      showAlert("warning", message, title)
       return
     }
 
     if (!hasRows) {
-      setNotice("No grantee rows loaded from the spreadsheet. Check column headers and try again.")
+      const title = "No grantee rows found"
+      const message = "No grantee rows loaded from the spreadsheet. Check column headers and try again."
+      setFormNotice({ variant: "warning", title, message })
+      showAlert("warning", message, title)
       return
     }
 
-    setNotice("")
+    setFormNotice(null)
     setConfirmOpen(true)
   }
 
@@ -554,9 +868,16 @@ export default function AddGrantees() {
         message={alertState.message}
       />
       {granteesLoadError ? (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          {granteesLoadError}
-        </p>
+        <FormNoticeBanner variant="warning" title="Could not load grantee records" message={granteesLoadError} />
+      ) : null}
+
+      {formNotice ? (
+        <FormNoticeBanner
+          variant={formNotice.variant}
+          title={formNotice.title}
+          message={formNotice.message}
+          onDismiss={() => setFormNotice(null)}
+        />
       ) : null}
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
@@ -594,87 +915,58 @@ export default function AddGrantees() {
         />
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] xl:items-start">
-        <form id="add-grantees-form" className="min-w-0 space-y-4 xl:mt-1" onSubmit={handleSubmit}>
-          <section
-            aria-label="PDF to Excel converter"
-            className="min-w-0 space-y-4 rounded-2xl border border-slate-200/90 bg-linear-to-br from-slate-50/95 via-white to-[#081F5C]/5 p-5 shadow-sm ring-1 ring-slate-900/5 dark:border-white/10 dark:from-slate-900/50 dark:via-slate-900/30 dark:to-[#081F5C]/15 dark:ring-white/8"
-          >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <div
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#081F5C]/12 text-[#081F5C] shadow-inner ring-1 ring-[#081F5C]/15 dark:bg-[#081F5C]/25 dark:text-sky-300 dark:ring-white/10"
-                  aria-hidden
-                >
-                  <FileText className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#081F5C] dark:text-sky-300">
-                    PDF to Excel
-                  </p>
-                  <h2 className="text-base font-semibold tracking-tight text-slate-900 dark:text-white">PDF to Excel converter</h2>
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm dark:border-white/10 dark:bg-slate-950/40 dark:text-slate-200">
-                <span className="inline-flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
-                  <FileText className="h-4 w-4 shrink-0 text-[#081F5C]" aria-hidden />
-                  PDF
-                </span>
-                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />
-                <span className="inline-flex items-center gap-1.5 text-slate-800 dark:text-slate-100">
-                  <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                  Excel
-                </span>
-              </div>
-            </div>
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:items-stretch">
+        <PdfToExcelConverterPanel
+          file={converterPdfFile}
+          loading={converterLoading}
+          error={converterError}
+          onFileChange={(event) => {
+            setConverterError("")
+            setConverterPdfFile(event.target.files?.[0] ?? null)
+          }}
+          onConvert={handleConvertAndDownload}
+        />
 
-            <UploadField
-              id="converterPdf"
-              label="Grantee list PDF"
-              hint=""
-              accept=".pdf,application/pdf"
-              icon={FileText}
-              file={converterPdfFile}
-              onChange={(event) => {
-                setConverterError("")
-                setConverterPdfFile(event.target.files?.[0] ?? null)
-              }}
-            />
+        <LatestBatchesAside
+          loading={granteesLoading}
+          batches={latestBatchGrantees}
+          onBatchClick={(row) => {
+            const params = new URLSearchParams()
+            params.set("batchNo", String(row?.batchNo ?? ""))
+            if (row?.program) params.set("program", String(row.program))
+            params.set("from", "add-grantees")
+            navigate(`/osgfa/batch-info?${params.toString()}`)
+          }}
+        />
+      </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <Button
-                type="button"
-                variant="outline"
-                className="gap-2 border-slate-200 sm:w-auto"
-                disabled={!converterPdfFile || converterLoading}
-                onClick={handleConvertAndDownload}
-              >
-                <Download className="h-4 w-4 shrink-0" aria-hidden />
-                {converterLoading ? "Converting…" : "Convert & download"}
-              </Button>
-              {converterError ? (
-                <p className="text-sm text-red-700 dark:text-red-400">{converterError}</p>
-              ) : (
-                <p className="text-xs text-slate-500 dark:text-slate-400">Downloads as .xlsx (same format as converter output).</p>
-              )}
-            </div>
-          </section>
+      <form id="add-grantees-form" className="w-full min-w-0" onSubmit={handleSubmit}>
+        <section
+          aria-label="Add grantees batch details"
+          className="w-full space-y-6 border-b border-slate-200/80 py-8 dark:border-white/10"
+        >
+          <SectionCardHeader
+            eyebrow="Step 2 · Batch details"
+            title="Add Grantees"
+            description="Choose the program, batch number, and academic year for this import."
+            icon={GraduationCap}
+          />
 
-          <div className="space-y-1.5">
-            <h3 className="text-base font-semibold text-slate-900 md:text-lg">Add Grantees</h3>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="space-y-6">
+          <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label htmlFor="program" className="text-xs font-semibold text-slate-700">
+              <label htmlFor="program" className={fieldLabelClass}>
                 Program
               </label>
               <div className="relative">
                 <select
                   id="program"
                   value={program}
-                  onChange={(event) => setProgram(event.target.value)}
-                  className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm text-slate-800 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/25"
+                  onChange={(event) => {
+                    setFormNotice(null)
+                    setProgram(event.target.value)
+                  }}
+                  className={selectFieldClass}
                 >
                   <option value="" disabled>
                     Select program
@@ -687,7 +979,7 @@ export default function AddGrantees() {
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="batchNo" className="text-xs font-semibold text-slate-700">
+              <label htmlFor="batchNo" className={fieldLabelClass}>
                 Batch Number
               </label>
               <div className="relative">
@@ -697,27 +989,41 @@ export default function AddGrantees() {
                   type="text"
                   placeholder="Enter batch number"
                   value={batchNo}
-                  onChange={(event) => setBatchNo(event.target.value)}
-                  className="h-11 rounded-xl border-slate-200 bg-white pl-10 pr-3 text-sm shadow-sm focus-visible:ring-[#081F5C]/25"
+                  onChange={(event) => {
+                    setFormNotice(null)
+                    setBatchNo(event.target.value)
+                  }}
+                  className={inputFieldClass}
                 />
               </div>
             </div>
+          </div>
 
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-semibold text-slate-700">Academic Year</label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 shrink-0 text-[#081F5C] dark:text-sky-300" aria-hidden />
+              <span className={fieldLabelClass}>Academic Year</span>
+            </div>
+
+            <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <label htmlFor="fromYear" className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  From
+                </label>
                 <div className="relative">
                   <select
+                    id="fromYear"
                     value={fromYear}
                     onChange={(event) => {
+                      setFormNotice(null)
                       const nextFrom = event.target.value
                       setFromYear(nextFrom)
                       setToYear(nextFrom ? String(Number(nextFrom) + 1) : "")
                     }}
-                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm text-slate-800 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/25"
+                    className={selectFieldClass}
                   >
                     <option value="" disabled>
-                      From
+                      Select start year
                     </option>
                     {academicYearOptions().map((year) => (
                       <option key={year} value={year}>
@@ -727,14 +1033,24 @@ export default function AddGrantees() {
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label htmlFor="toYear" className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  To
+                </label>
                 <div className="relative">
                   <select
+                    id="toYear"
                     value={toYear}
-                    onChange={(event) => setToYear(event.target.value)}
-                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm text-slate-800 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/25"
+                    onChange={(event) => {
+                      setFormNotice(null)
+                      setToYear(event.target.value)
+                    }}
+                    className={selectFieldClass}
                   >
                     <option value="" disabled>
-                      To
+                      Select end year
                     </option>
                     {academicYearOptions().map((year) => (
                       <option key={year} value={year}>
@@ -744,75 +1060,51 @@ export default function AddGrantees() {
                   </select>
                   <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
                 </div>
-                <div className="flex h-11 items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900">
-                  <span className="text-xs font-medium text-slate-500">Preview</span>
-                  <span className="tabular-nums">{fromYear && toYear ? `${fromYear}-${toYear}` : "—"}</span>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Preview</span>
+                <div className="flex h-11 items-center justify-between rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">AY</span>
+                  <span className="font-bold tabular-nums text-[#081F5C] dark:text-sky-300">
+                    {fromYear && toYear ? `${fromYear}–${toYear}` : "—"}
+                  </span>
                 </div>
               </div>
             </div>
           </div>
-
-          {notice ? <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm text-slate-700">{notice}</p> : null}
-
-        </form>
-
-        <div className="flex min-w-0 h-[400px] flex-col overflow-y-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-900/3 xl:min-w-[340px]">
-          <h3 className="mb-3 text-sm font-semibold text-slate-900">Latest added Batch Grantees</h3>
-          <div className="grid h-full min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1">
-            {granteesLoading ? (
-              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600">
-                Loading batches…
-              </p>
-            ) : latestBatchGrantees.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600">
-                No grantee batches saved yet. Add a batch to see it here.
-              </p>
-            ) : (
-              latestBatchGrantees.map((row) => (
-                <LatestBatchCard
-                  key={`${row.batchNo}-${row.program}`}
-                  row={row}
-                  onClick={() => {
-                    const params = new URLSearchParams()
-                    params.set("batchNo", String(row?.batchNo ?? ""))
-                    if (row?.program) params.set("program", String(row.program))
-                    params.set("from", "add-grantees")
-                    navigate(`/osgfa/batch-info?${params.toString()}`)
-                  }}
-                />
-              ))
-            )}
           </div>
-        </div>
-      </div>
 
-      <section
-        aria-label="Grantee preview from spreadsheet"
-        className="min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6"
-      >
-        <div className="min-w-0 space-y-4 border-b border-slate-100 pb-4 dark:border-white/10">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Preview — rows to be added</h2>
-          </div>
+        </section>
+      </form>
+
+      <section aria-label="Grantee preview from spreadsheet" className={osgfaCardClass}>
+        <div className={osgfaCardGlowClass} aria-hidden />
+        <div className="relative space-y-5">
+          <SectionCardHeader
+            eyebrow="Step 3 · Import & preview"
+            title="Upload Excel & review rows"
+            description="Upload the grantee spreadsheet (from Step 1 or your own file), review the table, then save when batch details are complete."
+            icon={FileSpreadsheet}
+          />
 
           <UploadField
             id="previewGranteesXlsx"
-            label="Upload Excel for preview"
-            hint=""
+            label="Grantee list Excel (.xlsx)"
+            hint="Accepted: .xlsx or .xls"
             accept=".xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             icon={FileSpreadsheet}
             file={previewExcelFile}
             onChange={(event) => {
-              setNotice("")
+              setFormNotice(null)
               setPreviewExcelFile(event.target.files?.[0] ?? null)
             }}
           />
-        </div>
 
-        <div className="min-w-0 space-y-3 pt-4">
+        <div className="min-w-0 space-y-3">
           {!previewExcelFile ? (
             <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
-              Choose an Excel file to load rows into the table below (for example after using Convert &amp; download).
+              Choose an Excel file to load rows into the table below (for example after using the PDF converter above).
             </p>
           ) : previewLoading ? (
             <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
@@ -900,11 +1192,25 @@ export default function AddGrantees() {
             </p>
           )}
 
-          <div className="flex justify-end pt-2">
-            <Button form="add-grantees-form" type="submit" className="bg-[#081F5C] hover:bg-[#0b2d83]">
+          <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+            <div className="min-w-0 flex-1 space-y-3">
+              {formNotice && (formNotice.variant === "warning" || formNotice.variant === "error") ? (
+                <FormNoticeBanner
+                  variant={formNotice.variant}
+                  title={formNotice.title}
+                  message={formNotice.message}
+                  onDismiss={() => setFormNotice(null)}
+                />
+              ) : null}
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Saves grantees using the batch details from Step 2.
+              </p>
+            </div>
+            <Button form="add-grantees-form" type="submit" className={`shrink-0 ${osgfaPrimaryBtnClass}`}>
               Save Grantees
             </Button>
           </div>
+        </div>
         </div>
       </section>
 
@@ -935,7 +1241,11 @@ export default function AddGrantees() {
               variant="outline"
               onClick={() => {
                 setConfirmOpen(false)
-                setNotice("Submission cancelled.")
+                setFormNotice({
+                  variant: "info",
+                  title: "Submission cancelled",
+                  message: "No grantees were saved.",
+                })
               }}
             >
               Cancel

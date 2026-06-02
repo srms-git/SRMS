@@ -48,6 +48,26 @@ const UserSchema = new mongoose.Schema({
         type: Date,
         select: false,
     },
+    cashierPrivacy: {
+        maskStudentIdInLists: {
+            type: Boolean,
+            default: false,
+        },
+        hideSensitiveStatsFromSharedScreens: {
+            type: Boolean,
+            default: true,
+        },
+    },
+    osgfaPrivacy: {
+        maskStudentIdInLists: {
+            type: Boolean,
+            default: false,
+        },
+        hideSensitiveStatsFromSharedScreens: {
+            type: Boolean,
+            default: true,
+        },
+    },
 }, {
     timestamps: true,
     collection: 'users',

@@ -1,5 +1,7 @@
 import axios from 'axios';
 import apiClient from '@/lib/apiClient';
+import { applyServerPrivacy as applyCashierServerPrivacy } from '@/lib/cashierSettings';
+import { applyServerPrivacy as applyOsgfaServerPrivacy } from '@/lib/osgfaSettings';
 import { getApiClientBaseUrl, getApiSetupHint, isApiConfigured } from '@/lib/apiConfig';
 
 const API_URL = getApiClientBaseUrl() ? `${getApiClientBaseUrl()}/auth` : '';
@@ -49,6 +51,12 @@ const authService = {
                 localStorage.setItem('token', response.data.token);
                 // Saving user details allows the UI to display names/roles immediately
                 localStorage.setItem('user', JSON.stringify(response.data.user));
+                if (response.data.user?.cashierPrivacy) {
+                    applyCashierServerPrivacy(response.data.user.cashierPrivacy);
+                }
+                if (response.data.user?.osgfaPrivacy) {
+                    applyOsgfaServerPrivacy(response.data.user.osgfaPrivacy);
+                }
             }
             
             return response.data;
@@ -101,11 +109,49 @@ const authService = {
             const response = await apiClient.get('/auth/me');
             if (response.data?.user) {
                 localStorage.setItem('user', JSON.stringify(response.data.user));
+                if (response.data.user.cashierPrivacy) {
+                    applyCashierServerPrivacy(response.data.user.cashierPrivacy);
+                }
+                if (response.data.user.osgfaPrivacy) {
+                    applyOsgfaServerPrivacy(response.data.user.osgfaPrivacy);
+                }
                 notifyUserUpdated();
             }
             return response.data?.user ?? null;
         } catch (error) {
             throw toRequestError(error, 'Unable to load profile.');
+        }
+    },
+
+    updateCashierPrivacy: async (privacy) => {
+        try {
+            const response = await apiClient.patch('/auth/cashier-privacy', { privacy });
+            if (response.data?.user) {
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+                notifyUserUpdated();
+            }
+            if (response.data?.privacy) {
+                applyCashierServerPrivacy(response.data.privacy);
+            }
+            return response.data;
+        } catch (error) {
+            throw toRequestError(error, 'Unable to save privacy preferences.');
+        }
+    },
+
+    updateOsgfaPrivacy: async (privacy) => {
+        try {
+            const response = await apiClient.patch('/auth/osgfa-privacy', { privacy });
+            if (response.data?.user) {
+                localStorage.setItem('user', JSON.stringify(response.data.user));
+                notifyUserUpdated();
+            }
+            if (response.data?.privacy) {
+                applyOsgfaServerPrivacy(response.data.privacy);
+            }
+            return response.data;
+        } catch (error) {
+            throw toRequestError(error, 'Unable to save privacy preferences.');
         }
     },
 

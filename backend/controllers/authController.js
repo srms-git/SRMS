@@ -26,6 +26,29 @@ function buildToken(user) {
     );
 }
 
+const DEFAULT_PRIVACY_PREFS = {
+    maskStudentIdInLists: false,
+    hideSensitiveStatsFromSharedScreens: true,
+};
+
+function formatPrivacyPrefs(stored = {}) {
+    return {
+        maskStudentIdInLists:
+            stored.maskStudentIdInLists ?? DEFAULT_PRIVACY_PREFS.maskStudentIdInLists,
+        hideSensitiveStatsFromSharedScreens:
+            stored.hideSensitiveStatsFromSharedScreens
+            ?? DEFAULT_PRIVACY_PREFS.hideSensitiveStatsFromSharedScreens,
+    };
+}
+
+function formatCashierPrivacy(user) {
+    return formatPrivacyPrefs(user?.cashierPrivacy);
+}
+
+function formatOsgfaPrivacy(user) {
+    return formatPrivacyPrefs(user?.osgfaPrivacy);
+}
+
 function formatUser(user) {
     const firstName = String(user.firstName ?? '').trim();
     const lastName = String(user.lastName ?? '').trim();
@@ -38,6 +61,8 @@ function formatUser(user) {
         fullName,
         email: user.email,
         role: user.role,
+        cashierPrivacy: formatCashierPrivacy(user),
+        osgfaPrivacy: formatOsgfaPrivacy(user),
     };
 }
 
@@ -299,6 +324,88 @@ exports.changePassword = async (req, res) => {
     } catch (error) {
         console.error('changePassword error:', error);
         return res.status(500).json({ message: error.message || 'Password change failed.' });
+    }
+};
+
+exports.updateCashierPrivacy = async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user || user.isActive === false) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const incoming = req.body?.privacy ?? req.body ?? {};
+        const maskStudentIdInLists = incoming.maskStudentIdInLists;
+        const hideSensitiveStatsFromSharedScreens = incoming.hideSensitiveStatsFromSharedScreens;
+
+        if (typeof maskStudentIdInLists !== 'boolean' && typeof hideSensitiveStatsFromSharedScreens !== 'boolean') {
+            return res.status(400).json({ message: 'At least one privacy preference must be provided.' });
+        }
+
+        if (!user.cashierPrivacy) {
+            user.cashierPrivacy = { ...DEFAULT_PRIVACY_PREFS };
+        }
+
+        if (typeof maskStudentIdInLists === 'boolean') {
+            user.cashierPrivacy.maskStudentIdInLists = maskStudentIdInLists;
+        }
+        if (typeof hideSensitiveStatsFromSharedScreens === 'boolean') {
+            user.cashierPrivacy.hideSensitiveStatsFromSharedScreens = hideSensitiveStatsFromSharedScreens;
+        }
+
+        user.markModified('cashierPrivacy');
+        await user.save();
+
+        const privacy = formatCashierPrivacy(user);
+        return res.status(200).json({
+            message: 'Privacy preferences saved.',
+            privacy,
+            user: formatUser(user),
+        });
+    } catch (error) {
+        console.error('updateCashierPrivacy error:', error);
+        return res.status(500).json({ message: error.message || 'Unable to save privacy preferences.' });
+    }
+};
+
+exports.updateOsgfaPrivacy = async (req, res) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user || user.isActive === false) {
+            return res.status(404).json({ message: 'User not found.' });
+        }
+
+        const incoming = req.body?.privacy ?? req.body ?? {};
+        const maskStudentIdInLists = incoming.maskStudentIdInLists;
+        const hideSensitiveStatsFromSharedScreens = incoming.hideSensitiveStatsFromSharedScreens;
+
+        if (typeof maskStudentIdInLists !== 'boolean' && typeof hideSensitiveStatsFromSharedScreens !== 'boolean') {
+            return res.status(400).json({ message: 'At least one privacy preference must be provided.' });
+        }
+
+        if (!user.osgfaPrivacy) {
+            user.osgfaPrivacy = { ...DEFAULT_PRIVACY_PREFS };
+        }
+
+        if (typeof maskStudentIdInLists === 'boolean') {
+            user.osgfaPrivacy.maskStudentIdInLists = maskStudentIdInLists;
+        }
+        if (typeof hideSensitiveStatsFromSharedScreens === 'boolean') {
+            user.osgfaPrivacy.hideSensitiveStatsFromSharedScreens = hideSensitiveStatsFromSharedScreens;
+        }
+
+        user.markModified('osgfaPrivacy');
+        await user.save();
+
+        const privacy = formatOsgfaPrivacy(user);
+        return res.status(200).json({
+            message: 'Privacy preferences saved.',
+            privacy,
+            user: formatUser(user),
+        });
+    } catch (error) {
+        console.error('updateOsgfaPrivacy error:', error);
+        return res.status(500).json({ message: error.message || 'Unable to save privacy preferences.' });
     }
 };
 

@@ -49,6 +49,19 @@ export function writeStoredSettings(settings) {
   window.dispatchEvent(new CustomEvent(OSGFA_SETTINGS_CHANGED_EVENT))
 }
 
+/** Merge server-side privacy prefs into local storage (syncs across devices). */
+export function applyServerPrivacy(privacy) {
+  if (!privacy || typeof privacy !== "object") return
+  const current = readStoredSettings()
+  writeStoredSettings({
+    ...current,
+    privacy: {
+      ...DEFAULT_SETTINGS.privacy,
+      ...privacy,
+    },
+  })
+}
+
 export function readNotificationPreferences() {
   return readStoredSettings().notifications
 }

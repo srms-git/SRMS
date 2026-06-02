@@ -15,7 +15,7 @@ import {
   getBatchLandingKey,
   usePublishedLandingBatches,
 } from "@/lib/landingFeaturedBatches"
-import { maskBatchNumber, useLandingPagePrivacy } from "@/lib/landingPageSettings"
+import { useLandingPageSettings, maskBatchNumber } from "@/lib/landingPageSettings"
 import {
   hydrateProcessWorkflowSteps,
   LANDING_PROCESS_SECTION,
@@ -1432,7 +1432,9 @@ export default function LandingPage() {
   const [announcements, setAnnouncements] = useState([])
   const workflowSteps = useProcessWorkflowSteps()
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
-  const landingPrivacy = useLandingPagePrivacy()
+  const landingPageSettings = useLandingPageSettings()
+  const landingPrivacy = landingPageSettings.privacy
+  const landingContactInfo = landingPageSettings.contactInfo
 
   const scholarshipProcessSteps = useMemo(
     () => hydrateProcessWorkflowSteps(workflowSteps),
@@ -1935,7 +1937,9 @@ export default function LandingPage() {
                   </span>
                   <span>
                     <span className="font-medium text-white/90">Email Address</span>
-                    <span className="block text-xs text-white/75 sm:text-sm">scholarships@msu.edu.ph</span>
+                    <span className="block text-xs text-white/75 sm:text-sm">
+                      {landingContactInfo.emailAddress}
+                    </span>
                   </span>
                 </li>
                 <li className="flex gap-1.5">
@@ -1944,7 +1948,9 @@ export default function LandingPage() {
                   </span>
                   <span>
                     <span className="font-medium text-white/90">Contact Number</span>
-                    <span className="block text-xs text-white/75 sm:text-sm">(042) 000-0000</span>
+                    <span className="block text-xs text-white/75 sm:text-sm">
+                      {landingContactInfo.contactNumber}
+                    </span>
                   </span>
                 </li>
                 <li className="flex gap-1.5">
@@ -1954,7 +1960,7 @@ export default function LandingPage() {
                   <span>
                     <span className="font-medium text-white/90">Office Address</span>
                     <span className="block text-xs leading-snug text-white/75 sm:text-sm">
-                      Marinduque State University, Boac, Marinduque
+                      {landingContactInfo.officeAddress}
                     </span>
                   </span>
                 </li>

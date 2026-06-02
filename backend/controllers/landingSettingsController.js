@@ -97,6 +97,12 @@ const DEFAULT_PRIVACY = {
     showYearLevelInLandingBatchList: true,
 };
 
+const DEFAULT_CONTACT_INFO = {
+    emailAddress: 'scholarships@msu.edu.ph',
+    contactNumber: '(042) 000-0000',
+    officeAddress: 'Marinduque State University, Boac, Marinduque',
+};
+
 function normalizePrivacy(raw = {}) {
     const source = raw && typeof raw === 'object' ? raw : {};
     return {
@@ -111,6 +117,19 @@ function normalizePrivacy(raw = {}) {
         showFullNameInLandingBatchList: source.showFullNameInLandingBatchList !== false,
         showEnrolledProgramInLandingBatchList: source.showEnrolledProgramInLandingBatchList !== false,
         showYearLevelInLandingBatchList: source.showYearLevelInLandingBatchList !== false,
+    };
+}
+
+function normalizeContactInfo(raw = {}) {
+    const source = raw && typeof raw === 'object' ? raw : {};
+    const normalizeText = (value, fallback) => {
+        const text = String(value ?? '').trim();
+        return text || fallback;
+    };
+    return {
+        emailAddress: normalizeText(source.emailAddress, DEFAULT_CONTACT_INFO.emailAddress),
+        contactNumber: normalizeText(source.contactNumber, DEFAULT_CONTACT_INFO.contactNumber),
+        officeAddress: normalizeText(source.officeAddress, DEFAULT_CONTACT_INFO.officeAddress),
     };
 }
 
@@ -216,6 +235,7 @@ exports.getPageSettings = async (req, res) => {
         const doc = await getOrCreateSettings();
         return res.status(200).json({
             privacy: normalizePrivacy(doc.privacy),
+            contactInfo: normalizeContactInfo(doc.contactInfo),
             processWorkflow: normalizeProcessWorkflow(doc.processWorkflow),
         });
     } catch (error) {
@@ -231,6 +251,9 @@ exports.updatePageSettings = async (req, res) => {
         if (req.body?.privacy !== undefined) {
             updates.privacy = normalizePrivacy(req.body.privacy);
         }
+        if (req.body?.contactInfo !== undefined) {
+            updates.contactInfo = normalizeContactInfo(req.body.contactInfo);
+        }
         if (req.body?.processWorkflow !== undefined) {
             updates.processWorkflow = normalizeProcessWorkflow(req.body.processWorkflow);
         }
@@ -245,6 +268,7 @@ exports.updatePageSettings = async (req, res) => {
         );
         return res.status(200).json({
             privacy: normalizePrivacy(doc.privacy),
+            contactInfo: normalizeContactInfo(doc.contactInfo),
             processWorkflow: normalizeProcessWorkflow(doc.processWorkflow),
         });
     } catch (error) {

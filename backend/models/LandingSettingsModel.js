@@ -39,6 +39,15 @@ const LandingSettingsSchema = new mongoose.Schema(
             showEnrolledProgramInLandingBatchList: { type: Boolean, default: true },
             showYearLevelInLandingBatchList: { type: Boolean, default: true },
         },
+        contactInfo: {
+            emailAddress: { type: String, default: 'scholarships@msu.edu.ph', trim: true },
+            contactNumber: { type: String, default: '(042) 000-0000', trim: true },
+            officeAddress: {
+                type: String,
+                default: 'Marinduque State University, Boac, Marinduque',
+                trim: true,
+            },
+        },
         processWorkflow: {
             steps: {
                 type: [WorkflowStepSchema],

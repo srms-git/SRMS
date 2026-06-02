@@ -322,6 +322,7 @@ export default function Setting() {
   const [openAccount, setOpenAccount] = useState(true)
   const [openSystem, setOpenSystem] = useState(true)
   const [openSupport, setOpenSupport] = useState(false)
+  const [activeLandingSection, setActiveLandingSection] = useState("privacy")
 
   const [user, setUser] = useState(() => readStoredUser())
   const [profileLoading, setProfileLoading] = useState(true)
@@ -341,7 +342,9 @@ export default function Setting() {
     confirmPassword: "",
   })
   const [settings, setSettings] = useState(() => readStoredSettings())
+  const [privacySaving, setPrivacySaving] = useState(false)
   const [landingSettings, setLandingSettings] = useState(() => readStoredLandingPageSettings())
+  const [landingContactForm, setLandingContactForm] = useState(() => readStoredLandingPageSettings().contactInfo)
   const [profileNotice, setProfileNotice] = useState({ type: "", message: "" })
   const [passwordNotice, setPasswordNotice] = useState({ type: "", message: "" })
   const [settingsNotice, setSettingsNotice] = useState({ type: "", message: "" })
@@ -373,6 +376,7 @@ export default function Setting() {
         if (cancelled || !fetchedUser) return
         setUser(fetchedUser)
         setProfileForm(buildProfileForm(fetchedUser))
+        setSettings(readStoredSettings())
       } catch {
         if (cancelled) return
         const storedUser = readStoredUser()
@@ -390,6 +394,10 @@ export default function Setting() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    setLandingContactForm(landingSettings.contactInfo)
+  }, [landingSettings.contactInfo])
 
   useEffect(() => {
     if (!settingsNotice.message) return undefined
@@ -570,6 +578,30 @@ export default function Setting() {
     setSettingsNotice({ type: "success", message: noticeMessage })
   }
 
+  const savePrivacySettings = async (updater, noticeMessage = "OSGFA privacy preferences saved.") => {
+    const previous = settings
+    const next = typeof updater === "function" ? updater(previous) : updater
+
+    setSettings(next)
+    writeStoredSettings(next)
+    setPrivacySaving(true)
+    setSettingsNotice({ type: "", message: "" })
+
+    try {
+      await authService.updateOsgfaPrivacy(next.privacy)
+      setSettingsNotice({ type: "success", message: noticeMessage })
+    } catch (error) {
+      setSettings(previous)
+      writeStoredSettings(previous)
+      setSettingsNotice({
+        type: "error",
+        message: error.message || "Unable to save privacy preferences.",
+      })
+    } finally {
+      setPrivacySaving(false)
+    }
+  }
+
   const saveLandingSettings = async (nextSettings, noticeMessage = "Landing page settings saved.") => {
     setLandingSettings(nextSettings)
     try {
@@ -585,6 +617,25 @@ export default function Setting() {
           "Could not save landing page settings. Check that the backend is running.",
       })
     }
+  }
+
+  const handleSaveLandingContactInfo = async (event) => {
+    event.preventDefault()
+    await saveLandingSettings(
+      {
+        ...landingSettings,
+        contactInfo: {
+          emailAddress: landingContactForm.emailAddress.trim(),
+          contactNumber: landingContactForm.contactNumber.trim(),
+          officeAddress: landingContactForm.officeAddress.trim(),
+        },
+      },
+      "Landing page contact information saved.",
+    )
+  }
+
+  const toggleLandingSection = (sectionKey) => {
+    setActiveLandingSection((prev) => (prev === sectionKey ? "" : sectionKey))
   }
 
   const handleSaveProfile = async (event) => {
@@ -834,7 +885,7 @@ export default function Setting() {
                         : "text-gray-700 hover:text-[#081F5C]"
                     }`}
                   >
-                    OSGFA Privacy
+                    System Privacy
                   </button>
                   <button
                     type="button"
@@ -1231,13 +1282,427 @@ export default function Setting() {
 
           {active === SECTIONS.LANDING_SETTINGS && (
             <section className="space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-blue-700" />
+                  <div>
+                    <h3 className="text-base font-semibold text-gray-900">Landing Settings</h3>
+                    <p className="text-xs text-gray-600">
+                      Control what visitors see on the public landing page: batch list, navigation, and footer contact info.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {settingsNotice.message && (
+                <div
+                  className={`rounded-md border px-3 py-2 text-sm ${
+                    settingsNotice.type === "error"
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-green-200 bg-green-50 text-green-700"
+                  }`}
+                >
+                  {settingsNotice.message}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="space-y-3 rounded-xl border border-[#081F5C]/10 bg-[#081F5C]/5 p-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleLandingSection("privacy")}
+                    className="flex w-full items-start justify-between gap-2 text-left"
+                    aria-expanded={activeLandingSection === "privacy"}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Public batch list privacy</p>
+                      <p className="text-xs text-gray-600">
+                        Adjust how much detail is visible to the public on the landing page batch list.
+                      </p>
+                    </div>
+                    {activeLandingSection === "privacy" ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+                    )}
+                  </button>
+                  <div
+                    className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      activeLandingSection === "privacy" ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div className="space-y-2 pt-1">
+                        <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                          <span>Mask batch numbers in the public list</span>
+                          <input
+                            type="checkbox"
+                            checked={landingSettings.privacy.maskBatchNumberInPublicList}
+                            onChange={(event) =>
+                              saveLandingSettings(
+                                {
+                                  ...landingSettings,
+                                  privacy: {
+                                    ...landingSettings.privacy,
+                                    maskBatchNumberInPublicList: event.target.checked,
+                                  },
+                                },
+                                "Landing page privacy settings saved.",
+                              )
+                            }
+                          />
+                        </label>
+                        <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                          <span>Hide grantee counts in the public list</span>
+                          <input
+                            type="checkbox"
+                            checked={landingSettings.privacy.hideGranteeCountInPublicList}
+                            onChange={(event) =>
+                              saveLandingSettings(
+                                {
+                                  ...landingSettings,
+                                  privacy: {
+                                    ...landingSettings.privacy,
+                                    hideGranteeCountInPublicList: event.target.checked,
+                                  },
+                                },
+                                "Landing page privacy settings saved.",
+                              )
+                            }
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleLandingSection("batchDisplay")}
+                    className="flex w-full items-start justify-between gap-2 text-left"
+                    aria-expanded={activeLandingSection === "batchDisplay"}
+                  >
+                    <div>
+                    <p className="text-sm font-semibold text-gray-900">Batch list display</p>
+                    <p className="text-xs text-gray-600">
+                      Choose which labels and fields are shown in the public batch cards.
+                    </p>
+                    </div>
+                    {activeLandingSection === "batchDisplay" ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+                    )}
+                  </button>
+                  <div
+                    className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      activeLandingSection === "batchDisplay"
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div className="space-y-2 pt-1">
+                        <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show program tags (TES/TDP)</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showProgramTag}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showProgramTag: event.target.checked,
+                              },
+                            },
+                            "Landing page settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show academic year badge</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showAcademicYear}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showAcademicYear: event.target.checked,
+                              },
+                            },
+                            "Landing page settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show date added label</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showDateAdded}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showDateAdded: event.target.checked,
+                              },
+                            },
+                            "Landing page settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show student ID in landing batch list</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showStudentIdInLandingBatchList}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showStudentIdInLandingBatchList: event.target.checked,
+                              },
+                            },
+                            "Landing page privacy settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show award number in landing batch list</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showAwardNumberInLandingBatchList}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showAwardNumberInLandingBatchList: event.target.checked,
+                              },
+                            },
+                            "Landing page privacy settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show fullname in landing batch list</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showFullNameInLandingBatchList}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showFullNameInLandingBatchList: event.target.checked,
+                              },
+                            },
+                            "Landing page privacy settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show enrolled program in landing batch list</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showEnrolledProgramInLandingBatchList}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showEnrolledProgramInLandingBatchList: event.target.checked,
+                              },
+                            },
+                            "Landing page privacy settings saved.",
+                          )
+                        }
+                      />
+                    </label>
+                        <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show year level in landing batch list</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showYearLevelInLandingBatchList}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showYearLevelInLandingBatchList: event.target.checked,
+                              },
+                            },
+                            "Landing page privacy settings saved.",
+                          )
+                        }
+                      />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
+                  <button
+                    type="button"
+                    onClick={() => toggleLandingSection("navigation")}
+                    className="flex w-full items-start justify-between gap-2 text-left"
+                    aria-expanded={activeLandingSection === "navigation"}
+                  >
+                    <div>
+                    <p className="text-sm font-semibold text-gray-900">Navigation</p>
+                    <p className="text-xs text-gray-600">
+                      Configure quick access links shown on the landing page.
+                    </p>
+                    </div>
+                    {activeLandingSection === "navigation" ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+                    )}
+                  </button>
+                  <div
+                    className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      activeLandingSection === "navigation" ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div className="pt-1">
+                        <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
+                      <span>Show "View all" button</span>
+                      <input
+                        type="checkbox"
+                        checked={landingSettings.privacy.showViewAllBatchesLink}
+                        onChange={(event) =>
+                          saveLandingSettings(
+                            {
+                              ...landingSettings,
+                              privacy: {
+                                ...landingSettings.privacy,
+                                showViewAllBatchesLink: event.target.checked,
+                              },
+                            },
+                            "Landing page settings saved.",
+                          )
+                        }
+                      />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <form
+                  className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4"
+                  onSubmit={handleSaveLandingContactInfo}
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleLandingSection("footerContact")}
+                    className="flex w-full items-start justify-between gap-2 text-left"
+                    aria-expanded={activeLandingSection === "footerContact"}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Footer contact info</p>
+                      <p className="text-xs text-gray-600">
+                        These details appear in the contact section of the public landing page footer.
+                      </p>
+                    </div>
+                    {activeLandingSection === "footerContact" ? (
+                      <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
+                    )}
+                  </button>
+                  <div
+                    className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                      activeLandingSection === "footerContact"
+                        ? "grid-rows-[1fr] opacity-100"
+                        : "grid-rows-[0fr] opacity-0"
+                    }`}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div className="space-y-2 pt-1">
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-600">Email Address</label>
+                          <input
+                            type="text"
+                            value={landingContactForm.emailAddress}
+                            onChange={(event) =>
+                              setLandingContactForm((prev) => ({ ...prev, emailAddress: event.target.value }))
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                            placeholder="e.g. scholarships@msu.edu.ph"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-600">Contact Number</label>
+                          <input
+                            type="text"
+                            value={landingContactForm.contactNumber}
+                            onChange={(event) =>
+                              setLandingContactForm((prev) => ({ ...prev, contactNumber: event.target.value }))
+                            }
+                            className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                            placeholder="e.g. (042) 000-0000"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs text-gray-600">Office Address</label>
+                          <textarea
+                            rows={2}
+                            value={landingContactForm.officeAddress}
+                            onChange={(event) =>
+                              setLandingContactForm((prev) => ({ ...prev, officeAddress: event.target.value }))
+                            }
+                            className="w-full resize-y rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500"
+                            placeholder="e.g. Marinduque State University, Boac, Marinduque"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <button
+                            type="submit"
+                            className="rounded-md bg-linear-to-r from-[#04133d] to-[#0b2b73] px-4 py-2 text-sm text-white transition hover:brightness-110"
+                          >
+                            Save contact info
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            </section>
+          )}
+
+          {active === SECTIONS.OSGFA_PRIVACY && (
+            <section className="space-y-4">
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-blue-700" />
-                <h3 className="text-base font-semibold text-gray-900">Landing Settings</h3>
+                <h3 className="text-base font-semibold text-gray-900">System Privacy</h3>
               </div>
               <p className="text-sm text-gray-600">
-                Manage what visitors see in the public landing page batch list. Changes apply for all visitors once
-                saved.
+                Control privacy behavior for internal OSGFA workspace pages. Preferences are saved to your account
+                and sync across browsers and devices.
               </p>
 
               {settingsNotice.message && (
@@ -1252,260 +1717,19 @@ export default function Setting() {
                 </div>
               )}
 
-              <div className="space-y-3 rounded-xl border border-[#081F5C]/10 bg-[#081F5C]/5 p-4">
-                <p className="text-sm font-semibold text-gray-900">Public Batch List privacy</p>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Mask batch numbers in the public list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.maskBatchNumberInPublicList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            maskBatchNumberInPublicList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Hide grantee counts in the public list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.hideGranteeCountInPublicList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            hideGranteeCountInPublicList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-              </div>
-
-              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
-                <p className="text-sm font-semibold text-gray-900">Batch list display</p>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show program tags (TES/TDP)</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showProgramTag}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showProgramTag: event.target.checked,
-                          },
-                        },
-                        "Landing page settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show academic year badge</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showAcademicYear}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showAcademicYear: event.target.checked,
-                          },
-                        },
-                        "Landing page settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show date added label</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showDateAdded}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showDateAdded: event.target.checked,
-                          },
-                        },
-                        "Landing page settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show student ID in landing batch list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showStudentIdInLandingBatchList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showStudentIdInLandingBatchList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show award number in landing batch list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showAwardNumberInLandingBatchList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showAwardNumberInLandingBatchList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show fullname in landing batch list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showFullNameInLandingBatchList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showFullNameInLandingBatchList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show enrolled program in landing batch list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showEnrolledProgramInLandingBatchList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showEnrolledProgramInLandingBatchList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show year level in landing batch list</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showYearLevelInLandingBatchList}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showYearLevelInLandingBatchList: event.target.checked,
-                          },
-                        },
-                        "Landing page privacy settings saved.",
-                      )
-                    }
-                  />
-                </label>
-              </div>
-
-              <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
-                <p className="text-sm font-semibold text-gray-900">Navigation</p>
-                <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                  <span>Show "View all" button</span>
-                  <input
-                    type="checkbox"
-                    checked={landingSettings.privacy.showViewAllBatchesLink}
-                    onChange={(event) =>
-                      saveLandingSettings(
-                        {
-                          ...landingSettings,
-                          privacy: {
-                            ...landingSettings.privacy,
-                            showViewAllBatchesLink: event.target.checked,
-                          },
-                        },
-                        "Landing page settings saved.",
-                      )
-                    }
-                  />
-                </label>
-              </div>
-            </section>
-          )}
-
-          {active === SECTIONS.OSGFA_PRIVACY && (
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Shield className="h-4 w-4 text-blue-700" />
-                <h3 className="text-base font-semibold text-gray-900">OSGFA Privacy</h3>
-              </div>
-              <p className="text-sm text-gray-600">
-                Control privacy behavior for internal OSGFA workspace pages on this device.
-              </p>
-
-              {settingsNotice.message && (
-                <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                  {settingsNotice.message}
-                </div>
-              )}
-
               <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/70 p-4">
                 <p className="text-sm font-semibold text-gray-900">OSGFA workspace privacy</p>
                 <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
                   <span>Mask student ID in list cards</span>
                   <input
                     type="checkbox"
+                    disabled={privacySaving}
                     checked={settings.privacy.maskStudentIdInLists}
                     onChange={(event) =>
-                      saveSettings(
-                        {
-                          ...settings,
-                          privacy: { ...settings.privacy, maskStudentIdInLists: event.target.checked },
-                        },
-                        "OSGFA privacy preferences saved.",
-                      )
+                      savePrivacySettings((prev) => ({
+                        ...prev,
+                        privacy: { ...prev.privacy, maskStudentIdInLists: event.target.checked },
+                      }))
                     }
                   />
                 </label>
@@ -1513,18 +1737,16 @@ export default function Setting() {
                   <span>Hide sensitive statistics on shared screens</span>
                   <input
                     type="checkbox"
+                    disabled={privacySaving}
                     checked={settings.privacy.hideSensitiveStatsFromSharedScreens}
                     onChange={(event) =>
-                      saveSettings(
-                        {
-                          ...settings,
-                          privacy: {
-                            ...settings.privacy,
-                            hideSensitiveStatsFromSharedScreens: event.target.checked,
-                          },
+                      savePrivacySettings((prev) => ({
+                        ...prev,
+                        privacy: {
+                          ...prev.privacy,
+                          hideSensitiveStatsFromSharedScreens: event.target.checked,
                         },
-                        "OSGFA privacy preferences saved.",
-                      )
+                      }))
                     }
                   />
                 </label>
