@@ -24,8 +24,8 @@ import {
   buildBatchesFromGrantees,
   buildLatestBatchGranteeCards,
   fetchAllGrantees,
-  recordMatchesProgram,
 } from "@/lib/granteesApi"
+import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { downloadGranteePdfAsXlsx, parseGranteeXlsxFromFile } from "@/lib/granteePdfConverterApi"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 
@@ -572,6 +572,7 @@ export default function AddGrantees() {
   const [granteesLoading, setGranteesLoading] = useState(true)
   const [granteesLoadError, setGranteesLoadError] = useState("")
   const [alertState, setAlertState] = useState({ open: false, variant: "info", title: "", message: "" })
+  const landingVisibility = useLandingBatchVisibility()
 
   const showAlert = (variant, message, title = "") => {
     setAlertState({ open: true, variant, title, message })
@@ -728,12 +729,25 @@ export default function AddGrantees() {
   }
 
   const summary = useMemo(() => {
-    const total = granteeRecords.length
-    const tes = granteeRecords.filter((row) => recordMatchesProgram(row, "TES")).length
-    const tdp = granteeRecords.filter((row) => recordMatchesProgram(row, "TDP")).length
-    const batches = buildBatchesFromGrantees(granteeRecords).length
-    return { total, tes, tdp, batches }
-  }, [granteeRecords])
+    const allBatches = buildBatchesFromGrantees(granteeRecords)
+    let tesBatches = 0
+    let tdpBatches = 0
+    let publishedBatches = 0
+
+    for (const batch of allBatches) {
+      const program = String(batch.program ?? "").trim().toUpperCase()
+      if (program === "TES") tesBatches += 1
+      else if (program === "TDP") tdpBatches += 1
+      if (isBatchVisibleOnLanding(batch, landingVisibility)) publishedBatches += 1
+    }
+
+    return {
+      totalBatches: allBatches.length,
+      tesBatches,
+      tdpBatches,
+      publishedBatches,
+    }
+  }, [granteeRecords, landingVisibility])
 
   const latestBatchGrantees = useMemo(
     () => buildLatestBatchGranteeCards(granteeRecords, 8),
@@ -882,8 +896,8 @@ export default function AddGrantees() {
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
         <SummaryStatCard
-          label="Total Records"
-          value={statDisplay(summary.total, "Total Records")}
+          label="Total Batches"
+          value={statDisplay(summary.totalBatches, "Total Batches")}
           accentBar="border-l-[3px] border-l-[#081F5C]"
           glow="bg-[#081F5C]/25"
           iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
@@ -891,7 +905,7 @@ export default function AddGrantees() {
         />
         <SummaryStatCard
           label="TES Records"
-          value={statDisplay(summary.tes, "TES Records")}
+          value={statDisplay(summary.tesBatches, "TES Records")}
           accentBar="border-l-[3px] border-l-emerald-500"
           glow="bg-emerald-400/30"
           iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
@@ -899,15 +913,15 @@ export default function AddGrantees() {
         />
         <SummaryStatCard
           label="TDP Records"
-          value={statDisplay(summary.tdp, "TDP Records")}
+          value={statDisplay(summary.tdpBatches, "TDP Records")}
           accentBar="border-l-[3px] border-l-amber-500"
           glow="bg-amber-400/30"
           iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
           Icon={CircleDashed}
         />
         <SummaryStatCard
-          label="Active Batches"
-          value={statDisplay(summary.batches)}
+          label="Published Batches"
+          value={statDisplay(summary.publishedBatches, "Published Batches")}
           accentBar="border-l-[3px] border-l-violet-500"
           glow="bg-violet-400/30"
           iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"

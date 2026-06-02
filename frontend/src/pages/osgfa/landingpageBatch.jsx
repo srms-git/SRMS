@@ -472,6 +472,7 @@ export default function LandingPageBatch() {
   const [params] = useSearchParams()
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("__")
+  const [semestralFilter, setSemestralFilter] = useState("__")
   const [programFilter, setProgramFilter] = useState("__")
   const [yearFilter, setYearFilter] = useState("__")
   const [page, setPage] = useState(1)
@@ -489,6 +490,7 @@ export default function LandingPageBatch() {
     const scroller = document.getElementById("admin-main-scroll")
     if (scroller) scroller.scrollTo({ top: 0, left: 0, behavior: "auto" })
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
+    setSemestralFilter("__")
   }, [batchNo, program, academicYear])
 
   const [records, setRecords] = useState(() => loadMergedBeneficiaryRecords([]))
@@ -564,11 +566,26 @@ export default function LandingPageBatch() {
     () => [...new Set(displayedRows.map((row) => String(row.yearLevel ?? "").trim()).filter(Boolean))].sort(),
     [displayedRows],
   )
+  const semestralOptions = useMemo(() => {
+    const years = [...new Set(displayedRows.map((row) => String(row.academicYear ?? "").trim()).filter(Boolean))].sort()
+    return years.flatMap((year) => [
+      { value: `1st|${year}`, label: `1st Semester ${year}` },
+      { value: `2nd|${year}`, label: `2nd Semester ${year}` },
+    ])
+  }, [displayedRows])
 
   const tableRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
+    const matchesSemestralFilter = (row) => {
+      if (semestralFilter === "__" || semestralFilter === "") return true
+      const [semester, year] = String(semestralFilter).split("|")
+      const rowYear = String(row.academicYear ?? "").trim()
+      if (!semester || !year) return true
+      return rowYear === year
+    }
     return displayedRows.filter((row) => {
       if (statusFilter !== "__" && statusFilter !== "" && String(row.status ?? "") !== statusFilter) return false
+      if (!matchesSemestralFilter(row)) return false
       if (programFilter !== "__" && programFilter !== "" && String(row.enrolledProgram ?? "") !== programFilter) return false
       if (yearFilter !== "__" && yearFilter !== "" && String(row.yearLevel ?? "") !== yearFilter) return false
       if (!q) return true
@@ -576,17 +593,20 @@ export default function LandingPageBatch() {
         String(row.seqNo ?? "").toLowerCase().includes(q) ||
         String(row.studentId ?? "").toLowerCase().includes(q) ||
         String(row.awardNumber ?? "").toLowerCase().includes(q) ||
-        String(row.fullName ?? "").toLowerCase().includes(q)
+        String(row.fullName ?? "").toLowerCase().includes(q) ||
+        String(row.status ?? "").toLowerCase().includes(q) ||
+        String(row.enrolledProgram ?? "").toLowerCase().includes(q) ||
+        String(row.yearLevel ?? "").toLowerCase().includes(q)
       )
     })
-  }, [displayedRows, searchTerm, statusFilter, programFilter, yearFilter])
+  }, [displayedRows, searchTerm, statusFilter, semestralFilter, programFilter, yearFilter])
 
   const PAGE_SIZE = 100
   const pageCount = useMemo(() => Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE)), [tableRows.length])
 
   useEffect(() => {
     setPage(1)
-  }, [searchTerm, statusFilter, programFilter, yearFilter, displayedRows])
+  }, [searchTerm, statusFilter, semestralFilter, programFilter, yearFilter, displayedRows])
 
   useEffect(() => {
     setPage((prev) => Math.min(Math.max(1, prev), pageCount))
@@ -647,7 +667,7 @@ export default function LandingPageBatch() {
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <section className="space-y-4">
           <div className="mb-3 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
-            <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-3 md:col-span-7 lg:col-span-8">
+            <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 md:col-span-7 lg:col-span-8">
               <div className="relative min-w-0 w-full">
                 <select
                   id="landing-batch-status-filter"
@@ -661,6 +681,26 @@ export default function LandingPageBatch() {
                   <option value="">All</option>
                   <option value="Claimed">Claimed</option>
                   <option value="Unclaimed">Unclaimed</option>
+                </select>
+                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              </div>
+
+              <div className="relative min-w-0 w-full">
+                <select
+                  id="landing-batch-semestral-filter"
+                  value={semestralFilter}
+                  onChange={(e) => setSemestralFilter(e.target.value)}
+                  className={`${selectShellClass} ${semestralFilter === "__" ? "text-neutral-500" : "text-neutral-900"}`}
+                >
+                  <option value="__" disabled hidden>
+                    Semestral
+                  </option>
+                  <option value="">All Semesters</option>
+                  {semestralOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
                 <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
               </div>

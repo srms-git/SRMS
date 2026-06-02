@@ -1083,7 +1083,11 @@ export default function BatchInfo() {
         String(row.seqNo ?? "").toLowerCase().includes(q) ||
         String(row.studentId ?? "").toLowerCase().includes(q) ||
         String(row.awardNumber ?? "").toLowerCase().includes(q) ||
-        String(row.fullName ?? "").toLowerCase().includes(q)
+        String(row.fullName ?? "").toLowerCase().includes(q) ||
+        String(row.batchNo ?? "").toLowerCase().includes(q) ||
+        String(row.status ?? "").toLowerCase().includes(q) ||
+        String(row.enrolledProgram ?? "").toLowerCase().includes(q) ||
+        String(row.yearLevel ?? "").toLowerCase().includes(q)
       )
     })
   }, [displayedRows, searchTerm, statusFilter, semestralFilter, requirementsCoverageFilter])

@@ -350,24 +350,23 @@ export function LandingPublicHeader({ onSectionNavigate, variant = "default" }) 
             aria-hidden
           />
 
-          <SheetHeader className="relative border-b border-[#081F5C]/10 px-5 pb-4 pt-6">
-            <div className="flex items-center justify-between gap-3">
-              <img
-                src={landingLogo}
-                alt="Scholarship Records Management System"
-                className="h-8 w-auto max-w-[140px] object-contain object-left"
-                decoding="async"
-              />
-              <SheetClose asChild>
-                <button
-                  type="button"
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#081F5C]/12 bg-white/80 text-[#081F5C] transition hover:bg-white hover:shadow-sm active:scale-95"
-                  aria-label="Close navigation menu"
-                >
-                  <X className="size-4" strokeWidth={2.25} aria-hidden />
-                </button>
-              </SheetClose>
-            </div>
+          <SheetClose asChild>
+            <button
+              type="button"
+              className="absolute right-5 top-5 z-10 inline-flex size-10 items-center justify-center text-[#081F5C] transition hover:opacity-70 active:scale-95"
+              aria-label="Close navigation menu"
+            >
+              <X className="size-5" strokeWidth={2.25} aria-hidden />
+            </button>
+          </SheetClose>
+
+          <SheetHeader className="relative border-b border-[#081F5C]/10 px-5 pb-4 pt-6 pr-14">
+            <img
+              src={landingLogo}
+              alt="Scholarship Records Management System"
+              className="h-8 w-auto max-w-[140px] object-contain object-left"
+              decoding="async"
+            />
             <SheetTitle className="sr-only">Navigation menu</SheetTitle>
           </SheetHeader>
 

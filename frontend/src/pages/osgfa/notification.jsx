@@ -118,9 +118,13 @@ export default function NotificationPage() {
     return visibleNotifications.filter((item) => {
       if (tab === "unread" && item.read) return false
       if (tab === "read" && !item.read) return false
-      if (typeFilter !== "all" && item.type !== typeFilter) return false
+      if (typeFilter !== "all" && typeFilter !== "" && item.type !== typeFilter) return false
       if (!query) return true
-      return `${item.title} ${item.message}`.toLowerCase().includes(query)
+      return (
+        String(item.title ?? "").toLowerCase().includes(query) ||
+        String(item.message ?? "").toLowerCase().includes(query) ||
+        String(item.type ?? "").toLowerCase().includes(query)
+      )
     })
   }, [visibleNotifications, searchTerm, tab, typeFilter])
 

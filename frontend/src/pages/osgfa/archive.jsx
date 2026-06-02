@@ -82,9 +82,9 @@ export default function ArchivePage() {
   const filteredRows = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
     return rows.filter((row) => {
-      if (batchFilter !== "__" && String(row.batchNo) !== batchFilter) return false
-      if (programFilter !== "__" && String(row.program) !== programFilter) return false
-      if (yearFilter !== "__" && String(row.schoolYear) !== yearFilter) return false
+      if (batchFilter !== "__" && batchFilter !== "" && String(row.batchNo ?? "") !== batchFilter) return false
+      if (programFilter !== "__" && programFilter !== "" && String(row.program ?? "") !== programFilter) return false
+      if (yearFilter !== "__" && yearFilter !== "" && String(row.schoolYear ?? "") !== yearFilter) return false
       if (!query) return true
       return (
         String(row.batchNo ?? "").toLowerCase().includes(query) ||
@@ -333,7 +333,9 @@ export default function ArchivePage() {
 
         {!isLoading && sortedRows.length === 0 ? (
           <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-            No archived batches found.
+            {rows.length === 0
+              ? "No archived batches found."
+              : "No archived batches match your current filters or search."}
           </div>
         ) : null}
       </div>

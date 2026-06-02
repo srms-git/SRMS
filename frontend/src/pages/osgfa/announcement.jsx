@@ -294,7 +294,7 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
 export default function AnnouncementPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
-  const [dateRange, setDateRange] = useState("")
+  const [dateRange, setDateRange] = useState("__")
   const [announcements, setAnnouncements] = useState([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -408,7 +408,7 @@ export default function AnnouncementPage() {
         resetDraft()
         setSearchTerm("")
         setTypeFilter("all")
-        setDateRange("")
+        setDateRange("__")
       } catch (err) {
         console.error("Failed to save announcement:", err)
         setError("Failed to save announcement. Please try again.")
@@ -441,10 +441,16 @@ export default function AnnouncementPage() {
   const filteredAnnouncements = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
     return announcements.filter((item) => {
-      if (typeFilter !== "all" && item.type !== typeFilter) return false
-      if (dateRange && !isDateInRange(item.date, dateRange)) return false
+      if (typeFilter !== "all" && typeFilter !== "" && item.type !== typeFilter) return false
+      if (dateRange && dateRange !== "__" && !isDateInRange(item.date, dateRange)) return false
       if (!query) return true
-      return (`${item.title} ${item.description}`.toLowerCase().includes(query))
+      const typeLabel = (ANNOUNCER_TYPES[item.type] ?? "").toLowerCase()
+      return (
+        String(item.title ?? "").toLowerCase().includes(query) ||
+        String(item.description ?? "").toLowerCase().includes(query) ||
+        String(item.date ?? "").toLowerCase().includes(query) ||
+        typeLabel.includes(query)
+      )
     })
   }, [announcements, searchTerm, typeFilter, dateRange])
 
@@ -460,12 +466,12 @@ export default function AnnouncementPage() {
 
   const isAnnouncementActive = (item) => item?.active !== false
 
-  const hasActiveFilters = searchTerm.trim() !== "" || typeFilter !== "all" || dateRange !== ""
+  const hasActiveFilters = searchTerm.trim() !== "" || typeFilter !== "all" || (dateRange !== "__" && dateRange !== "")
 
   const resetFilters = () => {
     setSearchTerm("")
     setTypeFilter("all")
-    setDateRange("")
+    setDateRange("__")
   }
 
   const stats = useMemo(
@@ -581,11 +587,12 @@ export default function AnnouncementPage() {
               id="announcement-date-range-filter"
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              className={`${selectShellClass} ${!dateRange ? "text-neutral-500" : "text-neutral-900"}`}
+              className={`${selectShellClass} ${dateRange === "__" ? "text-neutral-500" : "text-neutral-900"}`}
             >
-              <option value="" disabled hidden>
+              <option value="__" disabled hidden>
                 Date Range
               </option>
+              <option value="">All dates</option>
               {DATE_RANGE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
