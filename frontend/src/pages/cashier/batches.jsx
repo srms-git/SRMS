@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { CalendarDays, GraduationCap, Layers, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
+import { fetchArchivedBatches } from "@/lib/archiveApi"
 import { buildBatchesFromGrantees, fetchAllGrantees } from "@/lib/granteesApi"
+import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 
 const selectShellClass =
@@ -58,6 +60,8 @@ export default function Batches() {
   const [yearFilter, setYearFilter] = useState("__")
   const [sortMode, setSortMode] = useState("batch-asc")
   const [batchesView, setBatchesView] = useState(() => modulePrefs.defaultBatchesView || "grid")
+  const [archivedBatchCount, setArchivedBatchCount] = useState(0)
+  const landingVisibility = useLandingBatchVisibility()
 
   useEffect(() => {
     setBatchesView(modulePrefs.defaultBatchesView || "grid")
@@ -76,8 +80,14 @@ export default function Batches() {
       try {
         setIsLoading(true)
         setFetchError(null)
-        const data = await fetchAllGrantees()
-        if (!cancelled) setGranteesRawData(data)
+        const [data, archived] = await Promise.all([
+          fetchAllGrantees(),
+          fetchArchivedBatches().catch(() => []),
+        ])
+        if (!cancelled) {
+          setGranteesRawData(data)
+          setArchivedBatchCount(archived.length)
+        }
       } catch (err) {
         console.error("Error connecting batches layout:", err)
         if (!cancelled) {
@@ -121,9 +131,9 @@ export default function Batches() {
   const filteredBatches = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
     return batches.filter((row) => {
-      if (batchFilter !== "__" && row.batchNo !== batchFilter) return false
-      if (programFilter !== "__" && row.program !== programFilter) return false
-      if (yearFilter !== "__" && row.schoolYear !== yearFilter) return false
+      if (batchFilter !== "__" && batchFilter !== "" && String(row.batchNo ?? "") !== batchFilter) return false
+      if (programFilter !== "__" && programFilter !== "" && String(row.program ?? "") !== programFilter) return false
+      if (yearFilter !== "__" && yearFilter !== "" && String(row.schoolYear ?? "") !== yearFilter) return false
       if (!query) return true
       return (
         String(row.batchNo ?? "").toLowerCase().includes(query) ||
@@ -133,15 +143,25 @@ export default function Batches() {
     })
   }, [batches, batchFilter, programFilter, searchTerm, yearFilter])
 
-  const summary = useMemo(
-    () => ({
+  const summary = useMemo(() => {
+    let publishedBatches = 0
+    let hiddenBatches = 0
+
+    for (const batch of batches) {
+      if (isBatchVisibleOnLanding(batch, landingVisibility)) {
+        publishedBatches += 1
+      } else {
+        hiddenBatches += 1
+      }
+    }
+
+    return {
       totalBatches: batches.length,
-      visibleBatches: filteredBatches.length,
-      totalYears: uniqueYears.length,
-      totalSemesters: uniquePrograms.length,
-    }),
-    [batches.length, filteredBatches.length, uniquePrograms.length, uniqueYears.length],
-  )
+      publishedBatches,
+      hiddenBatches,
+      archivedBatches: archivedBatchCount,
+    }
+  }, [archivedBatchCount, batches, landingVisibility])
 
   const sortedBatches = useMemo(() => {
     const getGrantees = (row) => {
@@ -186,24 +206,24 @@ export default function Batches() {
           Icon={Layers}
         />
         <SummaryStatCard
-          label="Active Batches"
-          value={summary.visibleBatches}
+          label="Publish Batches"
+          value={summary.publishedBatches}
           accentBar="border-l-[3px] border-l-emerald-500"
           glow="bg-emerald-400/30"
           iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
           Icon={TableProperties}
         />
         <SummaryStatCard
-          label="Academic Years"
-          value={summary.totalYears}
+          label="Hidden Batches"
+          value={summary.hiddenBatches}
           accentBar="border-l-[3px] border-l-violet-500"
           glow="bg-violet-400/30"
           iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
           Icon={CalendarDays}
         />
         <SummaryStatCard
-          label="Semestral Labels"
-          value={summary.totalSemesters}
+          label="Archive Batches"
+          value={summary.archivedBatches}
           accentBar="border-l-[3px] border-l-amber-500"
           glow="bg-amber-400/30"
           iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
@@ -353,7 +373,11 @@ export default function Batches() {
               </tbody>
             </table>
             {sortedBatches.length === 0 ? (
-              <div className="p-10 text-center text-sm text-slate-500">No batch records found.</div>
+              <div className="p-10 text-center text-sm text-slate-500">
+                {batches.length === 0
+                  ? "No batch records found."
+                  : "No batches match your current filters or search."}
+              </div>
             ) : null}
           </div>
         ) : (
@@ -412,7 +436,9 @@ export default function Batches() {
 
             {sortedBatches.length === 0 ? (
               <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                No batch records found.
+                {batches.length === 0
+                  ? "No batch records found."
+                  : "No batches match your current filters or search."}
               </div>
             ) : null}
           </div>

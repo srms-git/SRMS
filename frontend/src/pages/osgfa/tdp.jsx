@@ -1193,8 +1193,8 @@ export default function Tdp() {
     }
 
     return records.filter((row) => {
-      if (batchFilter !== "__" && row.batchNo !== batchFilter) return false
-      if (statusFilter !== "__" && row.status !== statusFilter) return false
+      if (batchFilter !== "__" && batchFilter !== "" && String(row.batchNo ?? "") !== batchFilter) return false
+      if (statusFilter !== "__" && statusFilter !== "" && String(row.status ?? "") !== statusFilter) return false
       if (!matchesSemestralFilter(row)) return false
       if (requirementsCoverageFilter !== "__" && requirementsCoverageFilter !== "") {
         const levels = semesterClaimsForRow(row, YEAR_LEVELS).map((c) => c.yearLevel)
@@ -1205,14 +1205,14 @@ export default function Tdp() {
 
       if (!query) return true
       return (
-        row.seqNo.toLowerCase().includes(query) ||
-        row.studentId.toLowerCase().includes(query) ||
-        row.awardNumber.toLowerCase().includes(query) ||
-        row.fullName.toLowerCase().includes(query) ||
+        String(row.seqNo ?? "").toLowerCase().includes(query) ||
+        String(row.studentId ?? "").toLowerCase().includes(query) ||
+        String(row.awardNumber ?? "").toLowerCase().includes(query) ||
+        String(row.fullName ?? "").toLowerCase().includes(query) ||
         String(row.batchNo ?? "").toLowerCase().includes(query) ||
         String(row.status ?? "").toLowerCase().includes(query) ||
-        row.enrolledProgram.toLowerCase().includes(query) ||
-        row.yearLevel.toLowerCase().includes(query)
+        String(row.enrolledProgram ?? "").toLowerCase().includes(query) ||
+        String(row.yearLevel ?? "").toLowerCase().includes(query)
       )
     })
   }, [batchFilter, records, statusFilter, semestralFilter, searchTerm, requirementsCoverageFilter])
