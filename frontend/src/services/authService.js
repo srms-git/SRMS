@@ -1,9 +1,8 @@
 import axios from 'axios';
 import apiClient from '@/lib/apiClient';
-import { getApiBaseUrl, getApiSetupHint, isApiConfigured } from '@/lib/apiConfig';
+import { getApiClientBaseUrl, getApiSetupHint, isApiConfigured } from '@/lib/apiConfig';
 
-const API_BASE = getApiBaseUrl();
-const API_URL = API_BASE ? `${API_BASE}/auth` : '';
+const API_URL = getApiClientBaseUrl() ? `${getApiClientBaseUrl()}/auth` : '';
 
 export const USER_UPDATED_EVENT = 'srms-user-updated';
 
