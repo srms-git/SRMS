@@ -40,8 +40,15 @@ app.use('/api/landing-settings', requireDatabase, landingSettingsRoutes);
 app.use('/api/landing-batches', requireDatabase, landingBatchRoutes);
 
 function getPdfConverterUploadUrl() {
-    const raw = process.env.PDF_CONVERTER_URL || process.env.VITE_PDF_CONVERTER_URL || '';
-    const normalized = String(raw).trim().replace(/\/$/, '');
+    const candidates = [
+        process.env.PDF_CONVERTER_UPLOAD_URL,
+        process.env.PDF_CONVERTER_URL,
+        process.env.VITE_PDF_CONVERTER_URL,
+        process.env.NEXT_PUBLIC_PDF_CONVERTER_URL,
+    ];
+
+    const raw = candidates.find((value) => String(value || '').trim()) || '';
+    const normalized = String(raw).trim().replace(/\/+$/, '');
     if (!normalized) return null;
     if (/\/upload$/i.test(normalized)) return normalized;
     return `${normalized}/upload`;
@@ -53,7 +60,7 @@ app.post('/api/pdf-converter/upload', pdfUpload.single('pdf'), async (req, res) 
     if (!upstreamUploadUrl) {
         return res.status(503).json({
             error: 'PDF converter service URL is not configured.',
-            hint: 'Set PDF_CONVERTER_URL in Vercel project settings to your deployed Python converter API base URL.',
+            hint: 'Set one of: PDF_CONVERTER_UPLOAD_URL, PDF_CONVERTER_URL, VITE_PDF_CONVERTER_URL, or NEXT_PUBLIC_PDF_CONVERTER_URL.',
         });
     }
 
@@ -81,7 +88,7 @@ app.post('/api/pdf-converter/upload', pdfUpload.single('pdf'), async (req, res) 
     } catch (error) {
         return res.status(502).json({
             error: 'Failed to reach PDF converter service.',
-            hint: 'Check PDF_CONVERTER_URL and verify the Python converter is online.',
+            hint: 'Check PDF converter URL env vars and verify the Python converter is online.',
             details: error?.message || 'Unknown upstream error',
         });
     }
