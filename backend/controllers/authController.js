@@ -14,6 +14,7 @@ const {
 } = require('../services/passwordChangeOtpService');
 const { isEmailConfigured } = require('../utils/emailService');
 const { createInternalNotification } = require('./notificationController');
+const { logActivity } = require('../services/auditLogger');
 
 const FORGOT_PASSWORD_MESSAGE =
     'If an account exists for that email, check your inbox for reset instructions.';
@@ -100,6 +101,17 @@ exports.register = async (req, res) => {
             'system'
         );
 
+        // Audit Trail tracking log
+        logActivity({
+            userId: user._id,
+            action: 'USER_REGISTERED',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: null,
+            newValues: { id: user._id, email: user.email, role: user.role },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(201).json({
             message: 'User registered successfully.',
             user: formatUser(user),
@@ -132,6 +144,17 @@ exports.login = async (req, res) => {
             return res.status(500).json({ message: 'Server auth is not configured (JWT_SECRET missing).' });
         }
 
+        // Audit Trail tracking log
+        logActivity({
+            userId: user._id,
+            action: 'USER_LOGIN',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: null,
+            newValues: { loginAt: new Date(), role: user.role },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(200).json({
             token: buildToken(user),
             user: formatUser(user),
@@ -154,6 +177,17 @@ exports.forgotPassword = async (req, res) => {
             const result = await issuePasswordReset(email);
             if (!result.userFound) {
                 console.info('forgotPassword: no active user in users collection for', String(email).trim().toLowerCase());
+            } else {
+                // Audit password reset issue request activity
+                logActivity({
+                    userId: result.userId || null,
+                    action: 'PASSWORD_RESET_REQUESTED',
+                    entityType: 'users',
+                    entityId: result.userId || null,
+                    oldValues: null,
+                    newValues: { email: String(email).trim().toLowerCase(), status: 'token_dispatched' },
+                    ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+                });
             }
         } catch (error) {
             if (error.code === 'EMAIL_NOT_CONFIGURED') {
@@ -195,6 +229,8 @@ exports.updateProfile = async (req, res) => {
             return res.status(404).json({ message: 'User not found.' });
         }
 
+        const oldValuesSnapshot = { firstName: user.firstName, lastName: user.lastName };
+
         let firstName = String(req.body.firstName ?? '').trim();
         let lastName = String(req.body.lastName ?? '').trim();
 
@@ -215,6 +251,17 @@ exports.updateProfile = async (req, res) => {
         user.firstName = firstName;
         user.lastName = lastName;
         await user.save();
+
+        // Audit profile details mutation action
+        logActivity({
+            userId: req.userId,
+            action: 'UPDATE_PROFILE',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: oldValuesSnapshot,
+            newValues: { firstName: user.firstName, lastName: user.lastName },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         const formatted = formatUser(user);
         return res.status(200).json({
@@ -252,6 +299,17 @@ exports.requestPasswordChangeOtp = async (req, res) => {
         }
 
         await issuePasswordChangeOtp(user);
+
+        // Track OTP generation request footprint inside log activity logs
+        logActivity({
+            userId: req.userId,
+            action: 'PASSWORD_CHANGE_OTP_REQUESTED',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: null,
+            newValues: { email: user.email, event: 'otp_dispatched' },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json({
             message: `Verification code sent to ${user.email}.`,
@@ -320,6 +378,17 @@ exports.changePassword = async (req, res) => {
             'reminder'
         );
 
+        // Audit password reset completion mutation footprint
+        logActivity({
+            userId: req.userId,
+            action: 'PASSWORD_CHANGED_VIA_SETTINGS',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: null,
+            newValues: { changedAt: new Date(), verifiedViaOtp: true },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(200).json({ message: 'Password updated successfully.' });
     } catch (error) {
         console.error('changePassword error:', error);
@@ -333,6 +402,8 @@ exports.updateCashierPrivacy = async (req, res) => {
         if (!user || user.isActive === false) {
             return res.status(404).json({ message: 'User not found.' });
         }
+
+        const oldValuesSnapshot = formatCashierPrivacy(user);
 
         const incoming = req.body?.privacy ?? req.body ?? {};
         const maskStudentIdInLists = incoming.maskStudentIdInLists;
@@ -357,6 +428,18 @@ exports.updateCashierPrivacy = async (req, res) => {
         await user.save();
 
         const privacy = formatCashierPrivacy(user);
+
+        // Track privacy mutations in audit log trace entries
+        logActivity({
+            userId: req.userId,
+            action: 'UPDATE_CASHIER_PRIVACY',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: oldValuesSnapshot,
+            newValues: privacy,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(200).json({
             message: 'Privacy preferences saved.',
             privacy,
@@ -374,6 +457,8 @@ exports.updateOsgfaPrivacy = async (req, res) => {
         if (!user || user.isActive === false) {
             return res.status(404).json({ message: 'User not found.' });
         }
+
+        const oldValuesSnapshot = formatOsgfaPrivacy(user);
 
         const incoming = req.body?.privacy ?? req.body ?? {};
         const maskStudentIdInLists = incoming.maskStudentIdInLists;
@@ -398,6 +483,18 @@ exports.updateOsgfaPrivacy = async (req, res) => {
         await user.save();
 
         const privacy = formatOsgfaPrivacy(user);
+
+        // Track privacy mutations in audit log trace entries
+        logActivity({
+            userId: req.userId,
+            action: 'UPDATE_OSGFA_PRIVACY',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: oldValuesSnapshot,
+            newValues: privacy,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(200).json({
             message: 'Privacy preferences saved.',
             privacy,
@@ -434,6 +531,17 @@ exports.resetPassword = async (req, res) => {
             `The login password credentials for ${user.email} were successfully updated via password reset validation.`,
             'reminder'
         );
+
+        // Audit external forgotten password recovery execution sequence complete
+        logActivity({
+            userId: user._id,
+            action: 'PASSWORD_RESET_COMPLETED',
+            entityType: 'users',
+            entityId: user._id,
+            oldValues: null,
+            newValues: { email: user.email, event: 'reset_via_token_success' },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json({ message: 'Password updated successfully. You can now log in.' });
     } catch (error) {

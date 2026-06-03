@@ -12,6 +12,7 @@ import {
   User,
 } from "lucide-react"
 import PasswordField from "@/components/PasswordField"
+import AuditLogsPanel from "@/components/settings/AuditLogsPanel"
 import {
   CASHIER_SETTINGS_CHANGED_EVENT,
   readStoredSettings,
@@ -26,6 +27,7 @@ const SECTIONS = {
   NOTIFICATIONS: "notifications",
   PRIVACY: "privacy",
   SUPPORT: "support",
+  AUDIT_LOGS: "audit-logs",
 }
 
 function readStoredUser() {
@@ -473,6 +475,17 @@ export default function CashierSetting() {
                     >
                       Help Center
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setActive(SECTIONS.AUDIT_LOGS)}
+                      className={`block w-full rounded-md py-1 text-left transition ${
+                        active === SECTIONS.AUDIT_LOGS
+                          ? "font-semibold text-[#081F5C]"
+                          : "text-gray-700 hover:text-[#081F5C]"
+                      }`}
+                    >
+                      Audit Logs
+                    </button>
                   </div>
                 )}
               </div>
@@ -892,6 +905,8 @@ export default function CashierSetting() {
                 </div>
               </section>
             )}
+
+            {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="cashier" />}
           </div>
         </div>
       </div>

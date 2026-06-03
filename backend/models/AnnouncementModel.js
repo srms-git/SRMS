@@ -1,5 +1,20 @@
 const mongoose = require('mongoose');
 
+const imageSubSchema = {
+    data: {
+        type: Buffer,
+        required: false
+    },
+    contentType: {
+        type: String,
+        required: false
+    },
+    fileName: {
+        type: String,
+        trim: true
+    }
+};
+
 const AnnouncementSchema = new mongoose.Schema({
     title: {
         type: String,
@@ -20,27 +35,25 @@ const AnnouncementSchema = new mongoose.Schema({
     date: {
         type: String,
         required: true,
-        default: () => new Date().toISOString().slice(0, 10) // YYYY-MM-DD formatting string
+        default: () => new Date().toISOString().slice(0, 10)
     },
     active: {
         type: Boolean,
         required: true,
         default: true
     },
-    image: {
-        type: String,
-        default: null,
+    images: {
+        type: [imageSubSchema],
+        default: []
     },
-    // Optional audit trail to track which administrative staff member created the record
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }
 }, {
-    timestamps: true // Tracks database insertion dates automatically
+    timestamps: true
 });
 
-// Create index for fast date retrieval and type querying
 AnnouncementSchema.index({ type: 1 });
 AnnouncementSchema.index({ date: -1 });
 

@@ -1,5 +1,7 @@
 const Announcement = require('../models/AnnouncementModel');
 const { createInternalNotification } = require('./notificationController');
+const { logActivity } = require('../services/auditLogger');
+const sharp = require('sharp');
 
 /**
  * Helper to map announcement type tokens to structural notification group keys
@@ -20,11 +22,28 @@ const mapAnnouncementToNotifType = (announcementType) => {
     }
 };
 
+/**
+ * Helper function to downscale and highly compress image buffers
+ * to ensure our MongoDB storage footprint remains small.
+ */
+async function compressImage(fileBuffer) {
+    try {
+        return await sharp(fileBuffer)
+            .resize({ width: 800, withoutEnlargement: true })
+            .jpeg({ quality: 65, progressive: true })
+            .toBuffer();
+    } catch (error) {
+        console.error('Image compression sub-process failed:', error);
+        throw new Error('Failed to process and compress target image attachment.');
+    }
+}
+
 // 1. Fetch all announcements
 exports.getAllAnnouncements = async (req, res) => {
     try {
-        // Fetch all items from database, descending order by post date
-        const announcements = await Announcement.find({}).sort({ date: -1, createdAt: -1 });
+        const announcements = await Announcement.find({})
+            .select('-images.data')
+            .sort({ date: -1, createdAt: -1 });
         return res.status(200).json(announcements);
     } catch (error) {
         return res.status(500).json({ message: error.message || 'Error pulling announcements archive.' });
@@ -34,29 +53,59 @@ exports.getAllAnnouncements = async (req, res) => {
 // 2. Create a new announcement
 exports.createAnnouncement = async (req, res) => {
     try {
-        const { title, description, type, date, active, image } = req.body;
+        const { title, description, type, date, active } = req.body;
 
         if (!title || !description) {
             return res.status(400).json({ message: 'Title and description fields cannot be blank.' });
         }
 
-        const newAnnouncement = await Announcement.create({
+        const announcementData = {
             title: title.trim(),
             description: description.trim(),
             type: type || 'new_batch',
             date: date || new Date().toISOString().slice(0, 10),
             active: active !== undefined ? active : true,
-            image: image || null,
-            createdBy: req.user?.id || null // Captures user ref if using authentication middleware
-        });
+            createdBy: req.user?.id || req.userId || null,
+            images: []
+        };
 
-        // Trigger a real-time Notification Center entry whenever a public announcement drops
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+            if (req.files.length > 8) {
+                return res.status(400).json({
+                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.'
+                });
+            }
+
+            announcementData.images = await Promise.all(
+                req.files.map(async (file) => {
+                    const compressedBuffer = await compressImage(file.buffer);
+                    return {
+                        data: compressedBuffer,
+                        contentType: 'image/jpeg',
+                        fileName: file.originalname || 'attachment.jpg'
+                    };
+                })
+            );
+        }
+
+        const newAnnouncement = await Announcement.create(announcementData);
+
         const notifType = mapAnnouncementToNotifType(newAnnouncement.type);
         await createInternalNotification(
             newAnnouncement.title,
             newAnnouncement.description,
             notifType
         );
+
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'CREATE_ANNOUNCEMENT',
+            entityType: 'announcements',
+            entityId: newAnnouncement._id,
+            oldValues: null,
+            newValues: newAnnouncement,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(201).json(newAnnouncement);
     } catch (error) {
@@ -68,36 +117,66 @@ exports.createAnnouncement = async (req, res) => {
 exports.updateAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, type, date, active, image } = req.body;
+        const { title, description, type, date, active, clearExistingImages } = req.body;
 
-        const updatePayload = {
+        const oldRecord = await Announcement.findById(id);
+        if (!oldRecord) {
+            return res.status(404).json({ message: 'Target announcement record could not be found.' });
+        }
+
+        const updates = {
             title: title?.trim(),
             description: description?.trim(),
             type,
             date,
-            active,
+            active
         };
-        if (image !== undefined) {
-            updatePayload.image = image || null;
+
+        if (req.files && Array.isArray(req.files)) {
+            if (req.files.length > 8) {
+                return res.status(400).json({
+                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.'
+                });
+            }
+
+            if (req.files.length > 0) {
+                updates.images = await Promise.all(
+                    req.files.map(async (file) => {
+                        const compressedBuffer = await compressImage(file.buffer);
+                        return {
+                            data: compressedBuffer,
+                            contentType: 'image/jpeg',
+                            fileName: file.originalname || 'attachment.jpg'
+                        };
+                    })
+                );
+            } else if (clearExistingImages === 'true') {
+                updates.images = [];
+            }
         }
 
         const updatedRecord = await Announcement.findByIdAndUpdate(
             id,
-            updatePayload,
-            { new: true, runValidators: true } // Return modified version and ensure structural validation
+            updates,
+            { new: true, runValidators: true }
         );
 
-        if (!updatedRecord) {
-            return res.status(404).json({ message: 'Target announcement record could not be found.' });
-        }
-
-        // Send out an amendment update notification trace if modified successfully
         const notifType = mapAnnouncementToNotifType(updatedRecord.type);
         await createInternalNotification(
             `Updated: ${updatedRecord.title}`,
             `The details for this notice have been modified. Review the announcements board for up-to-date adjustments.`,
             notifType
         );
+
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'UPDATE_ANNOUNCEMENT',
+            entityType: 'announcements',
+            entityId: updatedRecord._id,
+            oldValues: oldRecord,
+            newValues: updatedRecord,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json(updatedRecord);
     } catch (error) {
@@ -115,11 +194,11 @@ exports.toggleAnnouncementStatus = async (req, res) => {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
         }
 
-        // Flip the underlying state
+        const oldValuesSnapshot = record.toObject ? record.toObject() : { ...record._doc };
+
         record.active = !record.active;
         await record.save();
 
-        // Optional: Dispatches system alert tracking visibility configurations changes
         if (record.active) {
             const notifType = mapAnnouncementToNotifType(record.type);
             await createInternalNotification(
@@ -128,6 +207,16 @@ exports.toggleAnnouncementStatus = async (req, res) => {
                 notifType
             );
         }
+
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'TOGGLE_ANNOUNCEMENT_STATUS',
+            entityType: 'announcements',
+            entityId: record._id,
+            oldValues: oldValuesSnapshot,
+            newValues: record,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json(record);
     } catch (error) {
@@ -140,10 +229,22 @@ exports.deleteAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const deletedRecord = await Announcement.findByIdAndDelete(id);
-        if (!deletedRecord) {
+        const recordToDelete = await Announcement.findById(id);
+        if (!recordToDelete) {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
         }
+
+        await Announcement.findByIdAndDelete(id);
+
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'DELETE_ANNOUNCEMENT',
+            entityType: 'announcements',
+            entityId: id,
+            oldValues: recordToDelete,
+            newValues: null,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json({ message: 'Announcement deleted successfully.', id });
     } catch (error) {

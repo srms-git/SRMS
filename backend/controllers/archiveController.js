@@ -5,6 +5,7 @@ const {
     getArchivedBatchDetail,
 } = require('../services/archiveService');
 const { createInternalNotification } = require('./notificationController');
+const { logActivity } = require('../services/auditLogger');
 
 exports.archiveBatchAndGrantees = async (req, res) => {
     try {
@@ -32,6 +33,17 @@ exports.archiveBatchAndGrantees = async (req, res) => {
                 'reminder'
             );
 
+            // Capture the execution attempt and skip reason in audit logs
+            logActivity({
+                userId: req.user?.id || null,
+                action: 'CHECK_ARCHIVE_SKIPPED',
+                entityType: 'archives',
+                entityId: `${program}-${batchNo}`.toLowerCase(),
+                oldValues: { batchNo, program, academicYear, stage: 'active' },
+                newValues: { isArchived: false, reason: 'unclaimed_payouts' },
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+            });
+
             return res.status(200).json({
                 message: `Batch ${batchNo} status checked. Automatic archiving skipped because some grantees have not claimed yet.`,
                 isArchived: false,
@@ -50,6 +62,17 @@ exports.archiveBatchAndGrantees = async (req, res) => {
                 `All grantees under ${program} batch ${batchNo} for Academic Year ${academicYear} are marked claimed. The system has automatically processed and finalized its archive allocation snapshot.`,
                 'claim'
             );
+
+            // Log successful compression and allocation change execution
+            logActivity({
+                userId: req.user?.id || null,
+                action: 'BATCH_ARCHIVED',
+                entityType: 'archives',
+                entityId: outcome.archivedId || `${program}-${batchNo}`.toLowerCase(),
+                oldValues: { batchNo, program, academicYear, status: 'Active' },
+                newValues: { archivedId: outcome.archivedId, status: 'Archived', condition: '100% claimed' },
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+            });
         }
 
         return res.status(200).json({
@@ -99,6 +122,17 @@ exports.getArchivedBatchDetail = async (req, res) => {
                 `All grantees under ${program} batch ${batchNo} for Academic Year ${academicYear} are marked claimed. The system has automatically processed and finalized its archive allocation snapshot.`,
                 'claim'
             );
+
+            // Audit the automated check catch sync execution here
+            logActivity({
+                userId: req.user?.id || null,
+                action: 'AUTO_SYNC_BATCH_ARCHIVED',
+                entityType: 'archives',
+                entityId: outcome.archivedId || `${program}-${batchNo}`.toLowerCase(),
+                oldValues: { batchNo, program, academicYear, context: 'on_detail_query' },
+                newValues: { archivedId: outcome.archivedId, synchronized: true },
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+            });
         }
 
         let detail = await getArchivedBatchDetail({ batchNo, program, academicYear });

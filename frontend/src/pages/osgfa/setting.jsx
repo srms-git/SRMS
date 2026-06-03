@@ -19,6 +19,7 @@ import {
   XCircle,
 } from "lucide-react"
 import PasswordField from "@/components/PasswordField"
+import AuditLogsPanel from "@/components/settings/AuditLogsPanel"
 import {
   Dialog,
   DialogContent,
@@ -59,6 +60,7 @@ const SECTIONS = {
   NOTIFICATIONS: "notifications",
   OSGFA_PRIVACY: "osgfa-privacy",
   SUPPORT: "support",
+  AUDIT_LOGS: "audit-logs",
 }
 
 function readStoredUser() {
@@ -930,6 +932,17 @@ export default function Setting() {
                   >
                     Help Center
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setActive(SECTIONS.AUDIT_LOGS)}
+                    className={`block w-full rounded-md py-1 text-left transition ${
+                      active === SECTIONS.AUDIT_LOGS
+                        ? "font-semibold text-[#081F5C]"
+                        : "text-gray-700 hover:text-[#081F5C]"
+                    }`}
+                  >
+                    Audit Logs
+                  </button>
                 </div>
               )}
             </div>
@@ -1769,6 +1782,8 @@ export default function Setting() {
               </div>
             </section>
           )}
+
+          {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="OSGFA" />}
           </div>
         </div>
       </div>

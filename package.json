@@ -19,6 +19,8 @@
     "build": "pnpm --filter frontend build",
     "dev": "pnpm --filter frontend dev",
     "start:backend": "pnpm --filter backend start"
+  },
+  "dependencies": {
+    "multer": "^2.1.1"
   }
 }
-
