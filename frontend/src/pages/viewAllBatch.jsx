@@ -2,7 +2,9 @@ import { useEffect, useLayoutEffect, useMemo, useState } from "react"
 import { Link } from "react-router-dom"
 import { ArrowLeft, Layers, Search, SlidersHorizontal } from "lucide-react"
 
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import { usePublishedLandingBatches } from "@/lib/landingFeaturedBatches"
+import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import {
   PublicBatchCardSkeleton,
   revealItemClass,
@@ -146,8 +148,19 @@ export default function ViewAllBatch() {
   const [programFilter, setProgramFilter] = useState("__")
   const [academicYearFilter, setAcademicYearFilter] = useState("__")
   const [batchSeriesFilter, setBatchSeriesFilter] = useState("__")
-  const { batches: landingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
+  const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
+  const { programs } = useOsgfaPrograms()
   const { contentRevealed, skeletonLeaving } = useContentReveal(landingBatchesLoading)
+
+  const activeProgramCodes = useMemo(() => buildActiveProgramCodeSet(programs), [programs])
+
+  const landingBatches = useMemo(
+    () =>
+      publishedLandingBatches.filter((batch) =>
+        activeProgramCodes.has(String(batch.program ?? "").trim().toUpperCase()),
+      ),
+    [activeProgramCodes, publishedLandingBatches],
+  )
 
   useLayoutEffect(() => {
     const scroller = document.getElementById("admin-main-scroll")
@@ -217,7 +230,7 @@ export default function ViewAllBatch() {
           </div>
           <div className="min-w-0">
             <h1 className="truncate text-lg font-bold sm:text-xl">All batches</h1>
-            <p className="truncate text-xs text-sky-100/90">Scholarship batch list — TES and TDP</p>
+            <p className="truncate text-xs text-sky-100/90">Published scholarship batches</p>
           </div>
         </div>
       </header>

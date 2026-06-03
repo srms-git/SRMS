@@ -4,12 +4,10 @@ import {
   CalendarDays,
   ChevronDown,
   CircleAlert,
-  CircleCheck,
   EyeOff,
   Globe,
   GraduationCap,
   Hash,
-  Info,
   Layers,
   MoreHorizontal,
   Pencil,
@@ -21,6 +19,7 @@ import {
   TableProperties,
 } from "lucide-react"
 
+import { FeedbackModal } from "@/components/FeedbackModal"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -38,6 +37,8 @@ import {
   setLandingBatchVisibility,
   useLandingBatchVisibility,
 } from "@/lib/landingFeaturedBatches"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
+import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import { cn } from "@/lib/utils"
 
 const SKELETON_EXIT_MS = 280
@@ -79,60 +80,6 @@ function formatCreatedAtDate(value) {
     month: "long",
     day: "numeric",
   })}`
-}
-
-function FeedbackModal({ open, onOpenChange, variant = "info", title, message }) {
-  const meta = useMemo(() => {
-    if (variant === "success") {
-      return {
-        Icon: CircleCheck,
-        iconWrap: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-        topBar: "from-emerald-500 via-emerald-600 to-teal-600",
-        title: title || "Success",
-      }
-    }
-    if (variant === "warning") {
-      return {
-        Icon: CircleAlert,
-        iconWrap: "bg-amber-50 text-amber-700 ring-amber-200",
-        topBar: "from-amber-500 via-orange-500 to-red-500",
-        title: title || "Warning",
-      }
-    }
-    return {
-      Icon: Info,
-      iconWrap: "bg-[#081F5C]/8 text-[#081F5C] ring-[#081F5C]/15",
-      topBar: "from-[#04133d] via-[#081F5C] to-[#1447a6]",
-      title: title || "Notice",
-    }
-  }, [variant, title])
-
-  const Icon = meta.Icon
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="relative w-[min(92vw,34rem)] max-w-none overflow-hidden border-[#081F5C]/14 bg-white p-6 pt-8 shadow-[0_28px_56px_-16px_rgba(8,31,92,0.22)] dark:border-[#081F5C]/25 dark:bg-slate-950 sm:max-w-none">
-        <div className={`pointer-events-none absolute inset-x-0 top-0 z-10 h-1 rounded-t-2xl bg-linear-to-r ${meta.topBar}`} aria-hidden />
-        <DialogHeader className="relative shrink-0 pt-1">
-          <DialogTitle className="flex items-center gap-3">
-            <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ${meta.iconWrap}`}>
-              <Icon className="h-5 w-5" aria-hidden />
-            </span>
-            <span className="min-w-0">{meta.title}</span>
-          </DialogTitle>
-          <DialogDescription className="sr-only">{message || meta.title}</DialogDescription>
-        </DialogHeader>
-
-        <div className="py-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{message || "—"}</div>
-
-        <DialogFooter className="mt-2 sm:justify-end">
-          <Button type="button" onClick={() => onOpenChange(false)} className="bg-[#081F5C] hover:bg-[#0b2d83]">
-            OK
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 function SummaryStatCardSkeleton({ accentBar, className }) {
@@ -282,6 +229,7 @@ export default function Batches() {
   const [feedbackTitle, setFeedbackTitle] = useState("")
   const [feedbackMessage, setFeedbackMessage] = useState("")
   const landingVisibility = useLandingBatchVisibility()
+  const { activePrograms, programs } = useOsgfaPrograms()
   const [archivedBatchCount, setArchivedBatchCount] = useState(0)
 
   const showFeedback = useCallback((variant, title, message) => {
@@ -362,6 +310,19 @@ export default function Batches() {
     return Array.from(uniqueMap.values())
   }, [granteesRawData])
 
+  const activeProgramCodes = useMemo(() => buildActiveProgramCodeSet(programs), [programs])
+
+  const visibleBatches = useMemo(
+    () => batches.filter((row) => activeProgramCodes.has(String(row.program ?? "").trim().toUpperCase())),
+    [activeProgramCodes, batches],
+  )
+
+  useEffect(() => {
+    if (programFilter !== "__" && programFilter !== "" && !activeProgramCodes.has(String(programFilter).trim().toUpperCase())) {
+      setProgramFilter("__")
+    }
+  }, [activeProgramCodes, programFilter])
+
   const granteeCountsByBatchProgram = useMemo(() => {
     const map = new Map()
     granteesRawData.forEach((item) => {
@@ -376,15 +337,21 @@ export default function Batches() {
   }, [granteesRawData])
 
   const uniqueBatchNos = useMemo(
-    () => [...new Set(batches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
-    [batches],
+    () => [...new Set(visibleBatches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
+    [visibleBatches],
   )
-  const uniqueYears = useMemo(() => [...new Set(batches.map((row) => String(row.schoolYear ?? "").trim()).filter(Boolean))].sort(), [batches])
-  const uniquePrograms = useMemo(() => [...new Set(batches.map((row) => String(row.program ?? "").trim()).filter(Boolean))].sort(), [batches])
+  const uniqueYears = useMemo(
+    () => [...new Set(visibleBatches.map((row) => String(row.schoolYear ?? "").trim()).filter(Boolean))].sort(),
+    [visibleBatches],
+  )
+  const uniquePrograms = useMemo(
+    () => [...new Set(visibleBatches.map((row) => String(row.program ?? "").trim()).filter(Boolean))].sort(),
+    [visibleBatches],
+  )
 
   const filteredBatches = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    return batches.filter((row) => {
+    return visibleBatches.filter((row) => {
       if (batchFilter !== "__" && batchFilter !== "" && String(row.batchNo ?? "") !== batchFilter) return false
       if (programFilter !== "__" && programFilter !== "" && String(row.program ?? "") !== programFilter) return false
       if (yearFilter !== "__" && yearFilter !== "" && String(row.schoolYear ?? "") !== yearFilter) return false
@@ -395,13 +362,13 @@ export default function Batches() {
         String(row.program ?? "").toLowerCase().includes(query)
       )
     })
-  }, [batches, batchFilter, programFilter, searchTerm, yearFilter])
+  }, [visibleBatches, batchFilter, programFilter, searchTerm, yearFilter])
 
   const summary = useMemo(() => {
     let publishedBatches = 0
     let hiddenBatches = 0
 
-    for (const batch of batches) {
+    for (const batch of visibleBatches) {
       if (isBatchVisibleOnLanding(batch, landingVisibility)) {
         publishedBatches += 1
       } else {
@@ -410,12 +377,12 @@ export default function Batches() {
     }
 
     return {
-      totalBatches: batches.length,
+      totalBatches: visibleBatches.length,
       publishedBatches,
       hiddenBatches,
       archivedBatches: archivedBatchCount,
     }
-  }, [archivedBatchCount, batches, landingVisibility])
+  }, [archivedBatchCount, landingVisibility, visibleBatches])
 
   const sortedBatches = useMemo(() => {
     const getGrantees = (row) => {
@@ -476,7 +443,7 @@ export default function Batches() {
       showFeedback(
         "warning",
         "Incomplete batch details",
-        "Enter a batch number, choose a program (TES or TDP), and select the full academic year before saving.",
+        "Enter a batch number, choose a program, and select the full academic year before saving.",
       )
       return
     }
@@ -577,19 +544,35 @@ export default function Batches() {
 
   const editAcademicYearPreview = editFromYear && editToYear ? `${editFromYear}-${editToYear}` : "—"
 
+  const normalizeBatchRow = (row) => {
+    const batchNo = String(row?.batchNo ?? "").trim()
+    const program = String(row?.program ?? "").trim().toUpperCase()
+    const academicYear = String(row?.schoolYear ?? row?.academicYear ?? "").trim()
+    return { batchNo, program, schoolYear: academicYear, academicYear }
+  }
+
   const handleToggleLandingVisibility = async (row) => {
-    const currentlyVisible = isBatchVisibleOnLanding(row, landingVisibility)
-    const programKey = String(row?.program ?? "").trim().toUpperCase()
-    const granteeCount = granteeCountsByBatchProgram.get(`${row?.batchNo}|${programKey}`) ?? 0
+    const batch = normalizeBatchRow(row)
+    const currentlyVisible = isBatchVisibleOnLanding(batch, landingVisibility)
+    const granteeCount = granteeCountsByBatchProgram.get(`${batch.batchNo}|${batch.program}`) ?? 0
+
+    if (!batch.batchNo || !batch.program || !batch.academicYear) {
+      showFeedback(
+        "warning",
+        "Can't update visibility",
+        "This batch is missing a batch number, program, or academic year. Edit the batch or ensure grantees have complete details, then try again.",
+      )
+      return
+    }
 
     try {
-      await setLandingBatchVisibility(row, !currentlyVisible, granteeCount)
+      await setLandingBatchVisibility(batch, !currentlyVisible, granteeCount)
       showFeedback(
         "success",
         currentlyVisible ? "Hidden from landing page" : "Published on landing page",
         currentlyVisible
-          ? `Batch ${row.batchNo} (${row.program}) will no longer appear on the public landing page.`
-          : `Batch ${row.batchNo} (${row.program}) is now visible to visitors on the landing page.`,
+          ? `Batch ${batch.batchNo} (${batch.program}) will no longer appear on the public landing page.`
+          : `Batch ${batch.batchNo} (${batch.program}) is now visible to visitors on the landing page.`,
       )
     } catch (error) {
       console.error("Failed to update landing batch visibility:", error)
@@ -910,7 +893,7 @@ export default function Batches() {
 
           {sortedBatches.length === 0 ? (
             <BatchesEmptyState
-              variant={batches.length === 0 ? "empty" : "filtered"}
+              variant={visibleBatches.length === 0 ? "empty" : "filtered"}
               onClearFilters={clearFilters}
               onAddBatch={() => navigate("/osgfa/add-grantees")}
               className={revealItemClass(contentRevealed, 0)}
@@ -962,8 +945,12 @@ export default function Batches() {
                   <option value="" disabled>
                     Select program
                   </option>
-                  <option value="TES">TES</option>
-                  <option value="TDP">TDP</option>
+                  {activePrograms.map((program) => (
+                    <option key={program.id ?? program.code} value={program.code}>
+                      {program.code}
+                      {program.name && program.name !== program.code ? ` — ${program.name}` : ""}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               </div>

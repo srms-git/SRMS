@@ -11,10 +11,12 @@ import navHeroBackground from "@/assets/navbackground.png"
 import orgLogo from "@/assets/orgLogo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
   getBatchLandingKey,
   usePublishedLandingBatches,
 } from "@/lib/landingFeaturedBatches"
+import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import { useLandingPageSettings, maskBatchNumber } from "@/lib/landingPageSettings"
 import {
   hydrateProcessWorkflowSteps,
@@ -207,11 +209,39 @@ const featuredBatchScrollerTrackClassName = "min-h-[12.25rem] items-center sm:mi
 const featuredBatchCardSlotClassName =
   "relative z-0 shrink-0 self-center w-[min(100%,268px)] h-[10rem] transition-[width,height] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none hover:z-20 hover:w-[368px] hover:h-[12.75rem] sm:w-[300px] sm:h-[10.5rem] sm:hover:w-[368px] sm:hover:h-[12.75rem] md:w-[328px] md:h-[11rem] md:hover:w-[408px] md:hover:h-[13rem]"
 
+const FEATURED_PROGRAM_DISPLAY_ORDER = ["TES", "TDP"]
+
 function getBatchCardAccent(program) {
-  if (program === "TDP") {
+  const code = String(program ?? "").trim().toUpperCase()
+  if (code === "TDP") {
     return { color: navyMuted, colorLight: navyGlow, label: "TDP" }
   }
-  return { color: navyDeep, colorLight: navyBright, label: "TES" }
+  if (code === "TES") {
+    return { color: navyDeep, colorLight: navyBright, label: "TES" }
+  }
+  return { color: navyBright, colorLight: bvViolet, label: code || "Program" }
+}
+
+function buildFeaturedBatchesByProgram(batches) {
+  const byProgram = new Map()
+  for (const batch of batches) {
+    const code = String(batch.program ?? "").trim().toUpperCase()
+    if (!code) continue
+    if (!byProgram.has(code)) byProgram.set(code, [])
+    byProgram.get(code).push(batch)
+  }
+
+  const orderedCodes = [
+    ...FEATURED_PROGRAM_DISPLAY_ORDER.filter((code) => byProgram.has(code)),
+    ...[...byProgram.keys()]
+      .filter((code) => !FEATURED_PROGRAM_DISPLAY_ORDER.includes(code))
+      .sort((a, b) => a.localeCompare(b)),
+  ]
+
+  return orderedCodes.map((programLabel) => ({
+    programLabel,
+    items: byProgram.get(programLabel) ?? [],
+  }))
 }
 
 const FEATURED_SCROLL_SPEED_PX_S = 24
@@ -1432,6 +1462,7 @@ export default function LandingPage() {
   const [announcements, setAnnouncements] = useState([])
   const workflowSteps = useProcessWorkflowSteps()
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
+  const { programs } = useOsgfaPrograms()
   const landingPageSettings = useLandingPageSettings()
   const landingPrivacy = landingPageSettings.privacy
   const landingContactInfo = landingPageSettings.contactInfo
@@ -1491,12 +1522,20 @@ export default function LandingPage() {
     }
   }
 
-  const featuredBatchesByProgram = useMemo(() => {
-    return [
-      { programLabel: "TES", items: publishedLandingBatches.filter((b) => b.program === "TES") },
-      { programLabel: "TDP", items: publishedLandingBatches.filter((b) => b.program === "TDP") },
-    ].filter((row) => row.items.length > 0)
-  }, [publishedLandingBatches])
+  const activeProgramCodes = useMemo(() => buildActiveProgramCodeSet(programs), [programs])
+
+  const publicLandingBatches = useMemo(
+    () =>
+      publishedLandingBatches.filter((batch) =>
+        activeProgramCodes.has(String(batch.program ?? "").trim().toUpperCase()),
+      ),
+    [activeProgramCodes, publishedLandingBatches],
+  )
+
+  const featuredBatchesByProgram = useMemo(
+    () => buildFeaturedBatchesByProgram(publicLandingBatches),
+    [publicLandingBatches],
+  )
 
   const heroContent = (
     <div className="grid w-full items-center gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
@@ -1804,12 +1843,12 @@ export default function LandingPage() {
                     Loading published batches…
                   </div>
                 ) : featuredBatchesByProgram.length > 0 ? (
-                  featuredBatchesByProgram.map(({ programLabel, items }) => (
+                  featuredBatchesByProgram.map(({ programLabel, items }, index) => (
                     <FeaturedBatchScroller
                       key={programLabel}
                       programLabel={programLabel}
                       items={items}
-                      scrollDirection={programLabel === "TDP" ? "right" : "left"}
+                      scrollDirection={programLabel === "TDP" || index % 2 === 1 ? "right" : "left"}
                       privacy={landingPrivacy}
                     />
                   ))

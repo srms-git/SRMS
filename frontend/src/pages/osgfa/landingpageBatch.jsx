@@ -17,7 +17,15 @@ import {
 } from "lucide-react"
 
 import { loadMergedBeneficiaryRecords, saveBeneficiaryRecords } from "@/lib/beneficiariesStore"
-import { fetchGranteesForBatch } from "@/lib/granteesApi"
+import {
+  fetchGranteesForBatch,
+  inferProgramFromRecord,
+  recordMatchesProgram,
+} from "@/lib/granteesApi"
+import {
+  DEFAULT_GRANTEE_REQUIREMENTS,
+  findProgramByCode,
+} from "@/lib/osgfaPrograms"
 import { SemesterClaimCell } from "@/components/grantee/semester-claim-display"
 import { useLandingPagePrivacy } from "@/lib/landingPageSettings"
 import {
@@ -146,19 +154,13 @@ const TDP_GRANTEE_REQUIREMENTS = [
   { id: "undertaking", label: "Signed TDP undertaking or parent/guardian consent form" },
 ]
 
-function inferProgramFromRecord(row) {
-  const direct = String(row?.program ?? "").trim().toUpperCase()
-  if (direct === "TES" || direct === "TDP") return direct
-
-  const grantCycle = String(row?.grantCycle ?? "").trim().toUpperCase()
-  if (grantCycle.startsWith("TES")) return "TES"
-  if (grantCycle.startsWith("TDP")) return "TDP"
-
-  const award = String(row?.awardNumber ?? "").trim().toUpperCase()
-  if (award.startsWith("TES-")) return "TES"
-  if (award.startsWith("TDP-")) return "TDP"
-
-  return ""
+function requirementDefsForProgram(programCode) {
+  const code = String(programCode ?? "").trim().toUpperCase()
+  const configured = findProgramByCode(code)
+  if (configured?.requirements?.length) return configured.requirements
+  if (code === "TDP") return TDP_GRANTEE_REQUIREMENTS
+  if (code === "TES") return TES_GRANTEE_REQUIREMENTS
+  return DEFAULT_GRANTEE_REQUIREMENTS
 }
 
 function rowKey(row) {
@@ -221,13 +223,13 @@ function RequirementSemesterCell({ progress }) {
   )
 }
 
-function BatchRecordView({ row, landingPrivacy }) {
+function BatchRecordView({ row, landingPrivacy, scholarshipProgram }) {
   const claimed = String(row?.status ?? "") === "Claimed"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
-  const programInferred = inferProgramFromRecord(row)
-  const requirementDefs = programInferred === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
-  const granteeKindLabel =
-    programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
+  const programCode =
+    String(scholarshipProgram ?? "").trim().toUpperCase() || inferProgramFromRecord(row)
+  const requirementDefs = requirementDefsForProgram(programCode)
+  const granteeKindLabel = programCode ? `${programCode} grantee` : "Grantee"
   const displayFullName = landingPrivacy.showFullNameInLandingBatchList ? row.fullName : REDACTED_PLACEHOLDER
   const displayStudentId = landingPrivacy.showStudentIdInLandingBatchList ? row.studentId : REDACTED_PLACEHOLDER
   const displayAwardNumber = landingPrivacy.showAwardNumberInLandingBatchList ? row.awardNumber : REDACTED_PLACEHOLDER
@@ -540,10 +542,7 @@ export default function LandingPageBatch() {
   const filteredStored = useMemo(() => {
     return records.filter((r) => {
       if (batchNo && String(r?.batchNo ?? "").trim() !== batchNo) return false
-      if (program) {
-        const p = inferProgramFromRecord(r)
-        if (p && p !== program) return false
-      }
+      if (program && !recordMatchesProgram(r, program)) return false
       if (academicYear && String(r?.academicYear ?? "").trim() !== academicYear) return false
       return true
     })
@@ -552,10 +551,7 @@ export default function LandingPageBatch() {
   const mockForParams = useMemo(() => {
     return MOCK_BATCH_TABLE_ROWS.filter((r) => {
       if (batchNo && String(r?.batchNo ?? "").trim() !== batchNo) return false
-      if (program) {
-        const p = inferProgramFromRecord(r)
-        if (p && p !== program) return false
-      }
+      if (program && !recordMatchesProgram(r, program)) return false
       if (academicYear && String(r?.academicYear ?? "").trim() !== academicYear) return false
       return true
     })
@@ -918,7 +914,13 @@ export default function LandingPageBatch() {
               </DialogHeader>
 
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-1 [scrollbar-gutter:stable]">
-                {activeRow ? <BatchRecordView row={activeRow} landingPrivacy={landingPrivacy} /> : null}
+                {activeRow ? (
+                  <BatchRecordView
+                    row={activeRow}
+                    landingPrivacy={landingPrivacy}
+                    scholarshipProgram={program}
+                  />
+                ) : null}
               </div>
 
               {activeRow ? (

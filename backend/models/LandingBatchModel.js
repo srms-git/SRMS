@@ -12,7 +12,7 @@ const LandingBatchSchema = new mongoose.Schema(
             required: true,
             trim: true,
             uppercase: true,
-            enum: ['TES', 'TDP'],
+            match: [/^[A-Z0-9]{2,12}$/, 'Program code must be 2–12 alphanumeric characters.'],
         },
         academicYear: {
             type: String,

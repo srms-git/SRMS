@@ -74,7 +74,7 @@ import {
 } from "@/lib/granteeRequirementsChecklist"
 import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
-import { findProgramBySlug } from "@/lib/osgfaPrograms"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
 
@@ -1029,7 +1029,11 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
 
 export default function ProgramWorkspace() {
   const { programSlug } = useParams()
-  const program = useMemo(() => findProgramBySlug(programSlug), [programSlug])
+  const { programs, loading: programsLoading } = useOsgfaPrograms()
+  const program = useMemo(
+    () => programs.find((item) => item.slug === String(programSlug ?? "").trim().toLowerCase()) ?? null,
+    [programs, programSlug],
+  )
   const programCode = program?.code ?? ""
   const requirements = program?.requirements ?? []
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
@@ -1318,8 +1322,18 @@ export default function ProgramWorkspace() {
     return filteredRecords.slice(start, start + PAGE_SIZE)
   }, [filteredRecords, page])
 
-  if (!program) {
+  if (!programsLoading && (!program || program.active === false)) {
     return <Navigate to="/osgfa/dashboard" replace />
+  }
+
+  if (programsLoading || !program) {
+    return (
+      <section className="w-full min-w-0 max-w-full space-y-4">
+        <div className="rounded-xl border border-[#081F5C]/15 bg-white/80 px-4 py-8 text-sm text-muted-foreground dark:bg-slate-950/40">
+          Loading program workspace…
+        </div>
+      </section>
+    )
   }
 
   return (

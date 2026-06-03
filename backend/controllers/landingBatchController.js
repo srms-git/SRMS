@@ -11,9 +11,11 @@ function normalizeBatchFields(body = {}) {
     return { batchNo, program, academicYear };
 }
 
+const PROGRAM_CODE_PATTERN = /^[A-Z0-9]{2,12}$/;
+
 function isValidBatchFields({ batchNo, program, academicYear }) {
     if (!batchNo || !program || !academicYear) return false;
-    return program === 'TES' || program === 'TDP';
+    return PROGRAM_CODE_PATTERN.test(program);
 }
 
 function serializeLandingBatch(doc) {
@@ -95,7 +97,7 @@ exports.publishLandingBatch = async (req, res) => {
         const fields = normalizeBatchFields(req.body);
         if (!isValidBatchFields(fields)) {
             return res.status(400).json({
-                message: 'batchNo, program (TES/TDP), and academicYear are required.',
+                message: 'batchNo, program, and academicYear are required.',
             });
         }
 
@@ -129,7 +131,7 @@ exports.unpublishLandingBatch = async (req, res) => {
         const fields = normalizeBatchFields(req.body);
         if (!isValidBatchFields(fields)) {
             return res.status(400).json({
-                message: 'batchNo, program (TES/TDP), and academicYear are required.',
+                message: 'batchNo, program, and academicYear are required.',
             });
         }
 

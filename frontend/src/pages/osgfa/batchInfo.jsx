@@ -81,6 +81,7 @@ import {
   REQUIREMENT_SEM_LABEL,
   updateRequirementChecklistCheck,
 } from "@/lib/granteeRequirementsChecklist"
+import { getRequirementsForProgramCode } from "@/lib/osgfaPrograms"
 
 /** Area chart: claimed = brand navy, unclaimed = red */
 const CLAIM_STROKE = "#081F5C"
@@ -89,22 +90,6 @@ const UNCLAIM_STROKE = "#dc2626"
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
-
-const TES_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades from the previous semester" },
-  { id: "scholarship_disclosure", label: "Disclosure or certificate regarding other scholarships or financial assistance, if required" },
-  { id: "id_email", label: "Valid school ID and updated school email on file" },
-  { id: "acknowledgment", label: "Signed TES acknowledgment and parent/guardian consent, where applicable" },
-]
-
-const TDP_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades or class cards from the previous semester" },
-  { id: "school_id", label: "Valid school ID (photocopy with registrar or authorized certification)" },
-  { id: "indigency", label: "Certificate of indigency or other authorized proof of economic status, if applicable" },
-  { id: "undertaking", label: "Signed TDP undertaking or parent/guardian consent form" },
-]
 
 const TREND_RANGE = {
   THIS_WEEK: "this-week",
@@ -530,7 +515,7 @@ function BatchRecordView({ row, formatStudentId }) {
   const overallClaimed = row.status === "Claimed"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const programInferred = inferProgramFromRecord(row)
-  const requirementDefs = programInferred === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+  const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const detailItems = [
@@ -733,7 +718,7 @@ function BatchRecordView({ row, formatStudentId }) {
 function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onSubmit }) {
   const overallClaimed = draft.status === "Claimed"
   const programInferred = inferProgramFromRecord(draft)
-  const requirementDefs = programInferred === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+  const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
@@ -1084,7 +1069,7 @@ export default function BatchInfo() {
       if (requirementsCoverageFilter !== "__" && requirementsCoverageFilter !== "") {
         const levels = semesterClaimsForRow(row, YEAR_LEVELS).map((c) => c.yearLevel)
         const rowProgram = program || inferProgramFromRecord(row)
-        const defs = rowProgram === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+        const defs = getRequirementsForProgramCode(rowProgram)
         const cat = requirementCoverageStatusForRow(row, defs, levels)
         if (requirementsCoverageFilter === "incomplete" && cat !== "incomplete") return false
         if (requirementsCoverageFilter === "complete" && cat !== "complete") return false
@@ -1217,7 +1202,7 @@ export default function BatchInfo() {
     )
   }
 
-  const requirementDefsForBatch = program === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+  const requirementDefsForBatch = getRequirementsForProgramCode(program)
 
   const activeRow = useMemo(() => {
     if (!activeRowKey) return null

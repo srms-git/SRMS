@@ -109,6 +109,21 @@ export async function unpublishLandingBatch(batch) {
   notifyLandingBatchesChanged()
 }
 
+export async function unpublishLandingBatchesForProgram(programCode) {
+  const code = String(programCode ?? "").trim().toUpperCase()
+  if (!code) return 0
+
+  const published = await fetchPublishedLandingBatches()
+  const matches = published.filter((batch) => String(batch.program ?? "").trim().toUpperCase() === code)
+  if (!matches.length) return 0
+
+  for (const batch of matches) {
+    await unpublishLandingBatch(batch)
+  }
+
+  return matches.length
+}
+
 export async function renameLandingBatchOnServer(originalBatch, updatedBatch) {
   await apiClient.patch("/landing-batches/rename", {
     original: {

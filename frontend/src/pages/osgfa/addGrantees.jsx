@@ -30,6 +30,10 @@ import { downloadGranteePdfAsXlsx, parseGranteeXlsxFromFile } from "@/lib/grante
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
+  granteeBatchSaveErrorMessage,
+  granteeBatchSaveSuccessMessage,
+} from "@/lib/granteeFeedbackMessages"
+import {
   BatchCardSkeleton,
   SummaryStatCardSkeleton,
   revealItemClass,
@@ -582,7 +586,7 @@ function LatestBatchCard({ row, onClick }) {
 
 export default function AddGrantees() {
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
-  const { programs } = useOsgfaPrograms()
+  const { activePrograms: programs } = useOsgfaPrograms()
   const navigate = useNavigate()
   const [program, setProgram] = useState("")
   const [batchNo, setBatchNo] = useState("")
@@ -622,7 +626,7 @@ export default function AddGrantees() {
     } catch (err) {
       console.error("Failed to load grantee records:", err)
       setGranteeRecords([])
-      setGranteesLoadError(String(err?.message ?? err ?? "Could not load grantee records."))
+      setGranteesLoadError("We couldn't load existing grantee records. Refresh the page or check your connection, then try again.")
     } finally {
       setGranteesLoading(false)
     }
@@ -813,35 +817,45 @@ export default function AddGrantees() {
     }
   }
 
-  // UPDATED: Directly maps raw Excel fullName straight to the simplified MongoDB schema
   const finalizeSubmit = async () => {
     setFormNotice({
       variant: "info",
       title: "Saving grantees",
-      message: "Saving batch records to the database…",
+      message: "Adding grantees to your batch…",
     })
-    
+
     try {
       const mappedRows = savedGranteeRows.map(row => ({
         seqNo: row.seqNo,
         studentId: row.studentId,
         awardNumber: row.awardNumber,
-        fullName: row.fullName ? String(row.fullName).trim() : "Unknown", // Passed directly without splitting strings
+        fullName: row.fullName ? String(row.fullName).trim() : "Unknown",
         enrolledProgram: row.enrolledProgram,
         yearLevel: row.yearLevel
-      }));
+      }))
 
+      const academicYear = `${fromYear}-${toYear}`
       const data = await batchSaveGrantees({
         program,
         batchNo,
-        academicYear: `${fromYear}-${toYear}`,
+        academicYear,
         granteeRows: mappedRows,
       })
 
       await reloadGranteeRecords()
 
       setFormNotice(null)
-      showAlert("success", `Successfully saved ${data.count ?? mappedRows.length} grantee(s) to MongoDB.`, "Grantees added")
+      showAlert(
+        "success",
+        granteeBatchSaveSuccessMessage({
+          count: data.count ?? mappedRows.length,
+          program,
+          batchNo,
+          fromYear,
+          toYear,
+        }),
+        "Grantees saved",
+      )
       setProgram("")
       setBatchNo("")
       setFromYear("")
@@ -856,18 +870,7 @@ export default function AddGrantees() {
 
     } catch (err) {
       console.error("Submission failed:", err)
-      const rawMsg = String(err?.message ?? err ?? "Database save error.")
-
-      // Keep backend details out of the UI. This is shown to users, not developers.
-      const normalized = rawMsg.toLowerCase()
-      let friendlyMsg = "We couldn't save the grantees. Please try again."
-      let friendlyTitle = "Save failed"
-
-      if (normalized.includes("duplicate") || normalized.includes("e11000")) {
-        friendlyMsg =
-          "Some of these grantee entries already exist for this batch. Please review the list and try again (for example, avoid uploading the same file twice)."
-        friendlyTitle = "Duplicate grantee data"
-      }
+      const { title: friendlyTitle, message: friendlyMsg } = granteeBatchSaveErrorMessage(err?.message)
 
       setFormNotice({ variant: "error", title: friendlyTitle, message: friendlyMsg })
       showAlert("error", friendlyMsg, friendlyTitle)
@@ -886,17 +889,18 @@ export default function AddGrantees() {
       !String(toYear).trim() ||
       !previewExcelFile
     ) {
-      const title = "Missing required fields"
+      const title = "Complete the form first"
       const message =
-        "Please complete Program, Batch Number, Academic Year, and upload an Excel file (.xlsx) in the Preview section."
+        "Choose a program, enter a batch number, pick the academic year, and upload your Excel file (.xlsx) in Step 3 before saving."
       setFormNotice({ variant: "warning", title, message })
       showAlert("warning", message, title)
       return
     }
 
     if (!hasRows) {
-      const title = "No grantee rows found"
-      const message = "No grantee rows loaded from the spreadsheet. Check column headers and try again."
+      const title = "No grantees in your file"
+      const message =
+        "We couldn't read any grantee rows from the spreadsheet. Check that your column headers match the template (Batch No, Seq No, Student ID, and so on), then upload again."
       setFormNotice({ variant: "warning", title, message })
       showAlert("warning", message, title)
       return
@@ -1323,8 +1327,8 @@ export default function AddGrantees() {
                 setConfirmOpen(false)
                 setFormNotice({
                   variant: "info",
-                  title: "Submission cancelled",
-                  message: "No grantees were saved.",
+                  title: "Save cancelled",
+                  message: "Nothing was saved. You can review your grantee list and try again when ready.",
                 })
               }}
             >

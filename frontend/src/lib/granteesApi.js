@@ -6,7 +6,7 @@ const API_BASE =
 
 export function inferProgramFromRecord(row) {
   const direct = String(row?.program ?? "").trim().toUpperCase()
-  if (direct === "TES" || direct === "TDP") return direct
+  if (direct) return direct
 
   const grantCycle = String(row?.grantCycle ?? "").trim().toUpperCase()
   if (grantCycle.startsWith("TES")) return "TES"
@@ -19,20 +19,16 @@ export function inferProgramFromRecord(row) {
   return ""
 }
 
-/** True when a row belongs to TES or TDP (used to keep modules separated). */
+/** True when a row belongs to the target scholarship program code. */
 export function recordMatchesProgram(row, targetProgram) {
   const target = String(targetProgram ?? "").trim().toUpperCase()
   if (!target) return true
 
   const direct = String(row?.program ?? "").trim().toUpperCase()
-  if (direct === "TES" || direct === "TDP") {
-    return direct === target
-  }
+  if (direct) return direct === target
 
   const inferred = inferProgramFromRecord(row)
-  if (inferred === "TES" || inferred === "TDP") {
-    return inferred === target
-  }
+  if (inferred) return inferred === target
 
   return false
 }
