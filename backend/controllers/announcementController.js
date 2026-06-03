@@ -1,6 +1,7 @@
 const Announcement = require('../models/AnnouncementModel');
 const { createInternalNotification } = require('./notificationController');
 const { logActivity } = require('../services/auditLogger');
+const sharp = require('sharp');
 
 /**
  * Helper to map announcement type tokens to structural notification group keys
@@ -21,11 +22,29 @@ const mapAnnouncementToNotifType = (announcementType) => {
     }
 };
 
+/**
+ * Helper function to downscale and highly compress image buffers 
+ * to ensure our MongoDB storage footprint remains small.
+ */
+async function compressImage(fileBuffer) {
+    try {
+        return await sharp(fileBuffer)
+            .resize({ width: 800, withoutEnlargement: true }) // Downscale wide resolution profiles
+            .jpeg({ quality: 65, progressive: true })       // High compression ratio to yield minimal byte sizes
+            .toBuffer();
+    } catch (error) {
+        console.error('Image compression sub-process failed:', error);
+        throw new Error('Failed to process and compress target image attachment.');
+    }
+}
+
 // 1. Fetch all announcements
 exports.getAllAnnouncements = async (req, res) => {
     try {
-        // Fetch all items from database, descending order by post date
-        const announcements = await Announcement.find({}).sort({ date: -1, createdAt: -1 });
+        // Exclude the heavy raw binary data array from list view queries to maximize network response speed
+        const announcements = await Announcement.find({})
+            .select('-images.data')
+            .sort({ date: -1, createdAt: -1 });
         return res.status(200).json(announcements);
     } catch (error) {
         return res.status(500).json({ message: error.message || 'Error pulling announcements archive.' });
@@ -41,14 +60,39 @@ exports.createAnnouncement = async (req, res) => {
             return res.status(400).json({ message: 'Title and description fields cannot be blank.' });
         }
 
-        const newAnnouncement = await Announcement.create({
+        const announcementData = {
             title: title.trim(),
             description: description.trim(),
             type: type || 'new_batch',
             date: date || new Date().toISOString().slice(0, 10),
             active: active !== undefined ? active : true,
-            createdBy: req.user?.id || null // Captures user ref if using authentication middleware
-        });
+            createdBy: req.user?.id || req.userId || null, // Handles either req mutation variant from auth layer
+            images: []
+        };
+
+        // If files are provided via Multer array payload (e.g., upload.array('images', 8))
+        if (req.files && Array.isArray(req.files) && req.files.length > 0) {
+            // Strict enforcement of a maximum of 8 images
+            if (req.files.length > 8) {
+                return res.status(400).json({ 
+                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.' 
+                });
+            }
+
+            // Process and compress image files concurrently
+            announcementData.images = await Promise.all(
+                req.files.map(async (file) => {
+                    const compressedBuffer = await compressImage(file.buffer);
+                    return {
+                        data: compressedBuffer,
+                        contentType: 'image/jpeg', // Uniformly force JPEG content type following sharp encoding
+                        fileName: file.originalname || 'attachment.jpg'
+                    };
+                })
+            );
+        }
+
+        const newAnnouncement = await Announcement.create(announcementData);
 
         // Trigger a real-time Notification Center entry whenever a public announcement drops
         const notifType = mapAnnouncementToNotifType(newAnnouncement.type);
@@ -60,7 +104,7 @@ exports.createAnnouncement = async (req, res) => {
 
         // Capture creation action to the audit logs
         logActivity({
-            userId: req.user?.id || null,
+            userId: req.user?.id || req.userId || null,
             action: 'CREATE_ANNOUNCEMENT',
             entityType: 'announcements',
             entityId: newAnnouncement._id,
@@ -79,7 +123,7 @@ exports.createAnnouncement = async (req, res) => {
 exports.updateAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, type, date, active } = req.body;
+        const { title, description, type, date, active, clearExistingImages } = req.body;
 
         // Fetch the record before updating to capture data modification deltas
         const oldRecord = await Announcement.findById(id);
@@ -87,15 +131,42 @@ exports.updateAnnouncement = async (req, res) => {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
         }
 
+        const updates = {
+            title: title?.trim(),
+            description: description?.trim(),
+            type,
+            date,
+            active
+        };
+
+        // Handle image mutations if new sets are provided via Multi-part request streams
+        if (req.files && Array.isArray(req.files)) {
+            if (req.files.length > 8) {
+                return res.status(400).json({ 
+                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.' 
+                });
+            }
+
+            if (req.files.length > 0) {
+                updates.images = await Promise.all(
+                    req.files.map(async (file) => {
+                        const compressedBuffer = await compressImage(file.buffer);
+                        return {
+                            data: compressedBuffer,
+                            contentType: 'image/jpeg',
+                            fileName: file.originalname || 'attachment.jpg'
+                        };
+                    })
+                );
+            } else if (clearExistingImages === 'true') {
+                // If no new images are supplied but explicitly marked to drop existing array records
+                updates.images = [];
+            }
+        }
+
         const updatedRecord = await Announcement.findByIdAndUpdate(
             id,
-            {
-                title: title?.trim(),
-                description: description?.trim(),
-                type,
-                date,
-                active
-            },
+            updates,
             { new: true, runValidators: true } // Return modified version and ensure structural validation
         );
 
@@ -109,7 +180,7 @@ exports.updateAnnouncement = async (req, res) => {
 
         // Capture data modification delta states to audit logs
         logActivity({
-            userId: req.user?.id || null,
+            userId: req.user?.id || req.userId || null,
             action: 'UPDATE_ANNOUNCEMENT',
             entityType: 'announcements',
             entityId: updatedRecord._id,
@@ -141,7 +212,7 @@ exports.toggleAnnouncementStatus = async (req, res) => {
         record.active = !record.active;
         await record.save();
 
-        // Optional: Dispatches system alert tracking visibility configurations changes
+        // Dispatches system alert tracking visibility configurations changes
         if (record.active) {
             const notifType = mapAnnouncementToNotifType(record.type);
             await createInternalNotification(
@@ -153,7 +224,7 @@ exports.toggleAnnouncementStatus = async (req, res) => {
 
         // Capture state visibility mutation inside audit logs
         logActivity({
-            userId: req.user?.id || null,
+            userId: req.user?.id || req.userId || null,
             action: 'TOGGLE_ANNOUNCEMENT_STATUS',
             entityType: 'announcements',
             entityId: record._id,
@@ -183,7 +254,7 @@ exports.deleteAnnouncement = async (req, res) => {
 
         // Record full document data snapshot inside the oldValues parameter for destruction records
         logActivity({
-            userId: req.user?.id || null,
+            userId: req.user?.id || req.userId || null,
             action: 'DELETE_ANNOUNCEMENT',
             entityType: 'announcements',
             entityId: id,
