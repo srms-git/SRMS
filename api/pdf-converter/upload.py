@@ -124,6 +124,8 @@ def create_excel_bytes(rows):
 
 
 @app.route("/", methods=["OPTIONS"])
+@app.route("/api/pdf-converter/upload", methods=["OPTIONS"])
+@app.route("/api/pdf-converter/upload/", methods=["OPTIONS"])
 def upload_options():
     r = app.make_response("")
     r.status_code = 204
@@ -131,6 +133,8 @@ def upload_options():
 
 
 @app.route("/", methods=["POST"])
+@app.route("/api/pdf-converter/upload", methods=["POST"])
+@app.route("/api/pdf-converter/upload/", methods=["POST"])
 def upload():
     file = request.files.get("pdf")
     if not file or file.filename == "":
