@@ -27,6 +27,21 @@ const AnnouncementSchema = new mongoose.Schema({
         required: true,
         default: true
     },
+    // Sub-document schema to store raw image media payloads directly inside MongoDB
+    image: {
+        data: {
+            type: Buffer,
+            required: false // Optional field if announcements don't always contain attachments
+        },
+        contentType: {
+            type: String,
+            required: false // e.g., 'image/png', 'image/jpeg', 'image/webp'
+        },
+        fileName: {
+            type: String,
+            trim: true
+        }
+    },
     // Optional audit trail to track which administrative staff member created the record
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
