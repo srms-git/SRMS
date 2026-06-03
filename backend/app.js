@@ -13,6 +13,7 @@ const claimHistoryRoutes = require('./routes/claimHistoryRoutes');
 const landingSettingsRoutes = require('./routes/landingSettingsRoutes');
 const landingBatchRoutes = require('./routes/landingBatchRoutes');
 const programRoutes = require('./routes/programRoutes');
+const auditLogRoutes = require('./routes/auditLogRoutes');
 
 const app = express();
 const pdfUpload = multer({ storage: multer.memoryStorage() });
@@ -40,6 +41,7 @@ app.use('/api/claim-history', requireDatabase, claimHistoryRoutes);
 app.use('/api/landing-settings', requireDatabase, landingSettingsRoutes);
 app.use('/api/landing-batches', requireDatabase, landingBatchRoutes);
 app.use('/api/programs', requireDatabase, programRoutes);
+app.use('/api/audit-logs', auditLogRoutes);
 
 function getPdfConverterUploadUrl() {
     const candidates = [

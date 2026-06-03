@@ -1,5 +1,6 @@
 const Program = require('../models/ProgramModel');
 const { migrateProgramReferences } = require('../services/programReferenceMigration');
+const { logActivity } = require('../services/auditLogger');
 
 const TES_REQUIREMENTS = [
     { id: 'cor', label: 'Certificate of Registration (COR) for the current semester' },
@@ -93,20 +94,34 @@ exports.addProgram = async (req, res) => {
             return res.status(400).json({ message: `A program with code "${cleanCode}" already exists.` });
         }
 
+        const finalRequirements = Array.isArray(requirements) && requirements.length > 0
+            ? requirements
+            : DEFAULT_GRANTEE_REQUIREMENTS;
+
         const newProgram = new Program({
             code: cleanCode,
             slug,
             name: String(name || cleanCode).trim(),
             fullName: String(fullName || name || cleanCode).trim(),
             description: String(description || '').trim() || `${String(fullName || name || cleanCode).trim()} — program workspace.`,
-            requirements: Array.isArray(requirements) && requirements.length > 0
-                ? requirements
-                : DEFAULT_GRANTEE_REQUIREMENTS,
+            requirements: finalRequirements,
             builtIn: false,
             active: true,
         });
 
         await newProgram.save();
+
+        // Audit trace logging for programmatic addition
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'PROGRAM_CREATED',
+            entityType: 'programs',
+            entityId: newProgram._id,
+            oldValues: null,
+            newValues: { code: cleanCode, slug, name: newProgram.name, totalRequirements: finalRequirements.length },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         res.status(201).json(newProgram);
     } catch (err) {
         if (err?.code === 11000) {
@@ -171,9 +186,9 @@ exports.updateProgram = async (req, res) => {
             const seenIds = new Set();
             const normalizedRequirements = [];
             for (const item of req.body.requirements) {
-                const id = String(item?.id ?? '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_|_$/g, '');
+                const idAttr = String(item?.id ?? '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_|_$/g, '');
                 const label = String(item?.label ?? '').trim();
-                if (!id || !/^[a-z][a-z0-9_]{0,31}$/.test(id)) {
+                if (!idAttr || !/^[a-z][a-z0-9_]{0,31}$/.test(idAttr)) {
                     return res.status(400).json({
                         message: 'Each requirement needs a stable id (lowercase letters, numbers, underscores).',
                     });
@@ -181,11 +196,11 @@ exports.updateProgram = async (req, res) => {
                 if (!label) {
                     return res.status(400).json({ message: 'Each requirement needs a description label.' });
                 }
-                if (seenIds.has(id)) {
-                    return res.status(400).json({ message: `Duplicate requirement id "${id}".` });
+                if (seenIds.has(idAttr)) {
+                    return res.status(400).json({ message: `Duplicate requirement id "${idAttr}".` });
                 }
-                seenIds.add(id);
-                normalizedRequirements.push({ id, label });
+                seenIds.add(idAttr);
+                normalizedRequirements.push({ id: idAttr, label });
             }
             updates.requirements = normalizedRequirements;
         }
@@ -237,6 +252,17 @@ exports.updateProgram = async (req, res) => {
         if (updates.code && updates.code !== oldCode) {
             migrated = await migrateProgramReferences(oldCode, updates.code);
         }
+
+        // Audit configuration changes or cascading code refactoring jobs
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'PROGRAM_UPDATED',
+            entityType: 'programs',
+            entityId: id,
+            oldValues: { code: oldCode, name: existing.name, active: existing.active },
+            newValues: { code: nextCode, name: program.name, active: program.active, migratedReferences: !!migrated },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         res.json({ ...program.toObject(), migrated });
     } catch (err) {

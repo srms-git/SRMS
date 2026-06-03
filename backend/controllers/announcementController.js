@@ -1,5 +1,6 @@
 const Announcement = require('../models/AnnouncementModel');
 const { createInternalNotification } = require('./notificationController');
+const { logActivity } = require('../services/auditLogger');
 
 /**
  * Helper to map announcement type tokens to structural notification group keys
@@ -57,6 +58,17 @@ exports.createAnnouncement = async (req, res) => {
             notifType
         );
 
+        // Capture creation action to the audit logs
+        logActivity({
+            userId: req.user?.id || null,
+            action: 'CREATE_ANNOUNCEMENT',
+            entityType: 'announcements',
+            entityId: newAnnouncement._id,
+            oldValues: null,
+            newValues: newAnnouncement,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(201).json(newAnnouncement);
     } catch (error) {
         return res.status(500).json({ message: error.message });
@@ -68,6 +80,12 @@ exports.updateAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, type, date, active } = req.body;
+
+        // Fetch the record before updating to capture data modification deltas
+        const oldRecord = await Announcement.findById(id);
+        if (!oldRecord) {
+            return res.status(404).json({ message: 'Target announcement record could not be found.' });
+        }
 
         const updatedRecord = await Announcement.findByIdAndUpdate(
             id,
@@ -81,10 +99,6 @@ exports.updateAnnouncement = async (req, res) => {
             { new: true, runValidators: true } // Return modified version and ensure structural validation
         );
 
-        if (!updatedRecord) {
-            return res.status(404).json({ message: 'Target announcement record could not be found.' });
-        }
-
         // Send out an amendment update notification trace if modified successfully
         const notifType = mapAnnouncementToNotifType(updatedRecord.type);
         await createInternalNotification(
@@ -92,6 +106,17 @@ exports.updateAnnouncement = async (req, res) => {
             `The details for this notice have been modified. Review the announcements board for up-to-date adjustments.`,
             notifType
         );
+
+        // Capture data modification delta states to audit logs
+        logActivity({
+            userId: req.user?.id || null,
+            action: 'UPDATE_ANNOUNCEMENT',
+            entityType: 'announcements',
+            entityId: updatedRecord._id,
+            oldValues: oldRecord,
+            newValues: updatedRecord,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json(updatedRecord);
     } catch (error) {
@@ -109,6 +134,9 @@ exports.toggleAnnouncementStatus = async (req, res) => {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
         }
 
+        // Deep-clone or transform Mongoose document snapshot before making alterations
+        const oldValuesSnapshot = record.toObject ? record.toObject() : { ...record._doc };
+
         // Flip the underlying state
         record.active = !record.active;
         await record.save();
@@ -123,6 +151,17 @@ exports.toggleAnnouncementStatus = async (req, res) => {
             );
         }
 
+        // Capture state visibility mutation inside audit logs
+        logActivity({
+            userId: req.user?.id || null,
+            action: 'TOGGLE_ANNOUNCEMENT_STATUS',
+            entityType: 'announcements',
+            entityId: record._id,
+            oldValues: oldValuesSnapshot,
+            newValues: record,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(200).json(record);
     } catch (error) {
         return res.status(500).json({ message: error.message });
@@ -134,10 +173,24 @@ exports.deleteAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const deletedRecord = await Announcement.findByIdAndDelete(id);
-        if (!deletedRecord) {
+        // Pull document prior to deletion to preserve field context for systemic history trackers
+        const recordToDelete = await Announcement.findById(id);
+        if (!recordToDelete) {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
         }
+
+        await Announcement.findByIdAndDelete(id);
+
+        // Record full document data snapshot inside the oldValues parameter for destruction records
+        logActivity({
+            userId: req.user?.id || null,
+            action: 'DELETE_ANNOUNCEMENT',
+            entityType: 'announcements',
+            entityId: id,
+            oldValues: recordToDelete,
+            newValues: null,
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json({ message: 'Announcement deleted successfully.', id });
     } catch (error) {

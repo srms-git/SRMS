@@ -2,6 +2,7 @@ const Grantee = require('../models/GranteeModel');
 const ClaimHistory = require('../models/ClaimHistoryModel');
 const { archiveBatchIfFullyClaimed } = require('../services/archiveService');
 const { createInternalNotification } = require('./notificationController');
+const { logActivity } = require('../services/auditLogger');
 
 function mapBatchRow(row, program, batchNo, academicYear) {
     return {
@@ -110,6 +111,17 @@ exports.batchUpdateGrantees = async (req, res) => {
             },
         );
 
+        // Audit the complete batch transfer sequence
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'BATCH_GRANTEES_METADATA_UPDATED',
+            entityType: 'grantees',
+            entityId: `${normalizedNewProgram}-${normalizedNewBatchNo}`.toLowerCase(),
+            oldValues: { originalBatchNo, originalProgram, originalAcademicYear },
+            newValues: { batchNo: normalizedNewBatchNo, program: normalizedNewProgram, academicYear: normalizedNewAcademicYear, totalRecordsAffected: granteesToUpdate.length },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(200).json({
             message: 'Batch details updated successfully.',
             count: granteesToUpdate.length,
@@ -148,6 +160,17 @@ exports.batchSaveGrantees = async (req, res) => {
             'batch'
         );
 
+        // Log mass import action to audit logs
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'BATCH_GRANTEES_BULK_UPLOADED',
+            entityType: 'grantees',
+            entityId: `${program}-${batchNo}`.toLowerCase(),
+            oldValues: null,
+            newValues: { program, batchNo, academicYear, totalInserted: inserted.length },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(201).json({
             message: 'Batch saved successfully.',
             count: inserted.length,
@@ -165,6 +188,18 @@ exports.batchSaveGrantees = async (req, res) => {
 exports.createGrantee = async (req, res) => {
     try {
         const grantee = await Grantee.create(req.body);
+
+        // Log standalone individual creation events
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'GRANTEE_RECORD_CREATED',
+            entityType: 'grantees',
+            entityId: grantee._id,
+            oldValues: null,
+            newValues: { studentId: grantee.studentId, fullName: grantee.fullName, program: grantee.program, batchNo: grantee.batchNo },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         return res.status(201).json(grantee);
     } catch (error) {
         console.error('createGrantee error:', error);
@@ -326,6 +361,17 @@ exports.updateGrantee = async (req, res) => {
             }
         }
 
+        // Audit the details/claims modification transaction snapshot
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'GRANTEE_RECORD_MUTATED',
+            entityType: 'grantees',
+            entityId: grantee._id,
+            oldValues: { fullName: previousState.fullName, studentId: previousState.studentId, semesterClaimsCount: (previousState.semesterClaims || []).length },
+            newValues: { fullName: grantee.fullName, studentId: grantee.studentId, logsDispatched: historyCreates.length },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
+
         try {
             const outcome = await archiveBatchIfFullyClaimed({
                 batchNo: grantee.batchNo,
@@ -360,6 +406,17 @@ exports.deleteGrantee = async (req, res) => {
         
         // Cascade delete permanent ledger history lines if raw grantee is permanently erased
         await ClaimHistory.deleteMany({ granteeId: req.params.id });
+
+        // Record erasure signature inside the audit records
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: 'GRANTEE_RECORD_PURGED',
+            entityType: 'grantees',
+            entityId: req.params.id,
+            oldValues: { studentId: grantee.studentId, fullName: grantee.fullName, program: grantee.program, batchNo: grantee.batchNo },
+            newValues: { status: 'hard_deleted', cascadedLedgerLogsRemoved: true },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null
+        });
 
         return res.status(200).json({ message: 'Grantee deleted successfully.' });
     } catch (error) {
