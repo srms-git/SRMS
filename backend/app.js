@@ -41,7 +41,7 @@ app.use('/api/claim-history', requireDatabase, claimHistoryRoutes);
 app.use('/api/landing-settings', requireDatabase, landingSettingsRoutes);
 app.use('/api/landing-batches', requireDatabase, landingBatchRoutes);
 app.use('/api/programs', requireDatabase, programRoutes);
-app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/audit-logs', requireDatabase, auditLogRoutes);
 
 function getPdfConverterUploadUrl() {
     const candidates = [

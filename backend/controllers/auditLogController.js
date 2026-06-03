@@ -2,7 +2,7 @@ const AuditLog = require('../models/AuditLogModel');
 
 /**
  * Get all system audit logs with filtering, optional search, and pagination
- * @route GET /api/audit-logs/list
+ * @route GET /api/audit-logs
  */
 const getAuditLogs = async (req, res) => {
     try {
@@ -38,7 +38,8 @@ const getAuditLogs = async (req, res) => {
         // Execute concurrent tracking counts and page boundaries 
         const [logs, totalItems] = await Promise.all([
             AuditLog.find(query)
-                .sort({ createdAt: -1 }) // Keep newest logs at the top
+                .populate('userId', 'firstName lastName email role')
+                .sort({ createdAt: -1 })
                 .skip(offset)
                 .limit(parsedLimit),
             AuditLog.countDocuments(query)
@@ -64,22 +65,21 @@ const getAuditLogs = async (req, res) => {
 };
 
 /**
- * Get full detailed metrics for a single audit log row using query string criteria
- * @route GET /api/audit-logs/detail?id=...
+ * Get full details for a single audit log row
+ * @route GET /api/audit-logs/:id
  */
 const getAuditLogById = async (req, res) => {
     try {
-        // Updated from req.params to req.query to align perfectly with your routing schema
-        const { id } = req.query; 
+        const { id } = req.params;
 
         if (!id) {
             return res.status(400).json({ 
                 success: false, 
-                error: 'Audit log identification query parameter (?id=) is required.' 
+                error: 'Audit log id is required.' 
             });
         }
 
-        const log = await AuditLog.findById(id);
+        const log = await AuditLog.findById(id).populate('userId', 'firstName lastName email role');
 
         if (!log) {
             return res.status(404).json({ 
