@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Edit3,
   EyeOff,
+  ImagePlus,
   Megaphone,
   MoreHorizontal,
   Newspaper,
@@ -14,6 +15,8 @@ import {
   Search,
   SlidersHorizontal,
   Trash2,
+  UploadCloud,
+  X,
 } from "lucide-react"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -42,6 +45,25 @@ const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 
 const PAGE_SIZE = 3
+const MAX_ANNOUNCEMENT_IMAGE_BYTES = 2 * 1024 * 1024
+const ANNOUNCEMENT_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif"
+
+function readImageFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith("image/")) {
+      reject(new Error("Please choose a JPEG, PNG, WebP, or GIF image."))
+      return
+    }
+    if (file.size > MAX_ANNOUNCEMENT_IMAGE_BYTES) {
+      reject(new Error("Image must be 2 MB or smaller."))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "")
+    reader.onerror = () => reject(new Error("Could not read the image file."))
+    reader.readAsDataURL(file)
+  })
+}
 
 const DATE_RANGE_OPTIONS = [
   { value: "this_week", label: "This Week" },
@@ -294,6 +316,15 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
           </div>
 
           <div className="flex flex-1 flex-col px-3 py-3 sm:px-4 sm:py-4">
+            {item.image ? (
+              <div className="mb-3 overflow-hidden rounded-lg border border-slate-200/80 bg-slate-50">
+                <img
+                  src={item.image}
+                  alt=""
+                  className="aspect-[16/9] w-full object-cover"
+                />
+              </div>
+            ) : null}
             <h3 className="line-clamp-2 text-base font-semibold tracking-tight text-slate-900 sm:text-lg">{item.title}</h3>
             <p className="mt-2 line-clamp-4 flex-1 text-sm leading-relaxed text-slate-600">{item.description}</p>
           </div>
@@ -316,6 +347,10 @@ export default function AnnouncementPage() {
   const [draftDescription, setDraftDescription] = useState("")
   const [draftType, setDraftType] = useState("new_batch")
   const [draftDate, setDraftDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [draftImage, setDraftImage] = useState(null)
+  const [draftImageFileName, setDraftImageFileName] = useState("")
+  const [imageError, setImageError] = useState("")
+  const [isSaving, setIsSaving] = useState(false)
   const [activePage, setActivePage] = useState(1)
   const [inactivePage, setInactivePage] = useState(1)
 
@@ -351,6 +386,9 @@ export default function AnnouncementPage() {
     setDraftDescription("")
     setDraftType("new_batch")
     setDraftDate(new Date().toISOString().slice(0, 10))
+    setDraftImage(null)
+    setDraftImageFileName("")
+    setImageError("")
   }
 
   const openEditAnnouncement = (item) => {
@@ -359,7 +397,33 @@ export default function AnnouncementPage() {
     setDraftDescription(item.description)
     setDraftType(item.type || "new_batch")
     setDraftDate(item.date || new Date().toISOString().slice(0, 10))
+    setDraftImage(item.image || null)
+    setDraftImageFileName(item.image ? "Current image" : "")
+    setImageError("")
     setDialogOpen(true)
+  }
+
+  const handleImageFileChange = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ""
+    if (!file) return
+
+    try {
+      setImageError("")
+      const dataUrl = await readImageFileAsDataUrl(file)
+      setDraftImage(dataUrl)
+      setDraftImageFileName(file.name)
+    } catch (err) {
+      setDraftImage(null)
+      setDraftImageFileName("")
+      setImageError(err?.message || "Invalid image file.")
+    }
+  }
+
+  const clearDraftImage = () => {
+    setDraftImage(null)
+    setDraftImageFileName("")
+    setImageError("")
   }
 
   const handleDeleteAnnouncement = (item) => {
@@ -385,21 +449,26 @@ export default function AnnouncementPage() {
     const title = draftTitle.trim()
     const description = draftDescription.trim()
     const date = draftDate
-    if (!title || !description || !date) return
+    if (!title || !description || !date || isSaving) return
 
     const existingActive = editingId ? announcements.find((a) => a.id === editingId)?.active ?? true : true
+    const payload = {
+      title,
+      description,
+      type: draftType,
+      date,
+      image: draftImage || null,
+    }
 
     const submit = async () => {
       try {
+        setIsSaving(true)
         setError("")
         let saved
 
         if (editingId) {
           const response = await apiClient.put(`/announcements/${editingId}`, {
-            title,
-            description,
-            type: draftType,
-            date,
+            ...payload,
             active: existingActive,
           })
           saved = normalizeAnnouncement(response.data)
@@ -408,10 +477,7 @@ export default function AnnouncementPage() {
           )
         } else {
           const response = await apiClient.post("/announcements", {
-            title,
-            description,
-            type: draftType,
-            date,
+            ...payload,
             active: true,
           })
           saved = normalizeAnnouncement(response.data)
@@ -426,6 +492,8 @@ export default function AnnouncementPage() {
       } catch (err) {
         console.error("Failed to save announcement:", err)
         setError("Failed to save announcement. Please try again.")
+      } finally {
+        setIsSaving(false)
       }
     }
 
@@ -880,6 +948,79 @@ export default function AnnouncementPage() {
               />
             </div>
 
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor="announcement-image" className="text-sm font-semibold text-slate-700">
+                  Picture
+                </label>
+                <span className="text-xs text-slate-500">Optional · JPEG, PNG, WebP, GIF · max 2 MB</span>
+              </div>
+
+              {draftImage ? (
+                <div className="relative overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                  <img
+                    src={draftImage}
+                    alt="Announcement preview"
+                    className="aspect-[16/9] w-full object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={clearDraftImage}
+                    className="absolute top-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/70 text-white transition hover:bg-slate-900"
+                    aria-label="Remove picture"
+                  >
+                    <X className="h-4 w-4" aria-hidden />
+                  </button>
+                  {draftImageFileName ? (
+                    <p className="truncate border-t border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">
+                      {draftImageFileName}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <label
+                  htmlFor="announcement-image"
+                  className="flex min-h-[108px] cursor-pointer items-center gap-3 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50/80 px-4 py-3 transition hover:border-[#081F5C]/40 hover:bg-[#081F5C]/5"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#081F5C]/10 text-[#081F5C]">
+                    <ImagePlus className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                      <UploadCloud className="h-4 w-4 text-[#081F5C]" aria-hidden />
+                      Click to upload picture
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">Shown on the announcement card</p>
+                  </div>
+                  <span className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm">
+                    Browse
+                  </span>
+                </label>
+              )}
+
+              <input
+                id="announcement-image"
+                type="file"
+                accept={ANNOUNCEMENT_IMAGE_ACCEPT}
+                className="hidden"
+                onChange={handleImageFileChange}
+              />
+
+              {draftImage ? (
+                <label
+                  htmlFor="announcement-image"
+                  className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-xs font-semibold text-[#081F5C] hover:underline"
+                >
+                  <UploadCloud className="h-3.5 w-3.5" aria-hidden />
+                  Replace picture
+                </label>
+              ) : null}
+
+              {imageError ? (
+                <p className="text-xs text-red-600">{imageError}</p>
+              ) : null}
+            </div>
+
             <DialogFooter className="mt-2 flex flex-col gap-2 sm:flex-row sm:justify-end">
               <button
                 type="button"
@@ -890,9 +1031,10 @@ export default function AnnouncementPage() {
               </button>
               <button
                 type="submit"
-                className="inline-flex h-11 items-center justify-center rounded-lg bg-[#081F5C] px-4 text-sm font-semibold text-white transition hover:bg-[#0b2f6a]"
+                disabled={isSaving}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-[#081F5C] px-4 text-sm font-semibold text-white transition hover:bg-[#0b2f6a] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {editingId ? "Save changes" : "Create announcement"}
+                {isSaving ? "Saving…" : editingId ? "Save changes" : "Create announcement"}
               </button>
             </DialogFooter>
           </form>

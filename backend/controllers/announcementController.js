@@ -34,7 +34,7 @@ exports.getAllAnnouncements = async (req, res) => {
 // 2. Create a new announcement
 exports.createAnnouncement = async (req, res) => {
     try {
-        const { title, description, type, date, active } = req.body;
+        const { title, description, type, date, active, image } = req.body;
 
         if (!title || !description) {
             return res.status(400).json({ message: 'Title and description fields cannot be blank.' });
@@ -46,6 +46,7 @@ exports.createAnnouncement = async (req, res) => {
             type: type || 'new_batch',
             date: date || new Date().toISOString().slice(0, 10),
             active: active !== undefined ? active : true,
+            image: image || null,
             createdBy: req.user?.id || null // Captures user ref if using authentication middleware
         });
 
@@ -67,17 +68,22 @@ exports.createAnnouncement = async (req, res) => {
 exports.updateAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, type, date, active } = req.body;
+        const { title, description, type, date, active, image } = req.body;
+
+        const updatePayload = {
+            title: title?.trim(),
+            description: description?.trim(),
+            type,
+            date,
+            active,
+        };
+        if (image !== undefined) {
+            updatePayload.image = image || null;
+        }
 
         const updatedRecord = await Announcement.findByIdAndUpdate(
             id,
-            {
-                title: title?.trim(),
-                description: description?.trim(),
-                type,
-                date,
-                active
-            },
+            updatePayload,
             { new: true, runValidators: true } // Return modified version and ensure structural validation
         );
 

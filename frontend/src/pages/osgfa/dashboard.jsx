@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Archive, ChevronRight, CircleCheck, CircleDashed, Layers, Settings, UserPlus, Users } from "lucide-react"
-import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
+import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
 
+import { ProgramQuantityScale } from "@/components/dashboard/ProgramQuantityScale"
+import { RequirementsCompletionCard } from "@/components/dashboard/RequirementsCompletionCard"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   buildBatchesFromGrantees,
   buildMonthlyClaimTrend,
+  buildProgramQuantityBars,
   buildYearLevelDonut,
   fetchAllGrantees,
-  recordMatchesProgram,
+  programQuantityScaleSubtitle,
 } from "@/lib/granteesApi"
-import { requirementCoverageStatusForRow } from "@/lib/granteeRequirementsChecklist"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import {
   BatchCardSkeleton,
@@ -35,25 +38,6 @@ const YEAR_LEVEL_DONUT_STYLES = [
   { colorFrom: "#1d4ed8", colorTo: "#3b82f6", color: "#2563eb" },
   { colorFrom: "#047857", colorTo: "#34d399", color: "#10b981" },
   { colorFrom: "#0e7490", colorTo: "#22d3ee", color: "#0891b2" },
-]
-
-const TES_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades from the previous semester" },
-  {
-    id: "scholarship_disclosure",
-    label: "Disclosure or certificate regarding other scholarships or financial assistance, if required",
-  },
-  { id: "id_email", label: "Valid school ID and updated school email on file" },
-  { id: "acknowledgment", label: "Signed TES acknowledgment and parent/guardian consent, where applicable" },
-]
-
-const TDP_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades or class cards from the previous semester" },
-  { id: "school_id", label: "Valid school ID (photocopy with registrar or authorized certification)" },
-  { id: "indigency", label: "Certificate of indigency or other authorized proof of economic status, if applicable" },
-  { id: "undertaking", label: "Signed TDP undertaking or parent/guardian consent form" },
 ]
 
 const TREND_RANGE = {
@@ -118,42 +102,11 @@ function claimTrendForRange(rows, range, referenceDate = new Date()) {
   }
 }
 
-function yearLevelsForRow(row) {
-  if (Array.isArray(row?.semesterClaims) && row.semesterClaims.length > 0) {
-    return [...new Set(row.semesterClaims.map((c) => String(c.yearLevel ?? "").trim()).filter(Boolean))]
-  }
-  const yl = String(row?.yearLevel ?? "").trim()
-  if (yl) return [yl]
-  return []
-}
-
-function requirementDefsForRow(row) {
-  return recordMatchesProgram(row, "TDP") || String(row?.program ?? "").toUpperCase() === "TDP"
-    ? TDP_GRANTEE_REQUIREMENTS
-    : TES_GRANTEE_REQUIREMENTS
-}
-
 function enrichYearLevelDonut(donut) {
   return donut.map((entry, i) => {
     const style = YEAR_LEVEL_DONUT_STYLES[i % YEAR_LEVEL_DONUT_STYLES.length]
     return { ...entry, ...style }
   })
-}
-
-function RequirementsYAxisTick({ x, y, payload }) {
-  const lines = String(payload?.value ?? "")
-    .split("\n")
-    .filter(Boolean)
-
-  return (
-    <text x={x} y={y} textAnchor="end" fill="currentColor" className="fill-slate-700 dark:fill-slate-200">
-      {lines.map((line, idx) => (
-        <tspan key={`${line}-${idx}`} x={x} dy={idx === 0 ? 0 : 13} className="text-[11px] font-medium">
-          {line}
-        </tspan>
-      ))}
-    </text>
-  )
 }
 
 function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
@@ -187,6 +140,7 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
 export default function Dashboard() {
   const navigate = useNavigate()
   const { formatStat, privacy } = useOsgfaPrivacySettings()
+  const { activePrograms } = useOsgfaPrograms()
   const hideSensitiveStats = privacy.hideSensitiveStatsFromSharedScreens
   const [trendRange, setTrendRange] = useState(TREND_RANGE.THIS_YEAR)
   const [records, setRecords] = useState([])
@@ -238,33 +192,14 @@ export default function Dashboard() {
     }
   }, [batches, records])
 
-  const programBars = useMemo(() => {
-    let tes = 0
-    let tdp = 0
-    for (const row of records) {
-      if (recordMatchesProgram(row, "TES")) tes += 1
-      else if (recordMatchesProgram(row, "TDP")) tdp += 1
-    }
-    const total = Math.max(tes + tdp, 1)
-    return [
-      {
-        key: "TES",
-        label: "TES",
-        value: tes,
-        width: (tes / total) * 100,
-        percent: (tes / total) * 100,
-        gradientCss: "linear-gradient(90deg, rgba(4,19,61,0.98) 0%, rgba(8,31,92,0.88) 52%, rgba(20,71,166,0.72) 100%)",
-      },
-      {
-        key: "TDP",
-        label: "TDP",
-        value: tdp,
-        width: (tdp / total) * 100,
-        percent: (tdp / total) * 100,
-        gradientCss: "linear-gradient(90deg, rgba(139,92,246,0.92) 0%, rgba(217,70,239,0.82) 55%, rgba(79,70,229,0.70) 100%)",
-      },
-    ]
-  }, [records])
+  const programBars = useMemo(
+    () => buildProgramQuantityBars(records, activePrograms),
+    [records, activePrograms],
+  )
+  const programScaleSubtitle = useMemo(
+    () => programQuantityScaleSubtitle(activePrograms),
+    [activePrograms],
+  )
 
   const recentBatches = useMemo(() => {
     const items = [...batches]
@@ -300,7 +235,7 @@ export default function Dashboard() {
         label: "Add grantees",
         desc: "Register new grantees quickly",
         Icon: UserPlus,
-        tone: "linear-gradient(145deg, rgba(4,19,61,0.98) 0%, rgba(8,31,92,0.88) 52%, rgba(20,71,166,0.72) 100%)",
+        tone: "linear-gradient(145deg, rgba(4,120,87,0.95) 0%, rgba(16,185,129,0.88) 55%, rgba(52,211,153,0.72) 100%)",
         onClick: () => navigate("/osgfa/add-grantees"),
       },
       {
@@ -329,50 +264,6 @@ export default function Dashboard() {
       },
     ],
     [navigate],
-  )
-
-  const requirementBars = useMemo(() => {
-    let complete = 0
-    let incomplete = 0
-
-    for (const row of records) {
-      const levels = yearLevelsForRow(row)
-      const defs = requirementDefsForRow(row)
-      if (levels.length === 0) {
-        incomplete += 1
-        continue
-      }
-      const status = requirementCoverageStatusForRow(row, defs, levels)
-      if (status === "complete") complete += 1
-      else incomplete += 1
-    }
-
-    const total = Math.max(complete + incomplete, 1)
-    return [
-      {
-        key: "complete",
-        label: "Complete\nrequirements",
-        value: complete,
-        percent: (complete / total) * 100,
-        fill: "url(#requirementsCompleteGrad)",
-        swatchColor: "#1447a6",
-      },
-      {
-        key: "incomplete",
-        label: "Incomplete\nrequirements",
-        value: incomplete,
-        percent: (incomplete / total) * 100,
-        fill: "url(#requirementsIncompleteGrad)",
-        swatchColor: UNCLAIM_STROKE,
-      },
-    ]
-  }, [records])
-
-  const requirementsChartConfig = useMemo(
-    () => ({
-      value: { label: "Total grantees", color: "#10b981" },
-    }),
-    [],
   )
 
   const statValue = (n, label) => formatStat(n, label)
@@ -658,151 +549,39 @@ export default function Dashboard() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-stretch">
         <div
           className={cn(
-            "w-full rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6",
+            "flex h-full w-full flex-col rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6",
             revealItemClass(contentRevealed, 1),
           )}
           style={revealItemStyle(contentRevealed, 1)}
         >
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+          <div className="mb-3 shrink-0 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-white">Program quantity scale</p>
-              <p className="text-xs text-slate-500 dark:text-slate-300">Visual comparison of TES and TDP totals.</p>
+              <p className="text-xs text-slate-500 dark:text-slate-300">{programScaleSubtitle}</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            {hideSensitiveStats ? (
-              <p className="rounded-xl border border-slate-200/80 bg-slate-50/70 px-4 py-8 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-white/5">
-                Program totals are hidden while privacy mode is enabled.
-              </p>
-            ) : (
-              programBars.map((row) => (
-                <div key={row.key} className="space-y-2.5 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold tracking-wide text-slate-800 dark:text-slate-100">{row.label}</span>
-                      <span className="text-xs text-slate-500 dark:text-slate-300">{row.percent.toFixed(1)}%</span>
-                    </div>
-                    <span className="text-sm font-bold tabular-nums text-slate-900 dark:text-white">{row.value}</span>
-                  </div>
-
-                  <div className="h-5 w-full overflow-hidden rounded-full bg-slate-200/80 dark:bg-white/10">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${row.width}%`, backgroundImage: row.gradientCss }}
-                    />
-                  </div>
-
-                  <p className="text-[11px] text-slate-500 dark:text-slate-300">
-                    {row.label} total grantees:{" "}
-                    <span className="font-semibold text-slate-700 dark:text-slate-200">{row.value}</span>
-                  </p>
-                </div>
-              ))
-            )}
-          </div>
+          <ProgramQuantityScale
+            className="min-h-0 flex-1"
+            rows={programBars}
+            hideSensitiveStats={hideSensitiveStats}
+            emptyMessage="No active programs configured. Add or enable programs in Settings."
+          />
         </div>
 
-        <div
-          className={cn(
-            "w-full rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6",
-            revealItemClass(contentRevealed, 2),
-          )}
+        <RequirementsCompletionCard
+          records={records}
+          activePrograms={activePrograms}
+          hideSensitiveStats={hideSensitiveStats}
+          isLoading={isLoading}
+          skeletonLeaving={skeletonLeaving}
+          chartId="requirements-completion-bars"
+          className={revealItemClass(contentRevealed, 2)}
           style={revealItemStyle(contentRevealed, 2)}
-        >
-          <div className="mb-4">
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">Requirements completion scale</p>
-            <p className="text-xs text-slate-500 dark:text-slate-300">Complete and incomplete requirements across all grantees.</p>
-          </div>
-
-          <div className="relative min-h-[150px]">
-            {(isLoading || skeletonLeaving) && (
-              <div
-                className={cn(
-                  "rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition-opacity duration-300 ease-out motion-reduce:transition-none dark:border-white/10 dark:bg-white/5",
-                  !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
-                )}
-                aria-busy={isLoading}
-                aria-hidden={!isLoading}
-              >
-                <ChartBarSkeleton className="border-0 bg-transparent p-0 shadow-none ring-0" chartClassName="h-[150px]" />
-              </div>
-            )}
-            {!isLoading && (
-          <div className="relative z-10 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/5">
-            {hideSensitiveStats ? (
-              <div className="flex h-[150px] items-center justify-center px-4 text-center text-sm text-slate-500">
-                Requirement statistics are hidden while privacy mode is enabled.
-              </div>
-            ) : (
-              <ChartContainer id="requirements-completion-bars" config={requirementsChartConfig} className="aspect-auto h-[150px] w-full">
-                <BarChart
-                  data={requirementBars}
-                  layout="vertical"
-                  margin={{ top: 0, right: 10, left: -20, bottom: 0 }}
-                  barCategoryGap={4}
-                  barSize={40}
-                >
-                  <defs>
-                    <linearGradient id="requirementsCompleteGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#04133d" stopOpacity={0.98} />
-                      <stop offset="52%" stopColor="#081F5C" stopOpacity={0.88} />
-                      <stop offset="100%" stopColor="#1447a6" stopOpacity={0.72} />
-                    </linearGradient>
-                    <linearGradient id="requirementsIncompleteGrad" x1="0" y1="0" x2="1" y2="0">
-                      <stop offset="0%" stopColor="#b91c1c" stopOpacity={0.92} />
-                      <stop offset="55%" stopColor={UNCLAIM_STROKE} stopOpacity={0.82} />
-                      <stop offset="100%" stopColor="#ef4444" stopOpacity={0.7} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgb(148 163 184 / 0.25)" />
-                  <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
-                  <YAxis
-                    type="category"
-                    dataKey="label"
-                    tickLine={false}
-                    axisLine={false}
-                    tick={<RequirementsYAxisTick />}
-                    width={112}
-                  />
-                  <ChartTooltip
-                    cursor={{ fill: "rgb(148 163 184 / 0.12)" }}
-                    content={<ChartTooltipContent formatter={(value) => [`${value}`, "Total"]} />}
-                  />
-                  <Bar dataKey="value" radius={[0, 12, 12, 0]}>
-                    {requirementBars.map((row) => (
-                      <Cell key={row.key} fill={row.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ChartContainer>
-            )}
-          </div>
-            )}
-          </div>
-
-          {!hideSensitiveStats ? (
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {requirementBars.map((row) => (
-                <div
-                  key={row.key}
-                  className="flex items-center justify-between rounded-lg border border-slate-200/80 px-3 py-2 text-xs dark:border-white/10"
-                >
-                  <span className="inline-flex items-center gap-2 text-slate-700 dark:text-slate-200">
-                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: row.swatchColor }} />
-                    {row.label}
-                  </span>
-                  <span className="font-semibold tabular-nums text-slate-900 dark:text-white">
-                    {row.value} ({row.percent.toFixed(1)}%)
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        />
       </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-5">

@@ -39,6 +39,65 @@ export function filterGranteesByProgram(rows, targetProgram) {
   return (rows ?? []).filter((row) => recordMatchesProgram(row, target))
 }
 
+/** Solid bar fills for program quantity scale (matches MAX_OS_GFA_PROGRAMS). */
+export const PROGRAM_QUANTITY_BAR_COLORS = ["#1447a6", "#7c3aed", "#059669", "#0891b2", "#d97706"]
+
+/**
+ * Grantee counts per active program for dashboard quantity bars.
+ * @param {Array} records Grantee rows
+ * @param {Array<{ code?: string, name?: string, fullName?: string, active?: boolean, id?: string }>} programs Programs from OSGFA settings
+ */
+function countUniqueBatchesForProgram(records, programCode) {
+  const keys = new Set()
+  for (const row of records ?? []) {
+    if (!recordMatchesProgram(row, programCode)) continue
+    const batchNo = String(row?.batchNo ?? "").trim()
+    const schoolYear = String(row?.academicYear ?? "").trim()
+    if (!batchNo) continue
+    keys.add(`${batchNo}|${programCode}|${schoolYear}`)
+  }
+  return keys.size
+}
+
+export function buildProgramQuantityBars(records, programs) {
+  const activePrograms = (programs ?? []).filter((p) => p && p.active !== false && String(p.code ?? "").trim())
+  const granteeTotal = records?.length ?? 0
+  const scaleTotal = Math.max(granteeTotal, 1)
+
+  return activePrograms.map((program, i) => {
+    const code = String(program.code).trim().toUpperCase()
+    let value = 0
+    for (const row of records ?? []) {
+      if (recordMatchesProgram(row, code)) value += 1
+    }
+    const name = String(program.name ?? code).trim() || code
+    const fullName = String(program.fullName ?? "").trim()
+    const batchCount = countUniqueBatchesForProgram(records, code)
+    return {
+      key: String(program.id ?? code),
+      label: code,
+      name,
+      fullName: fullName && fullName !== name ? fullName : "",
+      value,
+      batchCount,
+      width: (value / scaleTotal) * 100,
+      percent: (value / scaleTotal) * 100,
+      barColor: PROGRAM_QUANTITY_BAR_COLORS[i % PROGRAM_QUANTITY_BAR_COLORS.length],
+    }
+  })
+}
+
+export function programQuantityScaleSubtitle(programs) {
+  const codes = (programs ?? [])
+    .filter((p) => p && p.active !== false)
+    .map((p) => String(p.code ?? "").trim().toUpperCase())
+    .filter(Boolean)
+  if (codes.length === 0) return "Grantee totals by program."
+  if (codes.length === 1) return `Grantee total for ${codes[0]}.`
+  if (codes.length <= 4) return `Visual comparison of ${codes.join(", ")} grantee totals.`
+  return "Grantee totals across active programs."
+}
+
 export function mapGranteeFromApi(doc) {
   if (!doc || typeof doc !== "object") return null
 
@@ -210,7 +269,14 @@ export async function fetchGranteesForBatch({ program, batchNo, academicYear } =
   return sortGranteesBySeqNo(byBatch)
 }
 
-const YEAR_LEVEL_CHART_COLORS = ["#04133d", "#081F5C", "#1447a6", "#3b82f6", "#60a5fa"]
+/** Distinct year-level colors (brand navy + modern accents) for donut charts */
+const YEAR_LEVEL_DONUT_PALETTE = [
+  { color: "#8b5cf6", colorFrom: "#7c3aed", colorTo: "#a78bfa" },
+  { color: "#081F5C", colorFrom: "#04133d", colorTo: "#1447a6" },
+  { color: "#2563eb", colorFrom: "#1d4ed8", colorTo: "#60a5fa" },
+  { color: "#10b981", colorFrom: "#047857", colorTo: "#34d399" },
+  { color: "#0891b2", colorFrom: "#0e7490", colorTo: "#22d3ee" },
+]
 const YEAR_LEVEL_ORDER = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -229,19 +295,17 @@ export function buildYearLevelDonut(rows) {
     counts.set(yl, (counts.get(yl) ?? 0) + 1)
   }
 
-  const entries = YEAR_LEVEL_ORDER.filter((yl) => counts.has(yl)).map((name, i) => ({
-    name,
-    value: counts.get(name),
-    color: YEAR_LEVEL_CHART_COLORS[i % YEAR_LEVEL_CHART_COLORS.length],
-  }))
+  const paletteForIndex = (i) => YEAR_LEVEL_DONUT_PALETTE[i % YEAR_LEVEL_DONUT_PALETTE.length]
+
+  const entries = YEAR_LEVEL_ORDER.filter((yl) => counts.has(yl)).map((name, i) => {
+    const { color, colorFrom, colorTo } = paletteForIndex(i)
+    return { name, value: counts.get(name), color, colorFrom, colorTo }
+  })
 
   for (const [name, value] of counts) {
     if (!YEAR_LEVEL_ORDER.includes(name)) {
-      entries.push({
-        name,
-        value,
-        color: YEAR_LEVEL_CHART_COLORS[entries.length % YEAR_LEVEL_CHART_COLORS.length],
-      })
+      const { color, colorFrom, colorTo } = paletteForIndex(entries.length)
+      entries.push({ name, value, color, colorFrom, colorTo })
     }
   }
 
@@ -272,44 +336,45 @@ export function buildMonthlyClaimTrend(rows) {
   return buckets
 }
 
-/** Latest batch+program cards for add-grantees sidebar (newest first, no mock padding). */
+function latestBatchTimestamp(row) {
+  const dateCandidates = [row?.createdAt, row?.updatedAt, row?.lastUpdated]
+  let best = 0
+  for (const value of dateCandidates) {
+    if (!value) continue
+    const parsed = Date.parse(String(value))
+    if (Number.isNaN(parsed)) continue
+    best = Math.max(best, parsed)
+  }
+  return best > 0 ? new Date(best).toISOString() : null
+}
+
+/** Latest batch cards for add-grantees sidebar (aligned with Batches page grouping). */
 export function buildLatestBatchGranteeCards(records, limit = 8) {
   const grouped = new Map()
 
   for (const row of records ?? []) {
     const batchNo = String(row?.batchNo ?? "").trim()
-    if (!batchNo) continue
-
     const program = String(row?.program ?? "").trim().toUpperCase() || inferProgramFromRecord(row)
-    if (program !== "TES" && program !== "TDP") continue
+    const schoolYear = String(row?.academicYear ?? "").trim()
+    if (!batchNo || !program) continue
 
-    const key = `${batchNo}|${program}`
+    const key = `${batchNo}|${program}|${schoolYear}`
     const current = grouped.get(key) ?? {
       batchNo,
       program,
+      schoolYear,
       grantees: 0,
-      schoolYear: "",
       addedAt: null,
     }
     current.grantees += 1
 
-    const dateCandidates = [row?.createdAt, row?.updatedAt, row?.lastUpdated]
-    for (const value of dateCandidates) {
-      if (!value) continue
-      const parsed = Date.parse(String(value))
-      if (Number.isNaN(parsed)) continue
-      const iso = new Date(parsed).toISOString()
-      if (!current.addedAt || Date.parse(iso) > Date.parse(current.addedAt)) {
-        current.addedAt = iso
-        const ay = String(row?.academicYear ?? "").trim()
-        if (ay) current.schoolYear = ay
+    const rowAddedAt = latestBatchTimestamp(row)
+    if (rowAddedAt) {
+      const rowTs = Date.parse(rowAddedAt)
+      const currentTs = current.addedAt ? Date.parse(current.addedAt) : 0
+      if (!current.addedAt || rowTs > currentTs) {
+        current.addedAt = rowAddedAt
       }
-      break
-    }
-
-    if (!current.schoolYear) {
-      const ay = String(row?.academicYear ?? "").trim()
-      if (ay) current.schoolYear = ay
     }
 
     grouped.set(key, current)
@@ -320,6 +385,9 @@ export function buildLatestBatchGranteeCards(records, limit = 8) {
     const tA = a.addedAt ? Date.parse(a.addedAt) : 0
     const tB = b.addedAt ? Date.parse(b.addedAt) : 0
     if (tB !== tA) return tB - tA
+    const yearA = String(a.schoolYear ?? "").trim()
+    const yearB = String(b.schoolYear ?? "").trim()
+    if (yearB !== yearA) return yearB.localeCompare(yearA)
     const numA = Number.parseFloat(String(a.batchNo))
     const numB = Number.parseFloat(String(b.batchNo))
     const hasNumA = Number.isFinite(numA)
@@ -327,9 +395,8 @@ export function buildLatestBatchGranteeCards(records, limit = 8) {
     if (hasNumA && hasNumB && numB !== numA) return numB - numA
     if (hasNumA && !hasNumB) return -1
     if (!hasNumA && hasNumB) return 1
-    const progOrder = (p) => (p === "TES" ? 0 : p === "TDP" ? 1 : 2)
-    const po = progOrder(a.program) - progOrder(b.program)
-    if (po !== 0) return po
+    const progCmp = String(a.program).localeCompare(String(b.program))
+    if (progCmp !== 0) return progCmp
     return String(b.batchNo).localeCompare(String(a.batchNo))
   })
 

@@ -27,6 +27,10 @@ const AnnouncementSchema = new mongoose.Schema({
         required: true,
         default: true
     },
+    image: {
+        type: String,
+        default: null,
+    },
     // Optional audit trail to track which administrative staff member created the record
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
