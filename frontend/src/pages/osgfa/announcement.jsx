@@ -19,6 +19,14 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import apiClient from "@/lib/apiClient"
+import {
+  AnnouncementCardSkeleton,
+  SummaryStatCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 
 const ANNOUNCER_TYPES = {
   all: "All",
@@ -107,10 +115,14 @@ function isDateInRange(value, rangeKey) {
   return date >= rangeStart && date <= rangeEnd
 }
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -296,7 +308,7 @@ export default function AnnouncementPage() {
   const [typeFilter, setTypeFilter] = useState("all")
   const [dateRange, setDateRange] = useState("__")
   const [announcements, setAnnouncements] = useState([])
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -330,6 +342,8 @@ export default function AnnouncementPage() {
 
     fetchAnnouncements()
   }, [])
+
+  const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
   const resetDraft = () => {
     setEditingId(null)
@@ -524,39 +538,66 @@ export default function AnnouncementPage() {
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryStatCard
-          label="Total announcements"
-          value={stats.total}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={Newspaper}
-        />
-        <SummaryStatCard
-          label="Active (live)"
-          value={stats.active}
-          accentBar="border-l-[3px] border-l-[#0f766e]"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={Radio}
-        />
-        <SummaryStatCard
-          label="Inactive (hidden)"
-          value={stats.inactive}
-          accentBar="border-l-[3px] border-l-slate-500"
-          glow="bg-slate-400/30"
-          iconBg="bg-linear-to-br from-slate-500 to-slate-700 text-white"
-          Icon={EyeOff}
-        />
-        <SummaryStatCard
-          label="Posted this month"
-          value={stats.thisMonth}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={CalendarDays}
-        />
+      <div className="relative min-h-[124px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#0f766e]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-slate-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryStatCard
+              label="Total announcements"
+              value={stats.total}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={Newspaper}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="Active (live)"
+              value={stats.active}
+              accentBar="border-l-[3px] border-l-[#0f766e]"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={Radio}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="Inactive (hidden)"
+              value={stats.inactive}
+              accentBar="border-l-[3px] border-l-slate-500"
+              glow="bg-slate-400/30"
+              iconBg="bg-linear-to-br from-slate-500 to-slate-700 text-white"
+              Icon={EyeOff}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Posted this month"
+              value={stats.thisMonth}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={CalendarDays}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
@@ -645,9 +686,21 @@ export default function AnnouncementPage() {
         </div>
       ) : null}
 
-      {isLoading ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600">
-          Loading announcements...
+      {isLoading || skeletonLeaving ? (
+        <div className="relative min-h-[280px]">
+          <ul
+            className={cn(
+              "grid min-w-0 list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 xl:grid-cols-3 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-x-0 top-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+            aria-label="Loading announcements"
+          >
+            {Array.from({ length: 3 }, (_, index) => (
+              <AnnouncementCardSkeleton key={index} />
+            ))}
+          </ul>
         </div>
       ) : announcements.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
@@ -665,11 +718,20 @@ export default function AnnouncementPage() {
           </button>
         </div>
       ) : filteredAnnouncements.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600">
+        <div
+          className={cn(
+            "rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600",
+            revealItemClass(contentRevealed, 0),
+          )}
+          style={revealItemStyle(contentRevealed, 0)}
+        >
           No announcements match your filter or search.
         </div>
       ) : (
-        <div className="flex min-w-0 flex-col gap-6">
+        <div
+          className={cn("flex min-w-0 flex-col gap-6", revealItemClass(contentRevealed, 0))}
+          style={revealItemStyle(contentRevealed, 0)}
+        >
           <section className="flex min-w-0 flex-col gap-4 pb-2" aria-labelledby="active-announcements-heading">
             <AnnouncementSectionHeader
               title="Active announcements"

@@ -14,6 +14,17 @@ import {
 } from "@/lib/granteesApi"
 import { requirementCoverageStatusForRow } from "@/lib/granteeRequirementsChecklist"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
+import {
+  BatchCardSkeleton,
+  ChartAreaSkeleton,
+  ChartBarSkeleton,
+  ChartDonutSkeleton,
+  SummaryStatCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 
 const CLAIM_STROKE = "#081F5C"
 const UNCLAIM_STROKE = "#dc2626"
@@ -145,10 +156,14 @@ function RequirementsYAxisTick({ x, y, payload }) {
   )
 }
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -196,6 +211,8 @@ export default function Dashboard() {
   useEffect(() => {
     loadRecords()
   }, [])
+
+  const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
   const batches = useMemo(() => buildBatchesFromGrantees(records), [records])
   const claimTrend = useMemo(() => claimTrendForRange(records, trendRange), [records, trendRange])
@@ -358,10 +375,7 @@ export default function Dashboard() {
     [],
   )
 
-  const statValue = (n, label) => {
-    if (isLoading) return "…"
-    return formatStat(n, label)
-  }
+  const statValue = (n, label) => formatStat(n, label)
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
@@ -385,42 +399,90 @@ export default function Dashboard() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryStatCard
-          label="Total Batches"
-          value={statValue(overview.totalBatches)}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={Layers}
-        />
-        <SummaryStatCard
-          label="Total Grantees"
-          value={statValue(overview.totalGrantees, "Total Grantees")}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={Users}
-        />
-        <SummaryStatCard
-          label="Claimed"
-          value={statValue(overview.claimed, "Claimed")}
-          accentBar="border-l-[3px] border-l-emerald-500"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={CircleCheck}
-        />
-        <SummaryStatCard
-          label="Unclaimed"
-          value={statValue(overview.unclaimed, "Unclaimed")}
-          accentBar="border-l-[3px] border-l-amber-500"
-          glow="bg-amber-400/30"
-          iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
-          Icon={CircleDashed}
-        />
+      <div className="relative min-h-[124px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-emerald-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-amber-500" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryStatCard
+              label="Total Batches"
+              value={statValue(overview.totalBatches)}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={Layers}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="Total Grantees"
+              value={statValue(overview.totalGrantees, "Total Grantees")}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={Users}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="Claimed"
+              value={statValue(overview.claimed, "Claimed")}
+              accentBar="border-l-[3px] border-l-emerald-500"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={CircleCheck}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Unclaimed"
+              value={statValue(overview.unclaimed, "Unclaimed")}
+              accentBar="border-l-[3px] border-l-amber-500"
+              glow="bg-amber-400/30"
+              iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
+              Icon={CircleDashed}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <div className="relative min-h-[320px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid grid-cols-1 gap-3 lg:grid-cols-3 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <ChartAreaSkeleton className="lg:col-span-2" />
+            <ChartDonutSkeleton />
+          </div>
+        )}
+        {!isLoading && (
+      <div
+        className={cn(
+          "relative z-10 grid grid-cols-1 gap-3 lg:grid-cols-3",
+          revealItemClass(contentRevealed, 0),
+        )}
+        style={revealItemStyle(contentRevealed, 0)}
+      >
         <div className="lg:col-span-2 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6">
           <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
@@ -445,9 +507,7 @@ export default function Dashboard() {
             </Select>
           </div>
           <div className="rounded-xl bg-slate-50/90 p-1 dark:bg-white/4">
-            {isLoading ? (
-              <div className="flex h-[280px] items-center justify-center text-sm text-slate-500">Loading trend data…</div>
-            ) : hideSensitiveStats ? (
+            {hideSensitiveStats ? (
               <div className="flex h-[280px] items-center justify-center px-4 text-center text-sm text-slate-500">
                 Claim statistics are hidden while privacy mode is enabled.
               </div>
@@ -535,9 +595,7 @@ export default function Dashboard() {
           <div className="mb-2">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">Year level distribution</p>
           </div>
-          {isLoading ? (
-            <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">Loading…</div>
-          ) : yearLevelDonut.length === 0 ? (
+          {yearLevelDonut.length === 0 ? (
             <div className="flex min-h-[220px] items-center justify-center text-sm text-slate-500">
               No grantee year levels on record yet.
             </div>
@@ -597,9 +655,17 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <div className="w-full rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6">
+        <div
+          className={cn(
+            "w-full rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6",
+            revealItemClass(contentRevealed, 1),
+          )}
+          style={revealItemStyle(contentRevealed, 1)}
+        >
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-semibold text-slate-900 dark:text-white">Program quantity scale</p>
@@ -640,16 +706,34 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="w-full rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6">
+        <div
+          className={cn(
+            "w-full rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6",
+            revealItemClass(contentRevealed, 2),
+          )}
+          style={revealItemStyle(contentRevealed, 2)}
+        >
           <div className="mb-4">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">Requirements completion scale</p>
             <p className="text-xs text-slate-500 dark:text-slate-300">Complete and incomplete requirements across all grantees.</p>
           </div>
 
-          <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/5">
-            {isLoading ? (
-              <div className="flex h-[150px] items-center justify-center text-sm text-slate-500">Loading…</div>
-            ) : hideSensitiveStats ? (
+          <div className="relative min-h-[150px]">
+            {(isLoading || skeletonLeaving) && (
+              <div
+                className={cn(
+                  "rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 transition-opacity duration-300 ease-out motion-reduce:transition-none dark:border-white/10 dark:bg-white/5",
+                  !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+                )}
+                aria-busy={isLoading}
+                aria-hidden={!isLoading}
+              >
+                <ChartBarSkeleton className="border-0 bg-transparent p-0 shadow-none ring-0" chartClassName="h-[150px]" />
+              </div>
+            )}
+            {!isLoading && (
+          <div className="relative z-10 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/5">
+            {hideSensitiveStats ? (
               <div className="flex h-[150px] items-center justify-center px-4 text-center text-sm text-slate-500">
                 Requirement statistics are hidden while privacy mode is enabled.
               </div>
@@ -697,6 +781,8 @@ export default function Dashboard() {
               </ChartContainer>
             )}
           </div>
+            )}
+          </div>
 
           {!hideSensitiveStats ? (
             <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -735,17 +821,30 @@ export default function Dashboard() {
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-          <div className="grid gap-2 px-5 pb-5">
-            {isLoading ? (
-              <div className="rounded-xl border border-dashed border-slate-200/80 bg-slate-50/70 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                Loading batches…
+          <div className="relative min-h-[8rem] px-5 pb-5">
+            {(isLoading || skeletonLeaving) && (
+              <div
+                className={cn(
+                  "grid gap-2 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                  !isLoading && "pointer-events-none absolute inset-x-5 top-0 z-0 opacity-0",
+                )}
+                aria-busy={isLoading}
+                aria-hidden={!isLoading}
+                aria-label="Loading recent batches"
+              >
+                {Array.from({ length: 3 }, (_, index) => (
+                  <BatchCardSkeleton key={index} />
+                ))}
               </div>
-            ) : recentBatches.length === 0 ? (
+            )}
+            {!isLoading && (
+          <div className="relative z-10 grid gap-2">
+            {recentBatches.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200/80 bg-slate-50/70 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
                 No batches in the database yet. Add grantees via Batches.
               </div>
             ) : (
-              recentBatches.map((item) => (
+              recentBatches.map((item, index) => (
                 <button
                   key={item.key}
                   type="button"
@@ -757,7 +856,11 @@ export default function Dashboard() {
                     const suffix = qs.toString()
                     navigate(suffix ? `/osgfa/batch-info?${suffix}` : "/osgfa/batch-info")
                   }}
-                  className="group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300/80 hover:bg-white hover:shadow-md dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8"
+                  className={cn(
+                    "group relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300/80 hover:bg-white hover:shadow-md dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/8",
+                    revealItemClass(contentRevealed, index, 45),
+                  )}
+                  style={revealItemStyle(contentRevealed, index, 45)}
                 >
                   <div className="pointer-events-none absolute inset-0 bg-linear-to-br from-white/40 to-transparent opacity-70 dark:from-white/10" />
                   <div className="relative flex items-start justify-between gap-3">
@@ -796,9 +899,17 @@ export default function Dashboard() {
               ))
             )}
           </div>
+            )}
+          </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6 lg:col-span-2">
+        <div
+          className={cn(
+            "rounded-2xl border border-slate-200/80 bg-white/95 p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-white/5 dark:ring-white/6 lg:col-span-2",
+            revealItemClass(contentRevealed, 3),
+          )}
+          style={revealItemStyle(contentRevealed, 3)}
+        >
           <div className="mb-3">
             <p className="text-sm font-semibold text-slate-900 dark:text-white">Quick actions</p>
             <p className="text-xs text-slate-500 dark:text-slate-300">Shortcuts to common admin tasks.</p>

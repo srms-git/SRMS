@@ -16,8 +16,7 @@ import ViewAllBatch from "@/pages/viewAllBatch.jsx"
 import NotificationPage from "@/pages/osgfa/notification.jsx"
 import AnnouncementPage from "@/pages/osgfa/announcement.jsx"
 import Setting from "@/pages/osgfa/setting.jsx"
-import Tdp from "@/pages/osgfa/tdp.jsx"
-import Tes from "@/pages/osgfa/tes.jsx"
+import ProgramWorkspace from "@/pages/osgfa/programWorkspace.jsx"
 import CashierArchive from "@/pages/cashier/archive.jsx"
 import CashierArchiveBatch from "@/pages/cashier/archiveBatch.jsx"
 import CashierClaimHistory from "@/pages/cashier/claimHistory.jsx"
@@ -77,8 +76,9 @@ function App() {
         <Route path="add-grantees" element={<AddGrantees />} />
         <Route path="add-scholar" element={<Navigate to="/osgfa/add-grantees" replace />} />
         <Route path="add-beneficiaries" element={<Navigate to="/osgfa/batches" replace />} />
-        <Route path="tes" element={<Tes />} />
-        <Route path="tdp" element={<Tdp />} />
+        <Route path="tes" element={<Navigate to="/osgfa/programs/tes" replace />} />
+        <Route path="tdp" element={<Navigate to="/osgfa/programs/tdp" replace />} />
+        <Route path="programs/:programSlug" element={<ProgramWorkspace />} />
         <Route path="announcement" element={<AnnouncementPage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="notification" element={<NotificationPage />} />

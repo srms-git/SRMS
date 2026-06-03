@@ -3,14 +3,26 @@ import { useNavigate } from "react-router-dom"
 import { Archive, CalendarDays, GraduationCap, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
 import { fetchArchivedBatches } from "@/lib/archiveApi"
+import {
+  ArchiveBatchCardSkeleton,
+  SummaryStatCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -75,6 +87,8 @@ export default function ArchivePage() {
     }
   }, [])
 
+  const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
+
   const uniqueBatchNos = useMemo(() => [...new Set(rows.map((r) => String(r.batchNo ?? "").trim()).filter(Boolean))].sort(), [rows])
   const uniqueYears = useMemo(() => [...new Set(rows.map((r) => String(r.schoolYear ?? "").trim()).filter(Boolean))].sort(), [rows])
   const uniquePrograms = useMemo(() => [...new Set(rows.map((r) => String(r.program ?? "").trim()).filter(Boolean))].sort(), [rows])
@@ -132,39 +146,66 @@ export default function ArchivePage() {
         </div>
       ) : null}
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
-        <SummaryStatCard
-          label="Archived Batches"
-          value={summary.totalArchived}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={Archive}
-        />
-        <SummaryStatCard
-          label="Active Results"
-          value={summary.visible}
-          accentBar="border-l-[3px] border-l-emerald-500"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={TableProperties}
-        />
-        <SummaryStatCard
-          label="Academic Years"
-          value={summary.totalYears}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={CalendarDays}
-        />
-        <SummaryStatCard
-          label="Total Grantees"
-          value={summary.totalGrantees}
-          accentBar="border-l-[3px] border-l-amber-500"
-          glow="bg-amber-400/30"
-          iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
-          Icon={GraduationCap}
-        />
+      <div className="relative min-h-[124px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-emerald-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-amber-500" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+            <SummaryStatCard
+              label="Archived Batches"
+              value={summary.totalArchived}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={Archive}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="Active Results"
+              value={summary.visible}
+              accentBar="border-l-[3px] border-l-emerald-500"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={TableProperties}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="Academic Years"
+              value={summary.totalYears}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={CalendarDays}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Total Grantees"
+              value={summary.totalGrantees}
+              accentBar="border-l-[3px] border-l-amber-500"
+              glow="bg-amber-400/30"
+              iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
+              Icon={GraduationCap}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
@@ -261,8 +302,26 @@ export default function ArchivePage() {
         </div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {sortedRows.map((row) => (
+      <div className="relative min-h-[8rem]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-x-0 top-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+            aria-label="Loading archived batches"
+          >
+            {Array.from({ length: 6 }, (_, index) => (
+              <ArchiveBatchCardSkeleton key={index} />
+            ))}
+          </div>
+        )}
+
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {sortedRows.map((row, index) => (
           <button
             type="button"
             key={`${row.batchNo}-${row.program}-${row.schoolYear}`}
@@ -273,7 +332,11 @@ export default function ArchivePage() {
               params.set("academicYear", String(row.schoolYear ?? ""))
               navigate(`/osgfa/archive-batch?${params.toString()}`)
             }}
-            className="group relative w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/25 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6"
+            className={cn(
+              "group relative w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 text-left shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/25 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6",
+              revealItemClass(contentRevealed, index),
+            )}
+            style={revealItemStyle(contentRevealed, index)}
           >
             <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-[#081F5C]/8 blur-2xl dark:bg-[#1447a6]/15" aria-hidden />
 
@@ -325,19 +388,26 @@ export default function ArchivePage() {
           </button>
         ))}
 
-        {isLoading ? (
-          <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-slate-200 bg-white p-10 text-center text-sm text-slate-500 dark:border-white/10 dark:bg-slate-900/40">
-            Loading archived batches…
+        {sortedRows.length === 0 ? (
+          <div
+            className={cn(
+              "sm:col-span-2 lg:col-span-3 flex flex-col items-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center dark:border-white/10 dark:bg-slate-900/40",
+              revealItemClass(contentRevealed, 0),
+            )}
+            style={revealItemStyle(contentRevealed, 0)}
+          >
+            <p className="text-base font-semibold text-slate-800 dark:text-white">
+              {rows.length === 0 ? "No archived batches yet" : "No matching archived batches"}
+            </p>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-500">
+              {rows.length === 0
+                ? "Fully claimed batches will appear here once they are archived."
+                : "Try different filters or clear your search to see all archived batches."}
+            </p>
           </div>
         ) : null}
-
-        {!isLoading && sortedRows.length === 0 ? (
-          <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-            {rows.length === 0
-              ? "No archived batches found."
-              : "No archived batches match your current filters or search."}
           </div>
-        ) : null}
+        )}
       </div>
     </section>
   )

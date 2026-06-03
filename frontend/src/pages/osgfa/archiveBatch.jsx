@@ -16,6 +16,16 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { fetchArchivedBatchDetail } from "@/lib/archiveApi"
 import { buildMonthlyClaimTrend, buildYearLevelDonut, mapGranteeFromApi } from "@/lib/granteesApi"
+import {
+  ChartAreaSkeleton,
+  ChartDonutSkeleton,
+  GranteeTableRowSkeleton,
+  SKELETON_ROW_COUNT,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 
 /** Area chart: claimed = brand navy, unclaimed = red */
@@ -259,6 +269,8 @@ export default function ArchiveBatch() {
     }
   }, [batchNo, program, academicYear])
 
+  const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
+
   const displayedRows = useMemo(() => granteeRows, [granteeRows])
 
   const claimTrend = useMemo(() => claimTrendForRange(displayedRows, trendRange), [displayedRows, trendRange])
@@ -443,7 +455,28 @@ export default function ArchiveBatch() {
         </div>
 
         <section className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="relative min-h-[320px]">
+            {(isLoading || skeletonLeaving) && (
+              <div
+                className={cn(
+                  "grid grid-cols-1 gap-3 lg:grid-cols-3 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                  !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+                )}
+                aria-busy={isLoading}
+                aria-hidden={!isLoading}
+              >
+                <ChartAreaSkeleton className="lg:col-span-2" />
+                <ChartDonutSkeleton />
+              </div>
+            )}
+            {!isLoading && (
+          <div
+            className={cn(
+              "relative z-10 grid grid-cols-1 gap-3 lg:grid-cols-3",
+              revealItemClass(contentRevealed, 0),
+            )}
+            style={revealItemStyle(contentRevealed, 0)}
+          >
             <div className="lg:col-span-2 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -582,6 +615,8 @@ export default function ArchiveBatch() {
                 ))}
               </div>
             </div>
+          </div>
+            )}
           </div>
 
           <div className="mb-2 flex justify-end">
@@ -731,10 +766,26 @@ export default function ArchiveBatch() {
                 </thead>
 
                 <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
-                  {pagedRows.map((row) => (
+                  {(isLoading || skeletonLeaving) &&
+                    Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                      <GranteeTableRowSkeleton
+                        key={`skeleton-${index}`}
+                        yearLevelClassName="w-[120px]"
+                        className={cn(
+                          "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                          !isLoading && "pointer-events-none opacity-0",
+                        )}
+                      />
+                    ))}
+                  {!isLoading &&
+                    pagedRows.map((row, index) => (
                     <tr
                       key={String(row.seqNo ?? row.studentId ?? row.awardNumber ?? row.fullName ?? Math.random())}
-                      className="border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5"
+                      className={cn(
+                        "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5",
+                        revealItemClass(contentRevealed, index, 35),
+                      )}
+                      style={revealItemStyle(contentRevealed, index, 35)}
                     >
                       <td className="w-[90px] whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">{row.batchNo || "—"}</td>
                       <td className="w-[80px] whitespace-nowrap font-medium text-pink-600 dark:text-pink-400">{row.seqNo || "—"}</td>
@@ -767,17 +818,23 @@ export default function ArchiveBatch() {
                       </td>
                     </tr>
                   ))}
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
-                        Loading archived grantee records…
-                      </td>
-                    </tr>
-                  ) : null}
                   {!isLoading && tableRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
-                        {fetchError ? "Unable to load records." : "No records found for your current filters."}
+                      <td
+                        colSpan={8}
+                        className={cn("px-3 py-12 text-center", revealItemClass(contentRevealed, 0))}
+                        style={revealItemStyle(contentRevealed, 0)}
+                      >
+                        <div className="mx-auto max-w-md space-y-2">
+                          <p className="text-base font-semibold text-slate-800 dark:text-white">
+                            {fetchError ? "Couldn't load records" : "No matching grantees"}
+                          </p>
+                          <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-300">
+                            {fetchError
+                              ? "Check the batch link or try opening this page again from the archive list."
+                              : "Adjust your search or filters to find grantees in this archived batch."}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : null}

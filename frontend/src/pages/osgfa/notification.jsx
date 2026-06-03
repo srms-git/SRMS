@@ -5,10 +5,17 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Button } from "@/components/ui/button"
 import apiClient from "@/lib/apiClient"
 import {
+  NotificationCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import {
   OSGFA_SETTINGS_CHANGED_EVENT,
   readNotificationPreferences,
   shouldShowNotification,
 } from "@/lib/osgfaSettings"
+import { cn } from "@/lib/utils"
 
 const NOTIF_TYPES = {
   batch: {
@@ -97,6 +104,8 @@ export default function NotificationPage() {
   useEffect(() => {
     loadNotifications()
   }, [loadNotifications])
+
+  const { contentRevealed, skeletonLeaving } = useContentReveal(loading)
 
   useEffect(() => {
     const syncPrefs = () => setNotificationPrefs(readNotificationPreferences())
@@ -282,26 +291,55 @@ export default function NotificationPage() {
         </p>
       ) : null}
 
-      <div className="space-y-3">
-        {loading ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/85 p-10 text-center text-sm text-slate-500">
-            Loading notifications...
+      <div className="relative min-h-[12rem] space-y-3">
+        {(loading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "space-y-3 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !loading && "pointer-events-none absolute inset-x-0 top-0 opacity-0",
+            )}
+            aria-busy={loading}
+            aria-hidden={!loading}
+            aria-label="Loading notifications"
+          >
+            {Array.from({ length: 5 }, (_, index) => (
+              <NotificationCardSkeleton key={index} />
+            ))}
           </div>
-        ) : errorMessage ? (
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
-            <Button type="button" variant="outline" onClick={loadNotifications}>
-              Retry
-            </Button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white/85 p-10 text-center text-sm text-slate-500">
-            {visibleNotifications.length === 0 && hiddenByPreferencesCount > 0
-              ? "No notifications are visible with your current preferences. Adjust them under Settings → System Preferences → Notifications."
-              : "No notifications matched your filters."}
-          </div>
-        ) : (
-          paginatedNotifications.map((item) => {
+        )}
+
+        {!loading &&
+          (errorMessage ? (
+            <div
+              className={cn("space-y-3", revealItemClass(contentRevealed, 0))}
+              style={revealItemStyle(contentRevealed, 0)}
+            >
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
+              <Button type="button" variant="outline" onClick={loadNotifications}>
+                Retry
+              </Button>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div
+              className={cn(
+                "rounded-2xl border border-dashed border-slate-300 bg-white/85 p-10 text-center text-sm text-slate-500",
+                revealItemClass(contentRevealed, 0),
+              )}
+              style={revealItemStyle(contentRevealed, 0)}
+            >
+              <p className="text-base font-semibold text-slate-800">
+                {visibleNotifications.length === 0 && hiddenByPreferencesCount > 0
+                  ? "Nothing to show right now"
+                  : "No matching notifications"}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">
+                {visibleNotifications.length === 0 && hiddenByPreferencesCount > 0
+                  ? "Some notifications are hidden by your preferences. Adjust them under Settings → System Preferences → Notifications."
+                  : "Try a different search term, filter, or tab to find what you're looking for."}
+              </p>
+            </div>
+          ) : (
+            paginatedNotifications.map((item, index) => {
             const typeMeta = NOTIF_TYPES[item.type] || NOTIF_TYPES.system
             const TypeIcon = typeMeta.icon
             return (
@@ -316,9 +354,13 @@ export default function NotificationPage() {
                     openDetails(item)
                   }
                 }}
-                className={`group h-[8.75rem] overflow-hidden rounded-2xl border bg-white/95 p-4 shadow-sm ring-1 ring-slate-900/3 transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:bg-slate-900/40 ${
-                  item.read ? "border-slate-200/80 dark:border-white/10" : "border-[#081F5C]/25 dark:border-[#1447a6]/45"
-                }`}
+                className={cn(
+                  `group h-[8.75rem] overflow-hidden rounded-2xl border bg-white/95 p-4 shadow-sm ring-1 ring-slate-900/3 transition hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:bg-slate-900/40 ${
+                    item.read ? "border-slate-200/80 dark:border-white/10" : "border-[#081F5C]/25 dark:border-[#1447a6]/45"
+                  }`,
+                  revealItemClass(contentRevealed, index, 40),
+                )}
+                style={revealItemStyle(contentRevealed, index, 40)}
               >
                 <div className="flex h-full items-start gap-3">
                   <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-[#04133d] via-[#081F5C] to-[#1447a6] text-white shadow-sm">
@@ -372,7 +414,7 @@ export default function NotificationPage() {
               </article>
             )
           })
-        )}
+          ))}
       </div>
 
       {!loading && !errorMessage && filtered.length > 0 ? (

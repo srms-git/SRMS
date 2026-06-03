@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Navigate, useParams } from "react-router-dom"
 import {
   BookOpen,
   CalendarDays,
@@ -31,11 +32,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -62,7 +63,6 @@ import {
   yearLevelIndex as yearLevelIndexForLevels,
 } from "@/lib/granteeSemesterClaims"
 
-const TES_PROGRAM = "TES"
 import {
   ensureRequirementSemCompletionTimestamps,
   formatRequirementCompletedAt,
@@ -74,16 +74,9 @@ import {
 } from "@/lib/granteeRequirementsChecklist"
 import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
+import { findProgramBySlug } from "@/lib/osgfaPrograms"
 
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
-
-const TES_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades from the previous semester" },
-  { id: "scholarship_disclosure", label: "Disclosure or certificate regarding other scholarships or financial assistance, if required" },
-  { id: "id_email", label: "Valid school ID and updated school email on file" },
-  { id: "acknowledgment", label: "Signed TES acknowledgment and parent/guardian consent, where applicable" },
-]
 
 function yearLevelIndex(yearLevel) {
   return yearLevelIndexForLevels(yearLevel, YEAR_LEVELS)
@@ -340,7 +333,7 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
   )
 }
 
-function TesRecordView({ row, formatStudentId }) {
+function GranteeRecordView({ row, formatStudentId, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const overallClaimed = row.status === "Claimed"
 
@@ -422,7 +415,7 @@ function TesRecordView({ row, formatStudentId }) {
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                TES grantee
+                {programCode} grantee
               </p>
               <h3 className="text-base font-semibold leading-snug text-slate-900 dark:text-white">{row.fullName}</h3>
               <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -503,7 +496,7 @@ function TesRecordView({ row, formatStudentId }) {
 
         <GranteeRequirementsBlock
           mode="view"
-          definitions={TES_GRANTEE_REQUIREMENTS}
+          definitions={requirements}
           dataRow={row}
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={row.yearLevel}
@@ -540,7 +533,7 @@ function TesRecordView({ row, formatStudentId }) {
                 </tr>
               </thead>
               <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
-                {claims.map((c, idx) => {
+                {claims.map((c) => {
                   const currentRow = c.yearLevel === row.yearLevel
                   return (
                     <tr
@@ -594,7 +587,7 @@ function computeStatusFromClaims(claims, yearLevel, fallbackStatus = "Unclaimed"
   return current.firstSem === "Claimed" && current.secondSem === "Claimed" ? "Claimed" : "Unclaimed"
 }
 
-function buildEditChangeSummary(originalRow, draftRow) {
+function buildEditChangeSummary(originalRow, draftRow, requirements) {
   if (!originalRow || !draftRow) return []
 
   const changes = []
@@ -673,12 +666,12 @@ function buildEditChangeSummary(originalRow, draftRow) {
       ...semesterClaimsForRow(draftRow, YEAR_LEVELS).map((c) => c.yearLevel),
     ]),
   ]
-  const beforeReq = normalizeRequirementChecklistByYearSem(originalRow, TES_GRANTEE_REQUIREMENTS, levelsUnion)
-  const afterReq = normalizeRequirementChecklistByYearSem(draftRow, TES_GRANTEE_REQUIREMENTS, levelsUnion)
+  const beforeReq = normalizeRequirementChecklistByYearSem(originalRow, requirements, levelsUnion)
+  const afterReq = normalizeRequirementChecklistByYearSem(draftRow, requirements, levelsUnion)
   for (const yl of levelsUnion) {
     for (const sem of ["first", "second"]) {
       const semLabel = REQUIREMENT_SEM_LABEL[sem]
-      for (const d of TES_GRANTEE_REQUIREMENTS) {
+      for (const d of requirements) {
         const bi = beforeReq[yl]?.[sem]?.[d.id] === true
         const ai = afterReq[yl]?.[sem]?.[d.id] === true
         if (bi !== ai) {
@@ -693,7 +686,7 @@ function buildEditChangeSummary(originalRow, draftRow) {
   return changes
 }
 
-function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onSubmit }) {
+function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onSubmit, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
   const overallClaimed = draft.status === "Claimed"
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
@@ -729,7 +722,7 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                TES grantee
+                {programCode} grantee
               </p>
               <Input
                 id="edit-name"
@@ -801,7 +794,6 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
                     readOnly={readOnly}
                     onChange={(e) => onChange(keyName, e.target.value)}
                     className={cn("h-9", readOnly && "bg-muted/50", mono && "font-mono text-[13px]")}
-                    placeholder={keyName === "phoneNumber" ? "e.g. 09XXXXXXXXX" : undefined}
                     required={!readOnly}
                   />
                 )}
@@ -825,7 +817,7 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
 
         <GranteeRequirementsBlock
           mode="edit"
-          definitions={TES_GRANTEE_REQUIREMENTS}
+          definitions={requirements}
           dataRow={draft}
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={draft.yearLevel}
@@ -944,10 +936,75 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+const SKELETON_EXIT_MS = 280
+const SKELETON_ROW_COUNT = 8
+const revealItemClass = (revealed, index, stepMs = 45) =>
+  cn(
+    "transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:translate-y-0",
+    revealed ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+  )
+const revealItemStyle = (revealed, index, stepMs = 45) => ({
+  transitionDelay: revealed ? `${Math.min(index, 12) * stepMs}ms` : "0ms",
+})
+
+function SummaryStatCardSkeleton({ accentBar, className }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-3 pr-1">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-14" />
+        </div>
+        <Skeleton className="h-11 w-11 shrink-0 rounded-xl" />
+      </div>
+    </div>
+  )
+}
+
+function GranteeTableRowSkeleton({ className, style }) {
+  return (
+    <tr className={cn("border-t border-slate-200/80", className)} style={style}>
+      <td className="w-[90px]">
+        <Skeleton className="h-4 w-10" />
+      </td>
+      <td className="w-[80px]">
+        <Skeleton className="h-4 w-12" />
+      </td>
+      <td className="w-[110px]">
+        <Skeleton className="h-4 w-20" />
+      </td>
+      <td className="w-[260px]">
+        <Skeleton className="h-4 w-44 max-w-full" />
+      </td>
+      <td className="w-[240px]">
+        <Skeleton className="h-4 w-36 max-w-full" />
+      </td>
+      <td className="w-[140px]">
+        <Skeleton className="h-4 w-24 max-w-full" />
+      </td>
+      <td className="w-[110px]">
+        <Skeleton className="h-4 w-16" />
+      </td>
+      <td className="text-center">
+        <Skeleton className="mx-auto h-8 w-8 rounded-md" />
+      </td>
+    </tr>
+  )
+}
+
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
+  return (
+    <div
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -970,7 +1027,11 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
   )
 }
 
-export default function Tes() {
+export default function ProgramWorkspace() {
+  const { programSlug } = useParams()
+  const program = useMemo(() => findProgramBySlug(programSlug), [programSlug])
+  const programCode = program?.code ?? ""
+  const requirements = program?.requirements ?? []
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
   const PAGE_SIZE = 100
   const [records, setRecords] = useState([])
@@ -994,11 +1055,11 @@ export default function Tes() {
     try {
       setIsLoading(true)
       setFetchError(null)
-      const rows = await fetchGranteesByProgram(TES_PROGRAM)
-      setRecords(filterGranteesByProgram(rows, TES_PROGRAM))
+      const rows = await fetchGranteesByProgram(programCode)
+      setRecords(filterGranteesByProgram(rows, programCode))
     } catch (err) {
-      console.error("Failed to load TES grantees:", err)
-      setFetchError(err?.message ?? "Failed to load TES records.")
+      console.error(`Failed to load ${programCode} grantees:`, err)
+      setFetchError(err?.message ?? "Failed to load program records.")
       setRecords([])
     } finally {
       setIsLoading(false)
@@ -1006,8 +1067,31 @@ export default function Tes() {
   }
 
   useEffect(() => {
+    if (!programCode) return
     loadRecords()
-  }, [])
+  }, [programCode])
+
+  const [contentRevealed, setContentRevealed] = useState(false)
+  const [skeletonLeaving, setSkeletonLeaving] = useState(false)
+
+  useEffect(() => {
+    if (isLoading) {
+      setContentRevealed(false)
+      setSkeletonLeaving(false)
+      return
+    }
+
+    setSkeletonLeaving(true)
+    const revealFrame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setContentRevealed(true))
+    })
+    const hideSkeletonTimer = window.setTimeout(() => setSkeletonLeaving(false), SKELETON_EXIT_MS)
+
+    return () => {
+      cancelAnimationFrame(revealFrame)
+      window.clearTimeout(hideSkeletonTimer)
+    }
+  }, [isLoading])
 
   const uniqueBatches = useMemo(
     () => [...new Set(records.map((row) => row.batchNo).filter(Boolean))].sort(),
@@ -1060,14 +1144,14 @@ export default function Tes() {
     const { requirementChecklistBySem: _legacyFlat, ...rowRest } = row
     const claimLevels = claimsForRow.map((c) => c.yearLevel)
     const requirementChecklistByYearSem = ensureRequirementSemCompletionTimestamps(
-      normalizeRequirementChecklistByYearSem(row, TES_GRANTEE_REQUIREMENTS, claimLevels),
-      TES_GRANTEE_REQUIREMENTS,
+      normalizeRequirementChecklistByYearSem(row, requirements, claimLevels),
+      requirements,
       claimLevels,
       row.lastUpdated,
     )
     setEditDraft({
       ...rowRest,
-      program: TES_PROGRAM,
+      program: programCode,
       semesterClaims: claimsForRow,
       requirementChecklistByYearSem,
     })
@@ -1088,7 +1172,7 @@ export default function Tes() {
         const levels = nextClaims.map((c) => c.yearLevel)
         const requirementChecklistByYearSem = normalizeRequirementChecklistByYearSem(
           withYear,
-          TES_GRANTEE_REQUIREMENTS,
+          requirements,
           levels,
         )
         return {
@@ -1117,7 +1201,7 @@ export default function Tes() {
     setEditDraft((prev) => {
       if (!prev) return prev
       const levels = semesterClaimsForRow(prev, YEAR_LEVELS).map((c) => c.yearLevel)
-      const merged = normalizeRequirementChecklistByYearSem(prev, TES_GRANTEE_REQUIREMENTS, levels)
+      const merged = normalizeRequirementChecklistByYearSem(prev, requirements, levels)
       return {
         ...prev,
         requirementChecklistByYearSem: updateRequirementChecklistCheck(
@@ -1126,7 +1210,7 @@ export default function Tes() {
           semKey,
           reqId,
           checked,
-          TES_GRANTEE_REQUIREMENTS,
+          requirements,
         ),
       }
     })
@@ -1156,8 +1240,8 @@ export default function Tes() {
         editDraft.lastUpdated,
       ),
       requirementChecklistByYearSem: ensureRequirementSemCompletionTimestamps(
-        normalizeRequirementChecklistByYearSem(editDraft, TES_GRANTEE_REQUIREMENTS, levels),
-        TES_GRANTEE_REQUIREMENTS,
+        normalizeRequirementChecklistByYearSem(editDraft, requirements, levels),
+        requirements,
         levels,
         editDraft.lastUpdated,
       ),
@@ -1170,7 +1254,7 @@ export default function Tes() {
       setPendingSaveChanges([])
       handleRecordDialogOpenChange(false)
     } catch (err) {
-      console.error("Failed to save TES grantee:", err)
+      console.error(`Failed to save ${programCode} grantee:`, err)
       window.alert(err?.message ?? "Failed to save changes to the database.")
     } finally {
       setIsSaving(false)
@@ -1179,7 +1263,7 @@ export default function Tes() {
 
   const requestSaveRecordEdit = () => {
     if (!editDraft || !activeRow) return
-    const diffSummary = buildEditChangeSummary(activeRow, editDraft)
+    const diffSummary = buildEditChangeSummary(activeRow, editDraft, requirements)
     setPendingSaveChanges(diffSummary)
     setSaveConfirmOpen(true)
   }
@@ -1200,7 +1284,7 @@ export default function Tes() {
       if (!matchesSemestralFilter(row)) return false
       if (requirementsCoverageFilter !== "__" && requirementsCoverageFilter !== "") {
         const levels = semesterClaimsForRow(row, YEAR_LEVELS).map((c) => c.yearLevel)
-        const cat = requirementCoverageStatusForRow(row, TES_GRANTEE_REQUIREMENTS, levels)
+        const cat = requirementCoverageStatusForRow(row, requirements, levels)
         if (requirementsCoverageFilter === "incomplete" && cat !== "incomplete") return false
         if (requirementsCoverageFilter === "complete" && cat !== "complete") return false
       }
@@ -1217,7 +1301,7 @@ export default function Tes() {
         String(row.yearLevel ?? "").toLowerCase().includes(query)
       )
     })
-  }, [batchFilter, records, statusFilter, semestralFilter, searchTerm, requirementsCoverageFilter])
+  }, [batchFilter, records, statusFilter, semestralFilter, searchTerm, requirementsCoverageFilter, requirements])
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE)), [filteredRecords.length])
 
@@ -1234,6 +1318,10 @@ export default function Tes() {
     return filteredRecords.slice(start, start + PAGE_SIZE)
   }, [filteredRecords, page])
 
+  if (!program) {
+    return <Navigate to="/osgfa/dashboard" replace />
+  }
+
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
       {fetchError ? (
@@ -1249,39 +1337,66 @@ export default function Tes() {
         </div>
       ) : null}
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
-        <SummaryStatCard
-          label="Total Records"
-          value={isLoading ? "…" : formatStat(summary.total, "Total Records")}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={TableProperties}
-        />
-        <SummaryStatCard
-          label="Claimed"
-          value={isLoading ? "…" : formatStat(summary.claimed, "Claimed")}
-          accentBar="border-l-[3px] border-l-emerald-500"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={CircleCheck}
-        />
-        <SummaryStatCard
-          label="Unclaimed"
-          value={isLoading ? "…" : formatStat(summary.unclaimed, "Unclaimed")}
-          accentBar="border-l-[3px] border-l-amber-500"
-          glow="bg-amber-400/30"
-          iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
-          Icon={CircleDashed}
-        />
-        <SummaryStatCard
-          label="Total Batches"
-          value={isLoading ? "…" : summary.batches}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={Layers}
-        />
+      <div className="relative min-h-[124px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-emerald-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-amber-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+            <SummaryStatCard
+              label="Total Records"
+              value={formatStat(summary.total, "Total Records")}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={TableProperties}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="Claimed"
+              value={formatStat(summary.claimed, "Claimed")}
+              accentBar="border-l-[3px] border-l-emerald-500"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={CircleCheck}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="Unclaimed"
+              value={formatStat(summary.unclaimed, "Unclaimed")}
+              accentBar="border-l-[3px] border-l-amber-500"
+              glow="bg-amber-400/30"
+              iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
+              Icon={CircleDashed}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Total Batches"
+              value={summary.batches}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={Layers}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
@@ -1359,7 +1474,6 @@ export default function Tes() {
             </select>
             <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
           </div>
-
         </div>
 
         <div className="relative min-w-0 w-full max-w-full md:col-span-5 lg:col-span-4">
@@ -1400,18 +1514,25 @@ export default function Tes() {
             </thead>
 
             <tbody className="[&>tr:nth-child(even)]:bg-slate-50">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
-                    Loading TES records from database…
-                  </td>
-                </tr>
-              ) : null}
-              {!isLoading
-                ? pagedRecords.map((row) => (
+              {(isLoading || skeletonLeaving) &&
+                Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                  <GranteeTableRowSkeleton
+                    key={`skeleton-${index}`}
+                    className={cn(
+                      "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                      !isLoading && "pointer-events-none opacity-0",
+                    )}
+                  />
+                ))}
+              {!isLoading &&
+                pagedRecords.map((row, index) => (
                 <tr
                   key={row.id || row.seqNo}
-                  className="border-t border-slate-200/80 transition-colors hover:bg-slate-100/60"
+                  className={cn(
+                    "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60",
+                    revealItemClass(contentRevealed, index, 35),
+                  )}
+                  style={revealItemStyle(contentRevealed, index, 35)}
                 >
                   <td className="w-[90px] whitespace-nowrap font-medium text-slate-700">{row.batchNo}</td>
                   <td className="w-[80px] whitespace-nowrap font-medium text-pink-600">
@@ -1455,14 +1576,24 @@ export default function Tes() {
                     </DropdownMenu>
                   </td>
                 </tr>
-              ))
-                : null}
+              ))}
               {!isLoading && filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
-                    {records.length === 0
-                      ? "No TES grantee records in the database yet. Add grantees via Batches."
-                      : "No records found for your current filters."}
+                  <td
+                    colSpan={8}
+                    className={cn("py-12 text-center", revealItemClass(contentRevealed, 0))}
+                    style={revealItemStyle(contentRevealed, 0)}
+                  >
+                    <div className="mx-auto max-w-md space-y-2">
+                      <p className="text-base font-semibold text-slate-800">
+                        {records.length === 0 ? `No ${programCode} grantees yet` : "No matching grantees"}
+                      </p>
+                      <p className="text-sm leading-relaxed text-slate-500">
+                        {records.length === 0
+                          ? "Add grantees from Batches to start tracking scholars for this program here."
+                          : "Try a different search term or adjust your filters to find grantees."}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : null}
@@ -1516,12 +1647,14 @@ export default function Tes() {
 
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-1 [scrollbar-gutter:stable]">
             {recordDialogMode === "view" && activeRow ? (
-              <TesRecordView row={activeRow} formatStudentId={formatStudentId} />
+              <GranteeRecordView row={activeRow} formatStudentId={formatStudentId} programCode={programCode} requirements={requirements} />
             ) : null}
 
             {recordDialogMode === "edit" && editDraft ? (
-              <TesRecordEdit
+              <GranteeRecordEdit
                 draft={editDraft}
+                programCode={programCode}
+                requirements={requirements}
                 onChange={handleEditFieldChange}
                 onSemesterChange={handleSemesterClaimChange}
                 onRequirementCheckChange={handleRequirementCheckChange}

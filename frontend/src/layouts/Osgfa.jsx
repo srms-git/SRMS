@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom"
-import { Archive, Bell, ChevronDown, ChevronRight, GraduationCap, Layers, LayoutDashboard, LogOut, Megaphone, Settings, User, UserPlus } from "lucide-react"
+import { Archive, Bell, ChevronDown, ChevronRight, GraduationCap, Layers, LayoutDashboard, LogOut, Megaphone, Plus, Settings, User, UserPlus } from "lucide-react"
 
 import {
   Sidebar,
@@ -31,10 +31,23 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import sgfaLogo from "@/assets/srmslogo.png"
 import srmsTextLogo from "@/assets/srmstextlogo.png"
 import apiClient from "@/lib/apiClient"
+import { findProgramBySlug, programRoutePath } from "@/lib/osgfaPrograms"
 import { OSGFA_SETTINGS_CHANGED_EVENT, shouldShowNotification } from "@/lib/osgfaSettings"
+import { cn } from "@/lib/utils"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import authService from "@/services/authService"
 
 function getUserDisplayName(user) {
@@ -90,14 +103,6 @@ const ADMIN_PAGE_META = {
   "/osgfa/add-grantees": {
     title: "Add Grantees",
     description: "Register scholarship grantees.",
-  },
-  "/osgfa/tes": {
-    title: "TES",
-    description: "Tertiary Education Subsidy — program workspace.",
-  },
-  "/osgfa/tdp": {
-    title: "TDP",
-    description: "Tulong Dunong Program — program workspace.",
   },
   "/osgfa/announcement": {
     title: "Announcements",
@@ -161,14 +166,22 @@ export default function Osgfa() {
   const isDashboardActive = location.pathname === "/osgfa/dashboard"
   const isBatchesActive = location.pathname === "/osgfa/batches" || location.pathname === "/osgfa/add-batch-grantee"
   const isAddGranteesActive = location.pathname === "/osgfa/add-grantees" || location.pathname === "/osgfa/add-scholar"
-  const isTesActive = location.pathname === "/osgfa/tes"
-  const isTdpActive = location.pathname === "/osgfa/tdp"
   const isAnnouncementActive = location.pathname === "/osgfa/announcement"
   const isArchiveActive = location.pathname === "/osgfa/archive"
   const isNotificationActive = location.pathname === "/osgfa/notification"
-  const isProgramsGroupActive = isTesActive || isTdpActive
+  const activeProgramSlug = useMemo(() => {
+    const match = location.pathname.match(/^\/osgfa\/programs\/([^/]+)$/)
+    return match ? match[1] : ""
+  }, [location.pathname])
+  const isProgramsGroupActive = Boolean(activeProgramSlug)
 
+  const { programs, addProgram, canAddMore, maxPrograms } = useOsgfaPrograms()
   const [programsOpen, setProgramsOpen] = useState(isProgramsGroupActive)
+  const [addProgramOpen, setAddProgramOpen] = useState(false)
+  const [newProgramCode, setNewProgramCode] = useState("")
+  const [newProgramName, setNewProgramName] = useState("")
+  const [newProgramDescription, setNewProgramDescription] = useState("")
+  const [addProgramError, setAddProgramError] = useState("")
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
 
   useEffect(() => {
@@ -222,8 +235,14 @@ export default function Osgfa() {
   }, [profileOpen])
 
   const pageMeta = useMemo(() => {
+    if (activeProgramSlug) {
+      const program = findProgramBySlug(activeProgramSlug)
+      if (program) {
+        return { title: program.name, description: program.description }
+      }
+    }
     return ADMIN_PAGE_META[location.pathname] ?? DEFAULT_ADMIN_HEADER
-  }, [location.pathname])
+  }, [location.pathname, activeProgramSlug])
 
   const currentUser = useMemo(() => authService.getCurrentUser(), [location.pathname])
   const displayName = useMemo(() => getUserDisplayName(currentUser), [currentUser])
@@ -239,6 +258,36 @@ export default function Osgfa() {
   const showAddBatchBreadcrumb = location.pathname === "/osgfa/batch-info" && batchInfoSource !== "add-grantees"
   const showAddGranteesBreadcrumb = location.pathname === "/osgfa/batch-info" && batchInfoSource === "add-grantees"
   const showArchiveBatchBreadcrumb = location.pathname === "/osgfa/archive-batch"
+
+  const resetAddProgramForm = () => {
+    setNewProgramCode("")
+    setNewProgramName("")
+    setNewProgramDescription("")
+    setAddProgramError("")
+  }
+
+  const handleAddProgramOpenChange = (open) => {
+    setAddProgramOpen(open)
+    if (!open) resetAddProgramForm()
+  }
+
+  const handleAddProgramSubmit = (event) => {
+    event.preventDefault()
+    setAddProgramError("")
+    const result = addProgram({
+      code: newProgramCode,
+      name: newProgramName,
+      fullName: newProgramName,
+      description: newProgramDescription,
+    })
+    if (!result.ok) {
+      setAddProgramError(result.error)
+      return
+    }
+    handleAddProgramOpenChange(false)
+    setProgramsOpen(true)
+    navigate(programRoutePath(result.program))
+  }
 
   return (
     <div
@@ -347,28 +396,47 @@ export default function Osgfa() {
                       </SidebarMenuButton>
                       {programsOpen ? (
                         <SidebarMenuSub className="mx-2 ml-10 gap-2 overflow-visible border-white/25 px-1 py-0.5">
+                          {programs.map((program) => (
+                            <SidebarMenuSubItem key={program.id}>
+                              <SidebarMenuSubButton
+                                asChild
+                                isActive={activeProgramSlug === program.slug}
+                                className={sidebarSubMenuButtonClass}
+                              >
+                                <NavLink to={programRoutePath(program)}>
+                                  <span>{program.name}</span>
+                                </NavLink>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          ))}
                           <SidebarMenuSubItem>
                             <SidebarMenuSubButton
                               asChild
-                              isActive={isTesActive}
-                              className={sidebarSubMenuButtonClass}
+                              className={cn(
+                                sidebarSubMenuButtonClass,
+                                "border border-dashed border-white/30 text-white/90 hover:bg-white/15 disabled:cursor-not-allowed disabled:opacity-50",
+                              )}
                             >
-                              <NavLink to="/osgfa/tes">
-                                <span>TES</span>
-                              </NavLink>
+                              <button
+                                type="button"
+                                disabled={!canAddMore}
+                                onClick={() => handleAddProgramOpenChange(true)}
+                                title={
+                                  canAddMore
+                                    ? "Add a scholarship program"
+                                    : `Maximum of ${maxPrograms} programs reached`
+                                }
+                              >
+                                <Plus className="size-3.5 shrink-0 opacity-90" aria-hidden />
+                                <span>Add program</span>
+                              </button>
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
-                          <SidebarMenuSubItem>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={isTdpActive}
-                              className={sidebarSubMenuButtonClass}
-                            >
-                              <NavLink to="/osgfa/tdp">
-                                <span>TDP</span>
-                              </NavLink>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
+                          {!canAddMore ? (
+                            <li className="px-2 pb-1 text-[10px] leading-snug text-white/60 group-data-[collapsible=icon]:hidden">
+                              {programs.length} of {maxPrograms} programs (limit for stress testing)
+                            </li>
+                          ) : null}
                         </SidebarMenuSub>
                       ) : null}
                     </SidebarMenuItem>
@@ -575,6 +643,70 @@ export default function Osgfa() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={addProgramOpen} onOpenChange={handleAddProgramOpenChange}>
+        <DialogContent className="max-w-md rounded-2xl border border-[#081F5C]/15 bg-white/95 backdrop-blur-md shadow-sm dark:bg-slate-950/50">
+          <DialogHeader>
+            <DialogTitle className="text-[#081F5C] dark:text-blue-100">Add program</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              Register a scholarship program for the sidebar workspace. You can add up to {maxPrograms} programs while load testing is in progress.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleAddProgramSubmit}>
+            <div className="space-y-2">
+              <label htmlFor="program-code" className="text-sm font-medium text-foreground">
+                Program code
+              </label>
+              <Input
+                id="program-code"
+                value={newProgramCode}
+                onChange={(event) => setNewProgramCode(event.target.value.toUpperCase())}
+                placeholder="e.g. TES, TDP"
+                maxLength={12}
+                required
+                className="uppercase"
+              />
+              <p className="text-xs text-muted-foreground">2–12 letters or numbers. Used in batch imports and grantee records.</p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="program-name" className="text-sm font-medium text-foreground">
+                Display name
+              </label>
+              <Input
+                id="program-name"
+                value={newProgramName}
+                onChange={(event) => setNewProgramName(event.target.value)}
+                placeholder="e.g. Tertiary Education Subsidy"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="program-description" className="text-sm font-medium text-foreground">
+                Description <span className="font-normal text-muted-foreground">(optional)</span>
+              </label>
+              <Input
+                id="program-description"
+                value={newProgramDescription}
+                onChange={(event) => setNewProgramDescription(event.target.value)}
+                placeholder="Short summary shown in the page header"
+              />
+            </div>
+            {addProgramError ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
+                {addProgramError}
+              </p>
+            ) : null}
+            <DialogFooter className="gap-2 sm:justify-end">
+              <Button type="button" variant="outline" onClick={() => handleAddProgramOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!canAddMore}>
+                Add program
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
