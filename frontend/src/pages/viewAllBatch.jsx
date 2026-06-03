@@ -3,6 +3,13 @@ import { Link } from "react-router-dom"
 import { ArrowLeft, Layers, Search, SlidersHorizontal } from "lucide-react"
 
 import { usePublishedLandingBatches } from "@/lib/landingFeaturedBatches"
+import {
+  PublicBatchCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
@@ -140,6 +147,7 @@ export default function ViewAllBatch() {
   const [academicYearFilter, setAcademicYearFilter] = useState("__")
   const [batchSeriesFilter, setBatchSeriesFilter] = useState("__")
   const { batches: landingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
+  const { contentRevealed, skeletonLeaving } = useContentReveal(landingBatchesLoading)
 
   useLayoutEffect(() => {
     const scroller = document.getElementById("admin-main-scroll")
@@ -298,9 +306,21 @@ export default function ViewAllBatch() {
           </div>
         </div>
 
-        {landingBatchesLoading ? (
-          <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-10 text-center text-sm shadow-sm ring-1 ring-slate-900/3" style={{ color: textBodyOnLight }}>
-            Loading published batches…
+        {landingBatchesLoading || skeletonLeaving ? (
+          <div className="relative min-h-[12rem]">
+            <div
+              className={cn(
+                "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                !landingBatchesLoading && "pointer-events-none absolute inset-x-0 top-0 z-0 opacity-0",
+              )}
+              aria-busy={landingBatchesLoading}
+              aria-hidden={!landingBatchesLoading}
+              aria-label="Loading published batches"
+            >
+              {Array.from({ length: 8 }, (_, index) => (
+                <PublicBatchCardSkeleton key={index} />
+              ))}
+            </div>
           </div>
         ) : filteredBatches.length === 0 ? (
           <div className="rounded-2xl border border-slate-200/80 bg-white/95 px-4 py-10 text-center text-sm shadow-sm ring-1 ring-slate-900/3" style={{ color: textBodyOnLight }}>
@@ -308,8 +328,14 @@ export default function ViewAllBatch() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {filteredBatches.map((batch) => (
-              <BatchCard key={getBatchCardKey(batch)} batch={batch} />
+            {filteredBatches.map((batch, index) => (
+              <div
+                key={getBatchCardKey(batch)}
+                className={revealItemClass(contentRevealed, index, 45)}
+                style={revealItemStyle(contentRevealed, index, 45)}
+              >
+                <BatchCard batch={batch} />
+              </div>
             ))}
           </div>
         )}

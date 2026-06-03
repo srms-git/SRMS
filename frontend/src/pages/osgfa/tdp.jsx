@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
@@ -942,10 +943,75 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+const SKELETON_EXIT_MS = 280
+const SKELETON_ROW_COUNT = 8
+const revealItemClass = (revealed, index, stepMs = 45) =>
+  cn(
+    "transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none motion-reduce:translate-y-0",
+    revealed ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+  )
+const revealItemStyle = (revealed, index, stepMs = 45) => ({
+  transitionDelay: revealed ? `${Math.min(index, 12) * stepMs}ms` : "0ms",
+})
+
+function SummaryStatCardSkeleton({ accentBar, className }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-3 pr-1">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="h-9 w-14" />
+        </div>
+        <Skeleton className="h-11 w-11 shrink-0 rounded-xl" />
+      </div>
+    </div>
+  )
+}
+
+function GranteeTableRowSkeleton({ className, style }) {
+  return (
+    <tr className={cn("border-t border-slate-200/80", className)} style={style}>
+      <td className="w-[90px]">
+        <Skeleton className="h-4 w-10" />
+      </td>
+      <td className="w-[80px]">
+        <Skeleton className="h-4 w-12" />
+      </td>
+      <td className="w-[110px]">
+        <Skeleton className="h-4 w-20" />
+      </td>
+      <td className="w-[260px]">
+        <Skeleton className="h-4 w-44 max-w-full" />
+      </td>
+      <td className="w-[240px]">
+        <Skeleton className="h-4 w-36 max-w-full" />
+      </td>
+      <td className="w-[140px]">
+        <Skeleton className="h-4 w-24 max-w-full" />
+      </td>
+      <td className="w-[110px]">
+        <Skeleton className="h-4 w-16" />
+      </td>
+      <td className="text-center">
+        <Skeleton className="mx-auto h-8 w-8 rounded-md" />
+      </td>
+    </tr>
+  )
+}
+
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
+  return (
+    <div
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -1006,6 +1072,28 @@ export default function Tdp() {
   useEffect(() => {
     loadRecords()
   }, [])
+
+  const [contentRevealed, setContentRevealed] = useState(false)
+  const [skeletonLeaving, setSkeletonLeaving] = useState(false)
+
+  useEffect(() => {
+    if (isLoading) {
+      setContentRevealed(false)
+      setSkeletonLeaving(false)
+      return
+    }
+
+    setSkeletonLeaving(true)
+    const revealFrame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => setContentRevealed(true))
+    })
+    const hideSkeletonTimer = window.setTimeout(() => setSkeletonLeaving(false), SKELETON_EXIT_MS)
+
+    return () => {
+      cancelAnimationFrame(revealFrame)
+      window.clearTimeout(hideSkeletonTimer)
+    }
+  }, [isLoading])
 
   const uniqueBatches = useMemo(
     () => [...new Set(records.map((row) => row.batchNo).filter(Boolean))].sort(),
@@ -1247,39 +1335,66 @@ export default function Tdp() {
         </div>
       ) : null}
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
-        <SummaryStatCard
-          label="Total Records"
-          value={isLoading ? "…" : formatStat(summary.total, "Total Records")}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={TableProperties}
-        />
-        <SummaryStatCard
-          label="Claimed"
-          value={isLoading ? "…" : formatStat(summary.claimed, "Claimed")}
-          accentBar="border-l-[3px] border-l-emerald-500"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={CircleCheck}
-        />
-        <SummaryStatCard
-          label="Unclaimed"
-          value={isLoading ? "…" : formatStat(summary.unclaimed, "Unclaimed")}
-          accentBar="border-l-[3px] border-l-amber-500"
-          glow="bg-amber-400/30"
-          iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
-          Icon={CircleDashed}
-        />
-        <SummaryStatCard
-          label="Total Batches"
-          value={isLoading ? "…" : summary.batches}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={Layers}
-        />
+      <div className="relative min-h-[124px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-emerald-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-amber-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+            <SummaryStatCard
+              label="Total Records"
+              value={formatStat(summary.total, "Total Records")}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={TableProperties}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="Claimed"
+              value={formatStat(summary.claimed, "Claimed")}
+              accentBar="border-l-[3px] border-l-emerald-500"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={CircleCheck}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="Unclaimed"
+              value={formatStat(summary.unclaimed, "Unclaimed")}
+              accentBar="border-l-[3px] border-l-amber-500"
+              glow="bg-amber-400/30"
+              iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
+              Icon={CircleDashed}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Total Batches"
+              value={summary.batches}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={Layers}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
@@ -1397,18 +1512,25 @@ export default function Tdp() {
             </thead>
 
             <tbody className="[&>tr:nth-child(even)]:bg-slate-50">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
-                    Loading TDP records from database…
-                  </td>
-                </tr>
-              ) : null}
-              {!isLoading
-                ? pagedRecords.map((row) => (
+              {(isLoading || skeletonLeaving) &&
+                Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                  <GranteeTableRowSkeleton
+                    key={`skeleton-${index}`}
+                    className={cn(
+                      "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                      !isLoading && "pointer-events-none opacity-0",
+                    )}
+                  />
+                ))}
+              {!isLoading &&
+                pagedRecords.map((row, index) => (
                 <tr
                   key={row.id || row.seqNo}
-                  className="border-t border-slate-200/80 transition-colors hover:bg-slate-100/60"
+                  className={cn(
+                    "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60",
+                    revealItemClass(contentRevealed, index, 35),
+                  )}
+                  style={revealItemStyle(contentRevealed, index, 35)}
                 >
                   <td className="w-[90px] whitespace-nowrap font-medium text-slate-700">{row.batchNo}</td>
                   <td className="w-[80px] whitespace-nowrap font-medium text-pink-600">
@@ -1452,14 +1574,24 @@ export default function Tdp() {
                     </DropdownMenu>
                   </td>
                 </tr>
-              ))
-                : null}
+              ))}
               {!isLoading && filteredRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-sm text-slate-500">
-                    {records.length === 0
-                      ? "No TDP grantee records in the database yet. Add grantees via Batches."
-                      : "No records found for your current filters."}
+                  <td
+                    colSpan={8}
+                    className={cn("py-12 text-center", revealItemClass(contentRevealed, 0))}
+                    style={revealItemStyle(contentRevealed, 0)}
+                  >
+                    <div className="mx-auto max-w-md space-y-2">
+                      <p className="text-base font-semibold text-slate-800">
+                        {records.length === 0 ? "No TDP grantees yet" : "No matching grantees"}
+                      </p>
+                      <p className="text-sm leading-relaxed text-slate-500">
+                        {records.length === 0
+                          ? "Add grantees from Batches to start tracking TDP scholars here."
+                          : "Try a different search term or adjust your filters to find grantees."}
+                      </p>
+                    </div>
                   </td>
                 </tr>
               ) : null}

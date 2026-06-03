@@ -34,6 +34,13 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
+import {
+  GranteeTableRowSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  SKELETON_ROW_COUNT,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
 import { cn } from "@/lib/utils"
 
 const REDACTED_PLACEHOLDER = "••••"
@@ -557,6 +564,7 @@ export default function LandingPageBatch() {
   const displayedRows =
     filteredStored.length > 0 ? filteredStored : loadingRecords ? [] : didFetchRecords ? [] : mockForParams
   const showingMockRows = !loadingRecords && !didFetchRecords && filteredStored.length === 0 && mockForParams.length > 0
+  const { contentRevealed, skeletonLeaving } = useContentReveal(loadingRecords)
 
   const uniquePrograms = useMemo(
     () => [...new Set(displayedRows.map((row) => String(row.enrolledProgram ?? "").trim()).filter(Boolean))].sort(),
@@ -783,17 +791,26 @@ export default function LandingPageBatch() {
                 </thead>
 
                 <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
-                  {loadingRecords ? (
-                    <tr>
-                      <td colSpan={colspan} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
-                        Loading records for this batch…
-                      </td>
-                    </tr>
-                  ) : null}
-                  {pagedRows.map((row) => (
+                  {(loadingRecords || skeletonLeaving) &&
+                    Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                      <GranteeTableRowSkeleton
+                        key={`skeleton-${index}`}
+                        yearLevelClassName="w-[120px]"
+                        className={cn(
+                          "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                          !loadingRecords && "pointer-events-none opacity-0",
+                        )}
+                      />
+                    ))}
+                  {!loadingRecords &&
+                    pagedRows.map((row, index) => (
                     <tr
                       key={rowKey(row)}
-                      className="border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5"
+                      className={cn(
+                        "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5",
+                        revealItemClass(contentRevealed, index, 35),
+                      )}
+                      style={revealItemStyle(contentRevealed, index, 35)}
                     >
                       <td className="w-[90px] whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
                         {row.batchNo || "—"}
@@ -838,7 +855,7 @@ export default function LandingPageBatch() {
                       </td>
                     </tr>
                   ))}
-                  {showingMockRows && tableRows.length > 0 && page === 1 ? (
+                  {showingMockRows && !loadingRecords && tableRows.length > 0 && page === 1 ? (
                     <tr>
                       <td colSpan={colspan} className="px-3 py-3 text-center text-xs text-amber-700 dark:text-amber-300">
                         Showing sample rows for this batch preview (no stored records matched yet).

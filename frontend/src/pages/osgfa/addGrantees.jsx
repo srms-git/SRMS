@@ -28,6 +28,14 @@ import {
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { downloadGranteePdfAsXlsx, parseGranteeXlsxFromFile } from "@/lib/granteePdfConverterApi"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
+import {
+  BatchCardSkeleton,
+  SummaryStatCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -232,10 +240,14 @@ function FormNoticeBanner({ variant = "warning", title, message, onDismiss }) {
   )
 }
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -471,7 +483,7 @@ function PdfToExcelConverterPanel({ file, loading, error, onFileChange, onConver
   )
 }
 
-function LatestBatchesAside({ loading, batches, onBatchClick }) {
+function LatestBatchesAside({ loading, skeletonLeaving, contentRevealed, batches, onBatchClick }) {
   return (
     <aside className={`${osgfaCardClass} flex h-full min-h-0 flex-col p-4`}>
       <div className={osgfaCardGlowClass} aria-hidden />
@@ -480,19 +492,40 @@ function LatestBatchesAside({ loading, batches, onBatchClick }) {
         <h3 className="mt-0.5 text-sm font-semibold text-slate-900 dark:text-white">Latest added batches</h3>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Click a batch to open its details.</p>
       </div>
-      <div className="relative grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-        {loading ? (
-          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
-            Loading batches…
-          </p>
-        ) : batches.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
-            No grantee batches saved yet. Add a batch to see it here.
-          </p>
-        ) : (
-          batches.map((row) => (
-            <LatestBatchCard key={`${row.batchNo}-${row.program}`} row={row} onClick={() => onBatchClick(row)} />
-          ))
+      <div className="relative min-h-[8rem] flex-1">
+        {(loading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-h-0 grid-cols-1 gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable] transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !loading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={loading}
+            aria-hidden={!loading}
+            aria-label="Loading latest batches"
+          >
+            {Array.from({ length: 4 }, (_, index) => (
+              <BatchCardSkeleton key={index} />
+            ))}
+          </div>
+        )}
+        {!loading && (
+          <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+            {batches.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
+                No grantee batches saved yet. Add a batch to see it here.
+              </p>
+            ) : (
+              batches.map((row, index) => (
+                <div
+                  key={`${row.batchNo}-${row.program}`}
+                  className={revealItemClass(contentRevealed, index, 45)}
+                  style={revealItemStyle(contentRevealed, index, 45)}
+                >
+                  <LatestBatchCard row={row} onClick={() => onBatchClick(row)} />
+                </div>
+              ))
+            )}
+          </div>
         )}
       </div>
     </aside>
@@ -754,10 +787,9 @@ export default function AddGrantees() {
     [granteeRecords]
   )
 
-  const statDisplay = (value, label) => {
-    if (granteesLoading) return "…"
-    return formatStat(value, label)
-  }
+  const { contentRevealed, skeletonLeaving } = useContentReveal(granteesLoading)
+
+  const statDisplay = (value, label) => formatStat(value, label)
 
   const handleConvertAndDownload = async () => {
     if (!converterPdfFile) {
@@ -894,39 +926,66 @@ export default function AddGrantees() {
         />
       ) : null}
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
-        <SummaryStatCard
-          label="Total Batches"
-          value={statDisplay(summary.totalBatches, "Total Batches")}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={TableProperties}
-        />
-        <SummaryStatCard
-          label="TES Records"
-          value={statDisplay(summary.tesBatches, "TES Records")}
-          accentBar="border-l-[3px] border-l-emerald-500"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={CircleCheck}
-        />
-        <SummaryStatCard
-          label="TDP Records"
-          value={statDisplay(summary.tdpBatches, "TDP Records")}
-          accentBar="border-l-[3px] border-l-amber-500"
-          glow="bg-amber-400/30"
-          iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
-          Icon={CircleDashed}
-        />
-        <SummaryStatCard
-          label="Published Batches"
-          value={statDisplay(summary.publishedBatches, "Published Batches")}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={Layers}
-        />
+      <div className="relative min-h-[124px]">
+        {(granteesLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !granteesLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={granteesLoading}
+            aria-hidden={!granteesLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-emerald-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-amber-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+          </div>
+        )}
+        {!granteesLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+            <SummaryStatCard
+              label="Total Batches"
+              value={statDisplay(summary.totalBatches, "Total Batches")}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={TableProperties}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="TES Records"
+              value={statDisplay(summary.tesBatches, "TES Records")}
+              accentBar="border-l-[3px] border-l-emerald-500"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={CircleCheck}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="TDP Records"
+              value={statDisplay(summary.tdpBatches, "TDP Records")}
+              accentBar="border-l-[3px] border-l-amber-500"
+              glow="bg-amber-400/30"
+              iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
+              Icon={CircleDashed}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Published Batches"
+              value={statDisplay(summary.publishedBatches, "Published Batches")}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={Layers}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,380px)] xl:items-stretch">
@@ -943,6 +1002,8 @@ export default function AddGrantees() {
 
         <LatestBatchesAside
           loading={granteesLoading}
+          skeletonLeaving={skeletonLeaving}
+          contentRevealed={contentRevealed}
           batches={latestBatchGrantees}
           onBatchClick={(row) => {
             const params = new URLSearchParams()

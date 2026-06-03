@@ -42,6 +42,15 @@ import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import {
+  ChartAreaSkeleton,
+  ChartDonutSkeleton,
+  GranteeTableRowSkeleton,
+  SKELETON_ROW_COUNT,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import {
   buildMonthlyClaimTrend,
@@ -1044,6 +1053,8 @@ export default function BatchInfo() {
     loadRecords()
   }, [batchNo, program, academicYear])
 
+  const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
+
   const batchGrantees = useMemo(() => records, [records])
   const filtered = batchGrantees
 
@@ -1409,7 +1420,28 @@ export default function BatchInfo() {
         ) : null}
 
         <section className="space-y-4">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+          <div className="relative min-h-[320px]">
+            {(isLoading || skeletonLeaving) && (
+              <div
+                className={cn(
+                  "grid grid-cols-1 gap-3 lg:grid-cols-3 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                  !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+                )}
+                aria-busy={isLoading}
+                aria-hidden={!isLoading}
+              >
+                <ChartAreaSkeleton className="lg:col-span-2" />
+                <ChartDonutSkeleton />
+              </div>
+            )}
+            {!isLoading && (
+          <div
+            className={cn(
+              "relative z-10 grid grid-cols-1 gap-3 lg:grid-cols-3",
+              revealItemClass(contentRevealed, 0),
+            )}
+            style={revealItemStyle(contentRevealed, 0)}
+          >
             <div className="lg:col-span-2 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6">
               <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
@@ -1569,6 +1601,8 @@ export default function BatchInfo() {
                 ))}
               </div>
             </div>
+          </div>
+            )}
           </div>
 
           <div className="mb-2 flex justify-end">
@@ -1732,18 +1766,26 @@ export default function BatchInfo() {
                 </thead>
 
                 <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
-                  {isLoading ? (
-                    <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
-                        Loading grantee records from database…
-                      </td>
-                    </tr>
-                  ) : null}
-                  {!isLoading
-                    ? pagedRows.map((row) => (
+                  {(isLoading || skeletonLeaving) &&
+                    Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                      <GranteeTableRowSkeleton
+                        key={`skeleton-${index}`}
+                        yearLevelClassName="w-[120px]"
+                        className={cn(
+                          "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                          !isLoading && "pointer-events-none opacity-0",
+                        )}
+                      />
+                    ))}
+                  {!isLoading &&
+                    pagedRows.map((row, index) => (
                     <tr
                       key={row.id || String(row.seqNo ?? row.studentId ?? row.awardNumber ?? row.fullName)}
-                      className="border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5"
+                      className={cn(
+                        "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5",
+                        revealItemClass(contentRevealed, index, 35),
+                      )}
+                      style={revealItemStyle(contentRevealed, index, 35)}
                     >
                       <td className="w-[90px] whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">{row.batchNo || "—"}</td>
                       <td className="w-[80px] whitespace-nowrap font-medium text-pink-600 dark:text-pink-400">{row.seqNo || "—"}</td>
@@ -1780,16 +1822,30 @@ export default function BatchInfo() {
                         </DropdownMenu>
                       </td>
                     </tr>
-                  ))
-                    : null}
+                  ))}
                   {!isLoading && tableRows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-3 py-8 text-center text-sm text-slate-500 dark:text-slate-300">
-                        {!program
-                          ? "Missing program in the URL. Open this page from Batches and choose a TES or TDP batch."
-                          : filtered.length === 0
-                            ? `No ${program} grantees in the database for batch ${batchNo || "—"}${academicYear ? ` (${academicYear})` : ""}.`
-                            : "No records match your current filters."}
+                      <td
+                        colSpan={8}
+                        className={cn("px-3 py-12 text-center", revealItemClass(contentRevealed, 0))}
+                        style={revealItemStyle(contentRevealed, 0)}
+                      >
+                        <div className="mx-auto max-w-md space-y-2">
+                          <p className="text-base font-semibold text-slate-800 dark:text-white">
+                            {!program
+                              ? "Batch link incomplete"
+                              : filtered.length === 0
+                                ? `No ${program} grantees in this batch`
+                                : "No matching grantees"}
+                          </p>
+                          <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-300">
+                            {!program
+                              ? "Open this page from Batches and choose a TES or TDP batch."
+                              : filtered.length === 0
+                                ? `No grantees were found for batch ${batchNo || "—"}${academicYear ? ` (${academicYear})` : ""}.`
+                                : "Try a different search term or adjust your filters."}
+                          </p>
+                        </div>
                       </td>
                     </tr>
                   ) : null}
