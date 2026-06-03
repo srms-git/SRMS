@@ -28,6 +28,7 @@ import {
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { downloadGranteePdfAsXlsx, parseGranteeXlsxFromFile } from "@/lib/granteePdfConverterApi"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
   BatchCardSkeleton,
   SummaryStatCardSkeleton,
@@ -581,6 +582,7 @@ function LatestBatchCard({ row, onClick }) {
 
 export default function AddGrantees() {
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
+  const { programs } = useOsgfaPrograms()
   const navigate = useNavigate()
   const [program, setProgram] = useState("")
   const [batchNo, setBatchNo] = useState("")
@@ -1046,8 +1048,11 @@ export default function AddGrantees() {
                   <option value="" disabled>
                     Select program
                   </option>
-                  <option value="TES">TES</option>
-                  <option value="TDP">TDP</option>
+                  {programs.map((item) => (
+                    <option key={item.id} value={item.code}>
+                      {item.name}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden />
               </div>

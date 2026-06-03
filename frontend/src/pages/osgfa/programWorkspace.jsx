@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { Navigate, useParams } from "react-router-dom"
 import {
   BookOpen,
   CalendarDays,
@@ -62,7 +63,6 @@ import {
   yearLevelIndex as yearLevelIndexForLevels,
 } from "@/lib/granteeSemesterClaims"
 
-const TDP_PROGRAM = "TDP"
 import {
   ensureRequirementSemCompletionTimestamps,
   formatRequirementCompletedAt,
@@ -74,16 +74,9 @@ import {
 } from "@/lib/granteeRequirementsChecklist"
 import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
+import { findProgramBySlug } from "@/lib/osgfaPrograms"
 
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
-
-const TDP_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades or class cards from the previous semester" },
-  { id: "school_id", label: "Valid school ID (photocopy with registrar or authorized certification)" },
-  { id: "indigency", label: "Certificate of indigency or other authorized proof of economic status, if applicable" },
-  { id: "undertaking", label: "Signed TDP undertaking or parent/guardian consent form" },
-]
 
 function yearLevelIndex(yearLevel) {
   return yearLevelIndexForLevels(yearLevel, YEAR_LEVELS)
@@ -340,7 +333,7 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
   )
 }
 
-function TesRecordView({ row, formatStudentId }) {
+function GranteeRecordView({ row, formatStudentId, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const overallClaimed = row.status === "Claimed"
 
@@ -422,7 +415,7 @@ function TesRecordView({ row, formatStudentId }) {
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                TDP grantee
+                {programCode} grantee
               </p>
               <h3 className="text-base font-semibold leading-snug text-slate-900 dark:text-white">{row.fullName}</h3>
               <p className="text-xs text-slate-600 dark:text-slate-300">
@@ -503,7 +496,7 @@ function TesRecordView({ row, formatStudentId }) {
 
         <GranteeRequirementsBlock
           mode="view"
-          definitions={TDP_GRANTEE_REQUIREMENTS}
+          definitions={requirements}
           dataRow={row}
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={row.yearLevel}
@@ -594,7 +587,7 @@ function computeStatusFromClaims(claims, yearLevel, fallbackStatus = "Unclaimed"
   return current.firstSem === "Claimed" && current.secondSem === "Claimed" ? "Claimed" : "Unclaimed"
 }
 
-function buildEditChangeSummary(originalRow, draftRow) {
+function buildEditChangeSummary(originalRow, draftRow, requirements) {
   if (!originalRow || !draftRow) return []
 
   const changes = []
@@ -673,12 +666,12 @@ function buildEditChangeSummary(originalRow, draftRow) {
       ...semesterClaimsForRow(draftRow, YEAR_LEVELS).map((c) => c.yearLevel),
     ]),
   ]
-  const beforeReq = normalizeRequirementChecklistByYearSem(originalRow, TDP_GRANTEE_REQUIREMENTS, levelsUnion)
-  const afterReq = normalizeRequirementChecklistByYearSem(draftRow, TDP_GRANTEE_REQUIREMENTS, levelsUnion)
+  const beforeReq = normalizeRequirementChecklistByYearSem(originalRow, requirements, levelsUnion)
+  const afterReq = normalizeRequirementChecklistByYearSem(draftRow, requirements, levelsUnion)
   for (const yl of levelsUnion) {
     for (const sem of ["first", "second"]) {
       const semLabel = REQUIREMENT_SEM_LABEL[sem]
-      for (const d of TDP_GRANTEE_REQUIREMENTS) {
+      for (const d of requirements) {
         const bi = beforeReq[yl]?.[sem]?.[d.id] === true
         const ai = afterReq[yl]?.[sem]?.[d.id] === true
         if (bi !== ai) {
@@ -693,7 +686,7 @@ function buildEditChangeSummary(originalRow, draftRow) {
   return changes
 }
 
-function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onSubmit }) {
+function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onSubmit, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
   const overallClaimed = draft.status === "Claimed"
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
@@ -729,7 +722,7 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                TDP grantee
+                {programCode} grantee
               </p>
               <Input
                 id="edit-name"
@@ -824,7 +817,7 @@ function TesRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckCh
 
         <GranteeRequirementsBlock
           mode="edit"
-          definitions={TDP_GRANTEE_REQUIREMENTS}
+          definitions={requirements}
           dataRow={draft}
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={draft.yearLevel}
@@ -1034,7 +1027,11 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
   )
 }
 
-export default function Tdp() {
+export default function ProgramWorkspace() {
+  const { programSlug } = useParams()
+  const program = useMemo(() => findProgramBySlug(programSlug), [programSlug])
+  const programCode = program?.code ?? ""
+  const requirements = program?.requirements ?? []
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
   const PAGE_SIZE = 100
   const [records, setRecords] = useState([])
@@ -1058,11 +1055,11 @@ export default function Tdp() {
     try {
       setIsLoading(true)
       setFetchError(null)
-      const rows = await fetchGranteesByProgram(TDP_PROGRAM)
-      setRecords(filterGranteesByProgram(rows, TDP_PROGRAM))
+      const rows = await fetchGranteesByProgram(programCode)
+      setRecords(filterGranteesByProgram(rows, programCode))
     } catch (err) {
-      console.error("Failed to load TDP grantees:", err)
-      setFetchError(err?.message ?? "Failed to load TDP records.")
+      console.error(`Failed to load ${programCode} grantees:`, err)
+      setFetchError(err?.message ?? "Failed to load program records.")
       setRecords([])
     } finally {
       setIsLoading(false)
@@ -1070,8 +1067,9 @@ export default function Tdp() {
   }
 
   useEffect(() => {
+    if (!programCode) return
     loadRecords()
-  }, [])
+  }, [programCode])
 
   const [contentRevealed, setContentRevealed] = useState(false)
   const [skeletonLeaving, setSkeletonLeaving] = useState(false)
@@ -1146,14 +1144,14 @@ export default function Tdp() {
     const { requirementChecklistBySem: _legacyFlat, ...rowRest } = row
     const claimLevels = claimsForRow.map((c) => c.yearLevel)
     const requirementChecklistByYearSem = ensureRequirementSemCompletionTimestamps(
-      normalizeRequirementChecklistByYearSem(row, TDP_GRANTEE_REQUIREMENTS, claimLevels),
-      TDP_GRANTEE_REQUIREMENTS,
+      normalizeRequirementChecklistByYearSem(row, requirements, claimLevels),
+      requirements,
       claimLevels,
       row.lastUpdated,
     )
     setEditDraft({
       ...rowRest,
-      program: TDP_PROGRAM,
+      program: programCode,
       semesterClaims: claimsForRow,
       requirementChecklistByYearSem,
     })
@@ -1174,7 +1172,7 @@ export default function Tdp() {
         const levels = nextClaims.map((c) => c.yearLevel)
         const requirementChecklistByYearSem = normalizeRequirementChecklistByYearSem(
           withYear,
-          TDP_GRANTEE_REQUIREMENTS,
+          requirements,
           levels,
         )
         return {
@@ -1203,7 +1201,7 @@ export default function Tdp() {
     setEditDraft((prev) => {
       if (!prev) return prev
       const levels = semesterClaimsForRow(prev, YEAR_LEVELS).map((c) => c.yearLevel)
-      const merged = normalizeRequirementChecklistByYearSem(prev, TDP_GRANTEE_REQUIREMENTS, levels)
+      const merged = normalizeRequirementChecklistByYearSem(prev, requirements, levels)
       return {
         ...prev,
         requirementChecklistByYearSem: updateRequirementChecklistCheck(
@@ -1212,7 +1210,7 @@ export default function Tdp() {
           semKey,
           reqId,
           checked,
-          TDP_GRANTEE_REQUIREMENTS,
+          requirements,
         ),
       }
     })
@@ -1242,8 +1240,8 @@ export default function Tdp() {
         editDraft.lastUpdated,
       ),
       requirementChecklistByYearSem: ensureRequirementSemCompletionTimestamps(
-        normalizeRequirementChecklistByYearSem(editDraft, TDP_GRANTEE_REQUIREMENTS, levels),
-        TDP_GRANTEE_REQUIREMENTS,
+        normalizeRequirementChecklistByYearSem(editDraft, requirements, levels),
+        requirements,
         levels,
         editDraft.lastUpdated,
       ),
@@ -1256,7 +1254,7 @@ export default function Tdp() {
       setPendingSaveChanges([])
       handleRecordDialogOpenChange(false)
     } catch (err) {
-      console.error("Failed to save TDP grantee:", err)
+      console.error(`Failed to save ${programCode} grantee:`, err)
       window.alert(err?.message ?? "Failed to save changes to the database.")
     } finally {
       setIsSaving(false)
@@ -1265,7 +1263,7 @@ export default function Tdp() {
 
   const requestSaveRecordEdit = () => {
     if (!editDraft || !activeRow) return
-    const diffSummary = buildEditChangeSummary(activeRow, editDraft)
+    const diffSummary = buildEditChangeSummary(activeRow, editDraft, requirements)
     setPendingSaveChanges(diffSummary)
     setSaveConfirmOpen(true)
   }
@@ -1286,7 +1284,7 @@ export default function Tdp() {
       if (!matchesSemestralFilter(row)) return false
       if (requirementsCoverageFilter !== "__" && requirementsCoverageFilter !== "") {
         const levels = semesterClaimsForRow(row, YEAR_LEVELS).map((c) => c.yearLevel)
-        const cat = requirementCoverageStatusForRow(row, TDP_GRANTEE_REQUIREMENTS, levels)
+        const cat = requirementCoverageStatusForRow(row, requirements, levels)
         if (requirementsCoverageFilter === "incomplete" && cat !== "incomplete") return false
         if (requirementsCoverageFilter === "complete" && cat !== "complete") return false
       }
@@ -1303,7 +1301,7 @@ export default function Tdp() {
         String(row.yearLevel ?? "").toLowerCase().includes(query)
       )
     })
-  }, [batchFilter, records, statusFilter, semestralFilter, searchTerm, requirementsCoverageFilter])
+  }, [batchFilter, records, statusFilter, semestralFilter, searchTerm, requirementsCoverageFilter, requirements])
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE)), [filteredRecords.length])
 
@@ -1319,6 +1317,10 @@ export default function Tdp() {
     const start = (page - 1) * PAGE_SIZE
     return filteredRecords.slice(start, start + PAGE_SIZE)
   }, [filteredRecords, page])
+
+  if (!program) {
+    return <Navigate to="/osgfa/dashboard" replace />
+  }
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
@@ -1584,11 +1586,11 @@ export default function Tdp() {
                   >
                     <div className="mx-auto max-w-md space-y-2">
                       <p className="text-base font-semibold text-slate-800">
-                        {records.length === 0 ? "No TDP grantees yet" : "No matching grantees"}
+                        {records.length === 0 ? `No ${programCode} grantees yet` : "No matching grantees"}
                       </p>
                       <p className="text-sm leading-relaxed text-slate-500">
                         {records.length === 0
-                          ? "Add grantees from Batches to start tracking TDP scholars here."
+                          ? "Add grantees from Batches to start tracking scholars for this program here."
                           : "Try a different search term or adjust your filters to find grantees."}
                       </p>
                     </div>
@@ -1645,12 +1647,14 @@ export default function Tdp() {
 
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-1 [scrollbar-gutter:stable]">
             {recordDialogMode === "view" && activeRow ? (
-              <TesRecordView row={activeRow} formatStudentId={formatStudentId} />
+              <GranteeRecordView row={activeRow} formatStudentId={formatStudentId} programCode={programCode} requirements={requirements} />
             ) : null}
 
             {recordDialogMode === "edit" && editDraft ? (
-              <TesRecordEdit
+              <GranteeRecordEdit
                 draft={editDraft}
+                programCode={programCode}
+                requirements={requirements}
                 onChange={handleEditFieldChange}
                 onSemesterChange={handleSemesterClaimChange}
                 onRequirementCheckChange={handleRequirementCheckChange}
