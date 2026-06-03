@@ -9,21 +9,30 @@ import {
 } from "@/components/ui/dialog"
 import {
   AUDIT_ENTITY_TYPES,
+  auditValuesToFriendlyRows,
   fetchAuditLogDetail,
   fetchAuditLogs,
   formatAuditAction,
+  formatAuditEntityLabel,
   formatAuditTimestamp,
   formatAuditUser,
 } from "@/lib/auditLogsApi"
 
-function JsonBlock({ label, value }) {
-  if (value == null) return null
+function FriendlyChangesBlock({ label, value }) {
+  const rows = auditValuesToFriendlyRows(value)
+  if (!rows.length) return null
+
   return (
     <div>
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
-      <pre className="max-h-48 overflow-auto rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-800">
-        {JSON.stringify(value, null, 2)}
-      </pre>
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <dl className="max-h-56 space-y-2 overflow-y-auto rounded-md border border-gray-200 bg-gray-50/80 p-3">
+        {rows.map((row, index) => (
+          <div key={`${label}-${row.label}-${index}`} className="grid gap-0.5 sm:grid-cols-[minmax(0,38%)_1fr] sm:gap-3">
+            <dt className="text-xs text-gray-500">{row.label}</dt>
+            <dd className="text-sm text-gray-900">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   )
 }
@@ -141,7 +150,7 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
                 type="search"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Action, entity type, or ID"
+                placeholder="Search by action or record type"
                 className="w-full rounded-md border border-gray-300 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500"
               />
             </div>
@@ -187,14 +196,7 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
                     </td>
                     <td className="px-3 py-2.5 text-gray-900">{formatAuditUser(log.userId)}</td>
                     <td className="px-3 py-2.5 font-medium text-gray-900">{formatAuditAction(log.action)}</td>
-                    <td className="px-3 py-2.5 text-gray-700">
-                      <span className="capitalize">{log.entityType || "—"}</span>
-                      {log.entityId ? (
-                        <span className="mt-0.5 block truncate text-xs text-gray-500" title={log.entityId}>
-                          {log.entityId}
-                        </span>
-                      ) : null}
-                    </td>
+                    <td className="px-3 py-2.5 text-gray-700">{formatAuditEntityLabel(log)}</td>
                     <td className="px-3 py-2.5 text-right">
                       <button
                         type="button"
@@ -258,24 +260,21 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
           ) : selectedLog ? (
             <div className="space-y-3 text-sm">
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-                <dt className="text-gray-500">User</dt>
+                <dt className="text-gray-500">Performed by</dt>
                 <dd className="font-medium text-gray-900">{formatAuditUser(selectedLog.userId)}</dd>
                 <dt className="text-gray-500">Action</dt>
                 <dd className="font-medium text-gray-900">{formatAuditAction(selectedLog.action)}</dd>
-                <dt className="text-gray-500">Entity</dt>
-                <dd className="capitalize text-gray-900">
-                  {selectedLog.entityType || "—"}
-                  {selectedLog.entityId ? ` · ${selectedLog.entityId}` : ""}
-                </dd>
-                {selectedLog.ipAddress ? (
-                  <>
-                    <dt className="text-gray-500">IP address</dt>
-                    <dd className="text-gray-900">{selectedLog.ipAddress}</dd>
-                  </>
-                ) : null}
+                <dt className="text-gray-500">Record</dt>
+                <dd className="text-gray-900">{formatAuditEntityLabel(selectedLog)}</dd>
               </dl>
-              <JsonBlock label="Previous values" value={selectedLog.oldValues} />
-              <JsonBlock label="New values" value={selectedLog.newValues} />
+              <FriendlyChangesBlock label="Before" value={selectedLog.oldValues} />
+              <FriendlyChangesBlock label="After" value={selectedLog.newValues} />
+              {!auditValuesToFriendlyRows(selectedLog.oldValues).length &&
+              !auditValuesToFriendlyRows(selectedLog.newValues).length ? (
+                <p className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-600">
+                  No extra details were recorded for this entry.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </DialogContent>
