@@ -37,7 +37,8 @@ async function backfillInactiveTimestamps() {
             active: false,
             $or: [{ inactiveAt: null }, { inactiveAt: { $exists: false } }],
         },
-        [{ $set: { inactiveAt: { $ifNull: ['$updatedAt', '$createdAt'] } } }]
+        [{ $set: { inactiveAt: { $ifNull: ['$updatedAt', '$createdAt'] } } }],
+        { updatePipeline: true }
     );
 }
 

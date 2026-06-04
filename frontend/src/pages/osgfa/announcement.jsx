@@ -13,6 +13,7 @@ import {
   Radio,
   RotateCcw,
   Search,
+  SearchX,
   SlidersHorizontal,
   Trash2,
   UploadCloud,
@@ -22,6 +23,7 @@ import {
   AnnouncementImageGallery,
   AnnouncementPhotoFrame,
 } from "@/components/AnnouncementImageGallery"
+import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
@@ -280,6 +282,100 @@ function AnnouncementSectionPagination({ page, pageCount, total, onPageChange, n
   )
 }
 
+function AnnouncementsEmptyState({ variant, errorMessage, onClearFilters, onCreate, onRetry, className, style }) {
+  if (variant === "error") {
+    return (
+      <div
+        className={cn(
+          "flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-red-200/80 bg-red-50/50 px-6 py-12 text-center",
+          className,
+        )}
+        style={style}
+      >
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600">
+          <Megaphone className="h-6 w-6" aria-hidden />
+        </span>
+        <p className="mt-4 text-lg font-semibold text-slate-900">Couldn&apos;t load announcements</p>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600">
+          {errorMessage || "Something went wrong while fetching the list. Check your connection and try again."}
+        </p>
+        <Button type="button" variant="outline" className="mt-6" onClick={onRetry}>
+          Retry
+        </Button>
+      </div>
+    )
+  }
+
+  if (variant === "filtered") {
+    return (
+      <div
+        className={cn(
+          "flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center dark:border-white/10 dark:bg-slate-900/40",
+          className,
+        )}
+        style={style}
+      >
+        <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
+          <SearchX className="h-6 w-6" aria-hidden />
+        </span>
+        <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">No matching announcements</p>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          Nothing matches your current search or filters. Try different keywords, or reset the filters to see all
+          announcements.
+        </p>
+        <Button type="button" variant="outline" className="mt-6" onClick={onClearFilters}>
+          Clear filters
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-12 text-center dark:border-white/10 dark:bg-slate-900/40",
+        className,
+      )}
+      style={style}
+    >
+      <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-[#081F5C]/8 text-[#081F5C] dark:bg-[#1447a6]/20 dark:text-sky-200">
+        <Megaphone className="h-6 w-6" aria-hidden />
+      </span>
+      <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">No announcements yet</p>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+        Publish notices for new batches, requirement schedules, payouts, and other updates. They appear on the landing
+        page while active and within their date range.
+      </p>
+      <Button type="button" className="mt-6 bg-[#081F5C] hover:bg-[#0b2d83]" onClick={onCreate}>
+        <Plus className="mr-2 h-4 w-4" aria-hidden />
+        Create announcement
+      </Button>
+    </div>
+  )
+}
+
+function AnnouncementSectionEmpty({ message, variant = "active" }) {
+  const isActive = variant === "active"
+  return (
+    <div
+      className={cn(
+        "flex min-h-[160px] flex-col items-center justify-center rounded-xl border border-dashed px-4 py-8 text-center",
+        isActive ? "border-[#081F5C]/20 bg-[#081F5C]/5" : "border-slate-200 bg-slate-50/80",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-flex h-10 w-10 items-center justify-center rounded-lg",
+          isActive ? "bg-[#081F5C]/10 text-[#081F5C]" : "bg-slate-200/80 text-slate-500",
+        )}
+      >
+        {isActive ? <Radio className="h-5 w-5" aria-hidden /> : <EyeOff className="h-5 w-5" aria-hidden />}
+      </span>
+      <p className="mt-3 max-w-sm text-sm leading-relaxed text-slate-600">{message}</p>
+    </div>
+  )
+}
+
 function AnnouncementSectionHeader({ title, description, count, variant }) {
   const isActive = variant === "active"
   return (
@@ -471,27 +567,27 @@ export default function AnnouncementPage() {
     [draftStartDate],
   )
 
-  useEffect(() => {
-    const fetchAnnouncements = async () => {
-      try {
-        setIsLoading(true)
-        setError("")
-        const response = await apiClient.get("/announcements")
-        const fetched = Array.isArray(response.data) ? response.data.map(normalizeAnnouncement) : []
-        setAnnouncements(fetched)
-      } catch (err) {
-        console.error("Failed to load announcements:", err)
-        setError(
-          err?.userMessage ||
-            err?.response?.data?.message ||
-            "Failed to load announcements. Please try again.",
-        )
-      } finally {
-        setIsLoading(false)
-      }
+  const loadAnnouncements = async () => {
+    try {
+      setIsLoading(true)
+      setError("")
+      const response = await apiClient.get("/announcements")
+      const fetched = Array.isArray(response.data) ? response.data.map(normalizeAnnouncement) : []
+      setAnnouncements(fetched)
+    } catch (err) {
+      console.error("Failed to load announcements:", err)
+      setError(
+        err?.userMessage ||
+          err?.response?.data?.message ||
+          "Failed to load announcements. Please try again.",
+      )
+    } finally {
+      setIsLoading(false)
     }
+  }
 
-    fetchAnnouncements()
+  useEffect(() => {
+    void loadAnnouncements()
   }, [])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
@@ -745,6 +841,11 @@ export default function AnnouncementPage() {
     setDateRange("__")
   }
 
+  const openCreateDialog = () => {
+    resetDraft()
+    setDialogOpen(true)
+  }
+
   const stats = useMemo(
     () => ({
       total: announcements.length,
@@ -936,7 +1037,7 @@ export default function AnnouncementPage() {
 
       </div>
 
-      {error ? (
+      {error && announcements.length > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
           {error}
         </div>
@@ -958,31 +1059,28 @@ export default function AnnouncementPage() {
             ))}
           </ul>
         </div>
-      ) : announcements.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
-          <p className="text-lg font-semibold text-slate-900">No announcements yet.</p>
-          <p className="mt-2 text-sm text-slate-600">Create your first announcement to keep everyone informed.</p>
-          <button
-            type="button"
-            onClick={() => {
-              resetDraft()
-              setDialogOpen(true)
-            }}
-            className="mt-6 inline-flex items-center justify-center rounded-full bg-[#081F5C] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#0b2f6a]"
-          >
-            Create announcement
-          </button>
-        </div>
-      ) : filteredAnnouncements.length === 0 ? (
-        <div
-          className={cn(
-            "rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm text-slate-600",
-            revealItemClass(contentRevealed, 0),
-          )}
+      ) : error && announcements.length === 0 ? (
+        <AnnouncementsEmptyState
+          variant="error"
+          errorMessage={error}
+          onRetry={() => void loadAnnouncements()}
+          className={revealItemClass(contentRevealed, 0)}
           style={revealItemStyle(contentRevealed, 0)}
-        >
-          No announcements match your filter or search.
-        </div>
+        />
+      ) : announcements.length === 0 ? (
+        <AnnouncementsEmptyState
+          variant="empty"
+          onCreate={openCreateDialog}
+          className={revealItemClass(contentRevealed, 0)}
+          style={revealItemStyle(contentRevealed, 0)}
+        />
+      ) : filteredAnnouncements.length === 0 ? (
+        <AnnouncementsEmptyState
+          variant="filtered"
+          onClearFilters={resetFilters}
+          className={revealItemClass(contentRevealed, 0)}
+          style={revealItemStyle(contentRevealed, 0)}
+        />
       ) : (
         <div
           className={cn("flex min-w-0 flex-col gap-6", revealItemClass(contentRevealed, 0))}
@@ -1006,9 +1104,14 @@ export default function AnnouncementPage() {
                 />
               </div>
             ) : (
-              <p className="min-h-[220px] rounded-xl border border-dashed border-[#081F5C]/20 bg-[#081F5C]/5 px-4 py-8 text-center text-sm text-slate-600">
-                No active announcements match your filters.
-              </p>
+              <AnnouncementSectionEmpty
+                variant="active"
+                message={
+                  hasActiveFilters
+                    ? "No active announcements match your filters."
+                    : "No active announcements right now. Inactive or ended notices appear below."
+                }
+              />
             )}
           </section>
 
@@ -1030,9 +1133,14 @@ export default function AnnouncementPage() {
                 />
               </div>
             ) : (
-              <p className="min-h-[220px] rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-600">
-                No inactive announcements match your filters.
-              </p>
+              <AnnouncementSectionEmpty
+                variant="inactive"
+                message={
+                  hasActiveFilters
+                    ? "No inactive announcements match your filters."
+                    : "No inactive announcements. Manually hidden or past end date notices appear here."
+                }
+              />
             )}
           </section>
         </div>
@@ -1041,10 +1149,7 @@ export default function AnnouncementPage() {
       {announcements.length > 0 ? (
         <button
           type="button"
-          onClick={() => {
-            resetDraft()
-            setDialogOpen(true)
-          }}
+          onClick={openCreateDialog}
           className="group fixed bottom-8 right-8 z-50 inline-flex h-12 w-12 items-center justify-center gap-0 overflow-hidden rounded-full bg-linear-to-r from-[#081F5C] to-[#1447a6] px-0 text-white shadow-lg shadow-[#081F5C]/25 transition-all duration-200 hover:-translate-y-0.5 hover:w-52 hover:justify-start hover:gap-2 hover:px-3 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
           aria-label="Add announcement"
           title="Add announcement"
