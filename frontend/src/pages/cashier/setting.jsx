@@ -8,7 +8,6 @@ import {
   Lock,
   Settings as SettingsIcon,
   Shield,
-  SlidersHorizontal,
   User,
 } from "lucide-react"
 import PasswordField from "@/components/PasswordField"
@@ -25,7 +24,6 @@ import { cn } from "@/lib/utils"
 const SECTIONS = {
   PROFILE: "profile",
   PASSWORD: "password",
-  MODULES: "modules",
   NOTIFICATIONS: "notifications",
   PRIVACY: "privacy",
   SUPPORT: "support",
@@ -436,17 +434,6 @@ export default function CashierSetting() {
                   <div className="mt-2 space-y-2 pl-10">
                     <button
                       type="button"
-                      onClick={() => setActive(SECTIONS.MODULES)}
-                      className={`block w-full rounded-md py-1 text-left transition ${
-                        active === SECTIONS.MODULES
-                          ? "font-semibold text-[#081F5C]"
-                          : "text-gray-700 hover:text-[#081F5C]"
-                      }`}
-                    >
-                      Modules
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setActive(SECTIONS.NOTIFICATIONS)}
                       className={`block w-full rounded-md py-1 text-left transition ${
                         active === SECTIONS.NOTIFICATIONS
@@ -687,84 +674,6 @@ export default function CashierSetting() {
               </section>
             )}
 
-            {active === SECTIONS.MODULES && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <SlidersHorizontal className="h-4 w-4 text-blue-700" />
-                  <h3 className="text-base font-semibold text-gray-900">Cashier Module Defaults</h3>
-                </div>
-                <p className="text-sm text-gray-600">
-                  Set how batches, batch info, and list views open by default in the cashier workspace.
-                </p>
-
-                {settingsNotice.message && (
-                  <div className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
-                    {settingsNotice.message}
-                  </div>
-                )}
-
-                <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50/70 p-4">
-                  <div>
-                    <label className="mb-1 block text-xs text-gray-600">Default batch filter</label>
-                    <select
-                      value={settings.modules.defaultBatchFilter}
-                      onChange={(event) =>
-                        saveSettings(
-                          (prev) => ({
-                            ...prev,
-                            modules: { ...prev.modules, defaultBatchFilter: event.target.value },
-                          }),
-                          "Module preferences saved.",
-                        )
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
-                    >
-                      <option value="active">Active batch</option>
-                      <option value="all">All batches</option>
-                      <option value="archived">Archived only</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs text-gray-600">Batches page layout</label>
-                    <select
-                      value={settings.modules.defaultBatchesView}
-                      onChange={(event) =>
-                        saveSettings(
-                          (prev) => ({
-                            ...prev,
-                            modules: { ...prev.modules, defaultBatchesView: event.target.value },
-                          }),
-                          "Module preferences saved.",
-                        )
-                      }
-                      className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
-                    >
-                      <option value="grid">Card grid</option>
-                      <option value="list">Compact list</option>
-                    </select>
-                  </div>
-
-                  <label className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm">
-                    <span>Auto open latest batch in Batch Info page</span>
-                    <input
-                      type="checkbox"
-                      checked={settings.modules.autoOpenLatestBatch}
-                      onChange={(event) =>
-                        saveSettings(
-                          (prev) => ({
-                            ...prev,
-                            modules: { ...prev.modules, autoOpenLatestBatch: event.target.checked },
-                          }),
-                          "Module preferences saved.",
-                        )
-                      }
-                    />
-                  </label>
-                </div>
-              </section>
-            )}
-
             {active === SECTIONS.NOTIFICATIONS && (
               <section className="space-y-4">
                 <div className="flex items-center gap-2">
@@ -932,7 +841,7 @@ export default function CashierSetting() {
               </section>
             )}
 
-            {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="cashier" />}
+            {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="cashier" scope="cashier" />}
           </div>
         </div>
           )}

@@ -1,4 +1,7 @@
 const AuditLog = require('../models/AuditLogModel');
+const User = require('../models/UserModel');
+
+const CASHIER_ENTITY_TYPES = ['users', 'grantees', 'claims', 'archives'];
 
 /**
  * Get all system audit logs with filtering, optional search, and pagination
@@ -6,10 +9,11 @@ const AuditLog = require('../models/AuditLogModel');
  */
 const getAuditLogs = async (req, res) => {
     try {
-        const { entityType, action, userId, search, page = 1, limit = 10 } = req.query;
+        const { entityType, action, userId, search, scope, page = 1, limit = 10 } = req.query;
         
         // Build the dynamic filter query
         const query = {};
+        const andConditions = [];
         
         if (entityType) {
             query.entityType = entityType.toLowerCase();
@@ -21,13 +25,37 @@ const getAuditLogs = async (req, res) => {
             query.userId = userId;
         }
 
+        if (String(scope ?? '').trim().toLowerCase() === 'cashier') {
+            const cashierUsers = await User.find({ role: 'cashier' }).select('_id').lean();
+            const cashierIds = cashierUsers.map((user) => user._id);
+
+            andConditions.push({
+                $or: [
+                    { userId: { $in: cashierIds } },
+                    { action: 'UPDATE_CASHIER_PRIVACY' },
+                ],
+            });
+
+            if (!entityType) {
+                andConditions.push({ entityType: { $in: CASHIER_ENTITY_TYPES } });
+            }
+        }
+
         // Add regular expression text search for actions, codes, or custom changes
         if (search) {
-            query.$or = [
-                { action: { $regex: search, $options: 'i' } },
-                { entityType: { $regex: search, $options: 'i' } },
-                { entityId: { $regex: search, $options: 'i' } }
-            ];
+            andConditions.push({
+                $or: [
+                    { action: { $regex: search, $options: 'i' } },
+                    { entityType: { $regex: search, $options: 'i' } },
+                    { entityId: { $regex: search, $options: 'i' } }
+                ],
+            });
+        }
+
+        if (andConditions.length === 1) {
+            Object.assign(query, andConditions[0]);
+        } else if (andConditions.length > 1) {
+            query.$and = andConditions;
         }
 
         // Parse pagination properties safely

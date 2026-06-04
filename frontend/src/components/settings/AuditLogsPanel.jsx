@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import {
   AUDIT_ENTITY_TYPES,
+  CASHIER_AUDIT_ENTITY_TYPES,
   auditValuesToFriendlyRows,
   fetchAuditLogDetail,
   fetchAuditLogs,
@@ -37,7 +38,9 @@ function FriendlyChangesBlock({ label, value }) {
   )
 }
 
-export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
+export default function AuditLogsPanel({ workspaceLabel = "SRMS", scope }) {
+  const isCashierScope = String(scope ?? "").trim().toLowerCase() === "cashier"
+  const entityTypeOptions = isCashierScope ? CASHIER_AUDIT_ENTITY_TYPES : AUDIT_ENTITY_TYPES
   const [logs, setLogs] = useState([])
   const [pagination, setPagination] = useState({
     totalItems: 0,
@@ -64,6 +67,7 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
         limit: 15,
         entityType: entityType || undefined,
         search: search || undefined,
+        scope: isCashierScope ? "cashier" : undefined,
       })
       setLogs(result.logs)
       setPagination(result.pagination)
@@ -73,7 +77,7 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
     } finally {
       setLoading(false)
     }
-  }, [entityType, page, search])
+  }, [entityType, isCashierScope, page, search])
 
   useEffect(() => {
     loadLogs()
@@ -112,14 +116,17 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
         <div>
           <h3 className="text-base font-semibold text-gray-900">Audit Logs</h3>
           <p className="text-sm text-gray-600">
-            Review recorded system activity for transparency across the {workspaceLabel} workspace.
+            {isCashierScope
+              ? "Review sign-ins, profile and privacy updates, grantee claim changes, and claim history activity performed in the cashier workspace."
+              : `Review recorded system activity for transparency across the ${workspaceLabel} workspace.`}
           </p>
         </div>
       </div>
 
       <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-900">
-        Entries include sign-ins, profile and privacy updates, grantee changes, program edits, archives, and
-        announcements. Timestamps use your local timezone.
+        {isCashierScope
+          ? "Entries are limited to cashier account actions, grantee claim updates, claim history views, and related batch archives. Timestamps use your local timezone."
+          : "Entries include sign-ins, profile and privacy updates, grantee changes, program edits, archives, and announcements. Timestamps use your local timezone."}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
@@ -133,7 +140,7 @@ export default function AuditLogsPanel({ workspaceLabel = "SRMS" }) {
             }}
             className="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
           >
-            {AUDIT_ENTITY_TYPES.map((option) => (
+            {entityTypeOptions.map((option) => (
               <option key={option.value || "all"} value={option.value}>
                 {option.label}
               </option>

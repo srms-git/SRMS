@@ -10,6 +10,14 @@ export const AUDIT_ENTITY_TYPES = [
   { value: "claims", label: "Claims" },
 ]
 
+export const CASHIER_AUDIT_ENTITY_TYPES = [
+  { value: "", label: "All types" },
+  { value: "users", label: "Users" },
+  { value: "grantees", label: "Grantees" },
+  { value: "claims", label: "Claims" },
+  { value: "archives", label: "Archives" },
+]
+
 function parseApiError(error, fallback) {
   const message =
     error?.response?.data?.error ||
@@ -284,7 +292,7 @@ export function formatAuditEntityLabel(log) {
 }
 
 export async function fetchAuditLogs(query = {}) {
-  const { page = 1, limit = 15, entityType, action, search, userId } = query
+  const { page = 1, limit = 15, entityType, action, search, userId, scope } = query
   const params = {
     page: String(page),
     limit: String(limit),
@@ -293,6 +301,7 @@ export async function fetchAuditLogs(query = {}) {
   if (action) params.action = String(action).trim().toUpperCase()
   if (search) params.search = String(search).trim()
   if (userId) params.userId = String(userId).trim()
+  if (scope) params.scope = String(scope).trim().toLowerCase()
 
   try {
     const response = await apiClient.get("/audit-logs", { params })
