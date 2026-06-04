@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   BookOpen,
@@ -10,6 +10,7 @@ import {
   Eye,
   Fingerprint,
   GraduationCap,
+  Info,
   Landmark,
   Layers,
   Mail,
@@ -41,6 +42,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
@@ -58,12 +60,18 @@ import {
   buildMonthlyClaimTrend,
   buildYearLevelDonut,
   fetchAllGrantees,
+  fetchGranteeById,
   fetchGranteesForBatch,
+  GRANTEE_UPDATED_EVENT,
   inferProgramFromRecord,
+  mergeGranteeIntoRecords,
   recordMatchesProgram,
   updateGrantee,
 } from "@/lib/granteesApi"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
+  OtherPersonFields,
+  RequirementSubmittedByInfo,
   SemesterClaimCell,
   SemesterClaimClaimerSelect,
   SemesterClaimedAtLabel,
@@ -72,6 +80,7 @@ import {
 import {
   ensureSemesterClaimTimestamps,
   mapSemesterClaimsWithFieldChange,
+  normalizeSemesterClaim,
   semesterClaimsForRow,
 } from "@/lib/granteeSemesterClaims"
 import {
@@ -79,9 +88,12 @@ import {
   formatRequirementCompletedAt,
   normalizeRequirementChecklistByYearSem,
   requirementCoverageStatusForRow,
+  requirementSemOtherPerson,
+  requirementSemSubmittedBy,
   requirementYearSemProgress,
   REQUIREMENT_SEM_LABEL,
 } from "@/lib/granteeRequirementsChecklist"
+import { getRequirementsForProgramCode, OSGFA_PROGRAMS_CHANGED_EVENT } from "@/lib/osgfaPrograms"
 
 /** Area chart: claimed = brand navy, unclaimed = red */
 const CLAIM_STROKE = "#081F5C"
@@ -90,22 +102,6 @@ const UNCLAIM_STROKE = "#dc2626"
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
-
-const TES_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades from the previous semester" },
-  { id: "scholarship_disclosure", label: "Disclosure or certificate regarding other scholarships or financial assistance, if required" },
-  { id: "id_email", label: "Valid school ID and updated school email on file" },
-  { id: "acknowledgment", label: "Signed TES acknowledgment and parent/guardian consent, where applicable" },
-]
-
-const TDP_GRANTEE_REQUIREMENTS = [
-  { id: "cor", label: "Certificate of Registration (COR) for the current semester" },
-  { id: "rog", label: "Official report of grades or class cards from the previous semester" },
-  { id: "school_id", label: "Valid school ID (photocopy with registrar or authorized certification)" },
-  { id: "indigency", label: "Certificate of indigency or other authorized proof of economic status, if applicable" },
-  { id: "undertaking", label: "Signed TDP undertaking or parent/guardian consent form" },
-]
 
 const TREND_RANGE = {
   THIS_WEEK: "this-week",
@@ -126,6 +122,109 @@ function computeStatusFromClaims(claims, yearLevel, fallbackStatus = "Unclaimed"
   const current = claims.find((c) => c.yearLevel === yearLevel)
   if (!current) return fallbackStatus
   return current.firstSem === "Claimed" && current.secondSem === "Claimed" ? "Claimed" : "Unclaimed"
+}
+
+const SEMESTER_CLAIM_FIELD_SEM = {
+  firstSem: "first",
+  firstSemClaimer: "first",
+  firstSemOtherName: "first",
+  firstSemOtherRelation: "first",
+  firstSemOtherContact: "first",
+  secondSem: "second",
+  secondSemClaimer: "second",
+  secondSemOtherName: "second",
+  secondSemOtherRelation: "second",
+  secondSemOtherContact: "second",
+}
+
+function requirementChecklistForDraft(draft, requirementDefs, claimLevels) {
+  const levels = claimLevels ?? semesterClaimsForRow(draft, YEAR_LEVELS).map((c) => c.yearLevel)
+  const base = normalizeRequirementChecklistByYearSem(draft, requirementDefs, levels)
+  return ensureRequirementSemCompletionTimestamps(base, requirementDefs, levels, draft?.lastUpdated)
+}
+
+function isSemesterClaimEditBlocked(draft, yearLevel, semKey, requirementDefs) {
+  const checklist = requirementChecklistForDraft(draft, requirementDefs)
+  return !requirementYearSemProgress(checklist, yearLevel, semKey, requirementDefs).isComplete
+}
+
+function semesterClaimBlockedMessage(yearLevel, semKey) {
+  const semLabel = REQUIREMENT_SEM_LABEL[semKey] ?? semKey
+  return `This student's requirements for ${yearLevel} (${semLabel}) are incomplete. Complete all required documents in the Requirements section before updating this semester's claim status.`
+}
+
+function SemesterClaimEditSlot({
+  yearLevel,
+  semKey,
+  progress,
+  semStatus,
+  claimer,
+  otherName,
+  otherRelation,
+  otherContact,
+  claimedAt,
+  onStatusChange,
+  onClaimerChange,
+  onOtherNameChange,
+  onOtherRelationChange,
+  onOtherContactChange,
+}) {
+  const blocked = !progress.isComplete
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-start gap-1.5">
+        <SemesterClaimStatusSelect
+          value={semStatus}
+          onChange={onStatusChange}
+          disabled={blocked}
+          aria-disabled={blocked}
+          title={blocked ? semesterClaimBlockedMessage(yearLevel, semKey) : undefined}
+        />
+        {blocked ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-amber-700 transition-colors hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+                aria-label={`Requirements incomplete for ${yearLevel}, ${REQUIREMENT_SEM_LABEL[semKey]}`}
+              >
+                <Info className="size-4" strokeWidth={2.25} aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6} className="max-w-[260px] text-left leading-snug">
+              {semesterClaimBlockedMessage(yearLevel, semKey)}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
+      {semStatus === "Claimed" ? (
+        <div className={cn("space-y-2.5", blocked && "pointer-events-none opacity-60")}>
+          <SemesterClaimedAtLabel claimedAt={claimedAt} />
+          <div className="space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Who claimed?</span>
+            <SemesterClaimClaimerSelect
+              value={claimer || "Grantee"}
+              onChange={onClaimerChange}
+              disabled={blocked}
+              aria-disabled={blocked}
+            />
+          </div>
+          {claimer === "Other" ? (
+            <OtherPersonFields
+              name={otherName ?? ""}
+              relation={otherRelation ?? ""}
+              contact={otherContact ?? ""}
+              onNameChange={onOtherNameChange}
+              onRelationChange={onOtherRelationChange}
+              onContactChange={onOtherContactChange}
+              required={!blocked}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function splitMonthIntoWeeks(claimed, unclaimed) {
@@ -202,31 +301,43 @@ function sanitizeReqIdSegment(s) {
     .replace(/[^a-zA-Z0-9_-]/g, "")
 }
 
-function RequirementSemesterCell({ progress }) {
+function RequirementSemesterCell({ progress, checklist, yearLevel, semKey }) {
   const completedWhen = progress.isComplete && progress.completedAt ? formatRequirementCompletedAt(progress.completedAt) : ""
+  const submittedBy = requirementSemSubmittedBy(checklist, yearLevel, semKey)
+  const otherPerson = requirementSemOtherPerson(checklist, yearLevel, semKey)
 
   return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-      <Badge
-        variant="outline"
-        className={cn(
-          "h-7 w-fit shrink-0 rounded-full px-2.5 text-[11px] font-semibold",
-          progress.isComplete
-            ? "border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-50"
-            : "border-amber-200/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
-        )}
-      >
-        {progress.isComplete ? "Completed" : "Incomplete"}
-      </Badge>
-      {progress.isComplete && completedWhen ? (
-        <span className="text-[11px] text-muted-foreground" title={progress.completedAt}>
-          {completedWhen}
-        </span>
-      ) : null}
-      {!progress.isComplete ? (
-        <span className="text-[11px] text-muted-foreground">
-          {progress.done}/{progress.total} submitted
-        </span>
+    <div className="space-y-1">
+      <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+        <Badge
+          variant="outline"
+          className={cn(
+            "h-7 w-fit shrink-0 rounded-full px-2.5 text-[11px] font-semibold",
+            progress.isComplete
+              ? "border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-50"
+              : "border-amber-200/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
+          )}
+        >
+          {progress.isComplete ? "Completed" : "Incomplete"}
+        </Badge>
+        {progress.isComplete && completedWhen ? (
+          <span className="text-[11px] text-muted-foreground" title={progress.completedAt}>
+            {completedWhen}
+          </span>
+        ) : null}
+        {!progress.isComplete ? (
+          <span className="text-[11px] text-muted-foreground">
+            {progress.done}/{progress.total} submitted
+          </span>
+        ) : null}
+      </div>
+      {progress.done > 0 || submittedBy ? (
+        <RequirementSubmittedByInfo
+          submittedBy={submittedBy}
+          otherName={otherPerson.name}
+          otherRelation={otherPerson.relation}
+          otherContact={otherPerson.contact}
+        />
       ) : null}
     </div>
   )
@@ -279,7 +390,7 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
     return (
       <div className="space-y-3">
         <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
-          <div className="max-h-[min(280px,48vh)] overflow-auto [scrollbar-gutter:stable]">
+          <div className="max-h-[min(320px,52vh)] overflow-auto [scrollbar-gutter:stable]">
             <table className="w-full min-w-[420px] border-collapse text-sm" aria-label="Requirements by year level and semester">
               <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
                 <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
@@ -325,10 +436,10 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
                           </div>
                         </td>
                         <td className="px-3 py-2.5 align-middle">
-                          <RequirementSemesterCell progress={pFirst} />
+                          <RequirementSemesterCell progress={pFirst} checklist={checklist} yearLevel={yl} semKey="first" />
                         </td>
                         <td className="px-3 py-2.5 align-middle">
-                          <RequirementSemesterCell progress={pSecond} />
+                          <RequirementSemesterCell progress={pSecond} checklist={checklist} yearLevel={yl} semKey="second" />
                         </td>
                       </tr>
                     )
@@ -345,7 +456,7 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
-        <div className="max-h-[min(360px,52vh)] overflow-auto [scrollbar-gutter:stable]">
+        <div className="max-h-[min(420px,56vh)] overflow-auto [scrollbar-gutter:stable]">
           <table className="w-full min-w-[420px] border-collapse text-sm" aria-label="Requirements by year level and semester">
             <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
               <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
@@ -487,13 +598,37 @@ function buildBatchEditChangeSummary(originalRow, draftRow, requirementDefs) {
     const bFirstOther = String(before?.firstSemOtherName ?? "").trim()
     const aFirstOther = String(after.firstSemOtherName ?? "").trim()
     if (bFirstOther !== aFirstOther) {
-      changes.push(`${year} · 1st semester other claimer: ${bFirstOther || "—"} -> ${aFirstOther || "—"}`)
+      changes.push(`${year} · 1st semester other claimer name: ${bFirstOther || "—"} -> ${aFirstOther || "—"}`)
+    }
+
+    const bFirstOtherRelation = String(before?.firstSemOtherRelation ?? "").trim()
+    const aFirstOtherRelation = String(after.firstSemOtherRelation ?? "").trim()
+    if (bFirstOtherRelation !== aFirstOtherRelation) {
+      changes.push(`${year} · 1st semester other claimer relation: ${bFirstOtherRelation || "—"} -> ${aFirstOtherRelation || "—"}`)
+    }
+
+    const bFirstOtherContact = String(before?.firstSemOtherContact ?? "").trim()
+    const aFirstOtherContact = String(after.firstSemOtherContact ?? "").trim()
+    if (bFirstOtherContact !== aFirstOtherContact) {
+      changes.push(`${year} · 1st semester other claimer contact: ${bFirstOtherContact || "—"} -> ${aFirstOtherContact || "—"}`)
     }
 
     const bSecondOther = String(before?.secondSemOtherName ?? "").trim()
     const aSecondOther = String(after.secondSemOtherName ?? "").trim()
     if (bSecondOther !== aSecondOther) {
-      changes.push(`${year} · 2nd semester other claimer: ${bSecondOther || "—"} -> ${aSecondOther || "—"}`)
+      changes.push(`${year} · 2nd semester other claimer name: ${bSecondOther || "—"} -> ${aSecondOther || "—"}`)
+    }
+
+    const bSecondOtherRelation = String(before?.secondSemOtherRelation ?? "").trim()
+    const aSecondOtherRelation = String(after.secondSemOtherRelation ?? "").trim()
+    if (bSecondOtherRelation !== aSecondOtherRelation) {
+      changes.push(`${year} · 2nd semester other claimer relation: ${bSecondOtherRelation || "—"} -> ${aSecondOtherRelation || "—"}`)
+    }
+
+    const bSecondOtherContact = String(before?.secondSemOtherContact ?? "").trim()
+    const aSecondOtherContact = String(after.secondSemOtherContact ?? "").trim()
+    if (bSecondOtherContact !== aSecondOtherContact) {
+      changes.push(`${year} · 2nd semester other claimer contact: ${bSecondOtherContact || "—"} -> ${aSecondOtherContact || "—"}`)
     }
   }
 
@@ -527,7 +662,7 @@ function BatchRecordView({ row, formatStudentId }) {
   const overallClaimed = row.status === "Claimed"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const programInferred = inferProgramFromRecord(row)
-  const requirementDefs = programInferred === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+  const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const detailItems = [
@@ -663,17 +798,17 @@ function BatchRecordView({ row, formatStudentId }) {
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
-          <div className="max-h-[min(240px,40vh)] overflow-auto [scrollbar-gutter:stable]">
-            <table className="w-full min-w-[320px] border-collapse text-sm">
+          <div className="max-h-[min(300px,46vh)] overflow-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-[440px] border-collapse text-sm">
               <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
                 <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
-                  <th scope="col" className="whitespace-nowrap">
+                  <th scope="col" className="w-[108px] whitespace-nowrap">
                     Year level
                   </th>
-                  <th scope="col" className="whitespace-nowrap">
+                  <th scope="col" className="min-w-[200px] whitespace-nowrap">
                     1st semester
                   </th>
-                  <th scope="col" className="whitespace-nowrap">
+                  <th scope="col" className="min-w-[200px] whitespace-nowrap">
                     2nd semester
                   </th>
                 </tr>
@@ -699,19 +834,23 @@ function BatchRecordView({ row, formatStudentId }) {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 align-middle">
+                      <td className="px-3 py-2.5 align-top">
                         <SemesterClaimCell
                           semStatus={c.firstSem}
                           claimerType={c.firstSemClaimer}
                           otherName={c.firstSemOtherName}
+                          otherRelation={c.firstSemOtherRelation}
+                          otherContact={c.firstSemOtherContact}
                           claimedAt={c.firstSemClaimedAt}
                         />
                       </td>
-                      <td className="px-3 py-2.5 align-middle">
+                      <td className="px-3 py-2.5 align-top">
                         <SemesterClaimCell
                           semStatus={c.secondSem}
                           claimerType={c.secondSemClaimer}
                           otherName={c.secondSemOtherName}
+                          otherRelation={c.secondSemOtherRelation}
+                          otherContact={c.secondSemOtherContact}
                           claimedAt={c.secondSemClaimedAt}
                         />
                       </td>
@@ -730,11 +869,16 @@ function BatchRecordView({ row, formatStudentId }) {
 function BatchRecordEdit({ draft, onSemesterChange, onSubmit }) {
   const overallClaimed = draft.status === "Claimed"
   const programInferred = inferProgramFromRecord(draft)
-  const requirementDefs = programInferred === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+  const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
+  const claimLevelsKey = claims.map((c) => c.yearLevel).join("|")
+  const requirementChecklist = useMemo(
+    () => requirementChecklistForDraft(draft, requirementDefs, claims.map((c) => c.yearLevel)),
+    [draft, requirementDefs, claimLevelsKey],
+  )
   const fieldItems = [
     { id: "edit-batch", label: "Batch number", value: draft.batchNo ?? "", icon: Layers, keyName: "batchNo" },
     { id: "edit-student", label: "Student ID", value: draft.studentId ?? "", icon: User, keyName: "studentId" },
@@ -878,18 +1022,26 @@ function BatchRecordEdit({ draft, onSemesterChange, onSubmit }) {
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
-          <div className="max-h-[min(240px,40vh)] overflow-auto [scrollbar-gutter:stable]">
-            <table className="w-full min-w-[360px] border-collapse text-sm">
+          <div className="max-h-[min(300px,46vh)] overflow-auto [scrollbar-gutter:stable]">
+            <table className="w-full min-w-[460px] border-collapse text-sm">
               <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
                 <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
-                  <th scope="col">Year level</th>
-                  <th scope="col">1st semester</th>
-                  <th scope="col">2nd semester</th>
+                  <th scope="col" className="w-[108px]">
+                    Year level
+                  </th>
+                  <th scope="col" className="min-w-[220px]">
+                    1st semester
+                  </th>
+                  <th scope="col" className="min-w-[220px]">
+                    2nd semester
+                  </th>
                 </tr>
               </thead>
               <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
                 {claims.map((c, idx) => {
                   const currentRow = c.yearLevel === draft.yearLevel
+                  const firstProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "first", requirementDefs)
+                  const secondProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "second", requirementDefs)
                   return (
                     <tr
                       key={c.yearLevel}
@@ -908,57 +1060,41 @@ function BatchRecordEdit({ draft, onSemesterChange, onSubmit }) {
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="space-y-1.5">
-                          <SemesterClaimStatusSelect
-                            value={c.firstSem}
-                            onChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
-                          />
-                          {c.firstSem === "Claimed" ? (
-                            <div className="space-y-1">
-                              <SemesterClaimedAtLabel claimedAt={c.firstSemClaimedAt} />
-                              <SemesterClaimClaimerSelect
-                                value={c.firstSemClaimer || "Grantee"}
-                                onChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
-                              />
-                              {c.firstSemClaimer === "Other" ? (
-                                <Input
-                                  value={c.firstSemOtherName ?? ""}
-                                  onChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
-                                  placeholder="Name of claimer"
-                                  className="h-8 min-w-[160px] text-xs"
-                                  required
-                                />
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
+                      <td className="px-3 py-2.5 align-top">
+                        <SemesterClaimEditSlot
+                          yearLevel={c.yearLevel}
+                          semKey="first"
+                          progress={firstProgress}
+                          semStatus={c.firstSem}
+                          claimer={c.firstSemClaimer}
+                          otherName={c.firstSemOtherName}
+                          otherRelation={c.firstSemOtherRelation}
+                          otherContact={c.firstSemOtherContact}
+                          claimedAt={c.firstSemClaimedAt}
+                          onStatusChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
+                          onClaimerChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
+                          onOtherNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
+                          onOtherRelationChange={(e) => onSemesterChange(idx, "firstSemOtherRelation", e.target.value)}
+                          onOtherContactChange={(e) => onSemesterChange(idx, "firstSemOtherContact", e.target.value)}
+                        />
                       </td>
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="space-y-1.5">
-                          <SemesterClaimStatusSelect
-                            value={c.secondSem}
-                            onChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
-                          />
-                          {c.secondSem === "Claimed" ? (
-                            <div className="space-y-1">
-                              <SemesterClaimedAtLabel claimedAt={c.secondSemClaimedAt} />
-                              <SemesterClaimClaimerSelect
-                                value={c.secondSemClaimer || "Grantee"}
-                                onChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
-                              />
-                              {c.secondSemClaimer === "Other" ? (
-                                <Input
-                                  value={c.secondSemOtherName ?? ""}
-                                  onChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
-                                  placeholder="Name of claimer"
-                                  className="h-8 min-w-[160px] text-xs"
-                                  required
-                                />
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
+                      <td className="px-3 py-2.5 align-top">
+                        <SemesterClaimEditSlot
+                          yearLevel={c.yearLevel}
+                          semKey="second"
+                          progress={secondProgress}
+                          semStatus={c.secondSem}
+                          claimer={c.secondSemClaimer}
+                          otherName={c.secondSemOtherName}
+                          otherRelation={c.secondSemOtherRelation}
+                          otherContact={c.secondSemOtherContact}
+                          claimedAt={c.secondSemClaimedAt}
+                          onStatusChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
+                          onClaimerChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
+                          onOtherNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
+                          onOtherRelationChange={(e) => onSemesterChange(idx, "secondSemOtherRelation", e.target.value)}
+                          onOtherContactChange={(e) => onSemesterChange(idx, "secondSemOtherContact", e.target.value)}
+                        />
                       </td>
                     </tr>
                   )
@@ -978,6 +1114,7 @@ export default function CashierBatchInfo() {
   const { formatStudentId, privacy } = useCashierPrivacySettings()
   const hideSensitiveStats = privacy.hideSensitiveStatsFromSharedScreens
   const modulePrefs = useCashierModuleSettings()
+  useOsgfaPrograms()
   const [trendRange, setTrendRange] = useState(TREND_RANGE.THIS_YEAR)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("__")
@@ -992,6 +1129,7 @@ export default function CashierBatchInfo() {
   const [editDraft, setEditDraft] = useState(null)
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false)
   const [pendingSaveChanges, setPendingSaveChanges] = useState([])
+  const [recordSaveNotice, setRecordSaveNotice] = useState("")
 
   const batchNo = String(params.get("batchNo") ?? "").trim()
   const program = String(params.get("program") ?? "").trim().toUpperCase()
@@ -1079,6 +1217,14 @@ export default function CashierBatchInfo() {
     loadRecords()
   }, [batchNo, program, academicYear])
 
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && program) loadRecords()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => document.removeEventListener("visibilitychange", onVisible)
+  }, [batchNo, program, academicYear])
+
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
   const batchGrantees = useMemo(() => records, [records])
@@ -1110,7 +1256,7 @@ export default function CashierBatchInfo() {
       if (requirementsCoverageFilter !== "__" && requirementsCoverageFilter !== "") {
         const levels = semesterClaimsForRow(row, YEAR_LEVELS).map((c) => c.yearLevel)
         const rowProgram = program || inferProgramFromRecord(row)
-        const defs = rowProgram === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+        const defs = getRequirementsForProgramCode(rowProgram)
         const cat = requirementCoverageStatusForRow(row, defs, levels)
         if (requirementsCoverageFilter === "incomplete" && cat !== "incomplete") return false
         if (requirementsCoverageFilter === "complete" && cat !== "complete") return false
@@ -1243,12 +1389,86 @@ export default function CashierBatchInfo() {
     )
   }
 
-  const requirementDefsForBatch = program === "TDP" ? TDP_GRANTEE_REQUIREMENTS : TES_GRANTEE_REQUIREMENTS
+  const [programRequirementsRevision, setProgramRequirementsRevision] = useState(0)
+  useEffect(() => {
+    const refresh = () => setProgramRequirementsRevision((n) => n + 1)
+    window.addEventListener(OSGFA_PROGRAMS_CHANGED_EVENT, refresh)
+    return () => window.removeEventListener(OSGFA_PROGRAMS_CHANGED_EVENT, refresh)
+  }, [])
+
+  const requirementDefsForBatch = useMemo(
+    () => getRequirementsForProgramCode(program),
+    [program, programRequirementsRevision],
+  )
+
+  const syncGranteeFromServer = useCallback(async (row) => {
+    if (!row?.id) return row
+    try {
+      const fresh = await fetchGranteeById(row.id)
+      setRecords((prev) => mergeGranteeIntoRecords(prev, fresh))
+      return fresh
+    } catch (err) {
+      console.error("Failed to refresh grantee from server:", err)
+      return row
+    }
+  }, [])
+
+  const buildEditDraftFromRow = useCallback(
+    (row) => {
+      const claimsForRow = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row.lastUpdated)
+      const { requirementChecklistBySem: _legacyFlat, ...rowRest } = row
+      const rowProgram = program || inferProgramFromRecord(row)
+      const claimLevels = claimsForRow.map((c) => c.yearLevel)
+      const requirementChecklistByYearSem = ensureRequirementSemCompletionTimestamps(
+        normalizeRequirementChecklistByYearSem(row, requirementDefsForBatch, claimLevels),
+        requirementDefsForBatch,
+        claimLevels,
+        row.lastUpdated,
+      )
+      return {
+        ...rowRest,
+        program: rowProgram,
+        batchNo: batchNo || rowRest.batchNo,
+        academicYear: academicYear || rowRest.academicYear,
+        semesterClaims: claimsForRow,
+        requirementChecklistByYearSem,
+      }
+    },
+    [program, batchNo, academicYear, requirementDefsForBatch],
+  )
 
   const activeRow = useMemo(() => {
     if (!activeRowKey) return null
     return filtered.find((row) => rowKey(row) === activeRowKey) ?? null
   }, [activeRowKey, filtered])
+
+  useEffect(() => {
+    const handleGranteeUpdated = (event) => {
+      const updated = event.detail
+      if (!updated?.id) return
+      void syncGranteeFromServer(updated)
+    }
+    window.addEventListener(GRANTEE_UPDATED_EVENT, handleGranteeUpdated)
+    return () => window.removeEventListener(GRANTEE_UPDATED_EVENT, handleGranteeUpdated)
+  }, [syncGranteeFromServer])
+
+  useEffect(() => {
+    if (!recordSaveNotice) return undefined
+    const timer = setTimeout(() => setRecordSaveNotice(""), 4500)
+    return () => clearTimeout(timer)
+  }, [recordSaveNotice])
+
+  const applyRecordSaveSuccess = useCallback((updated) => {
+    setRecords((prev) => prev.map((row) => (row.id === updated.id ? updated : row)))
+    setSaveConfirmOpen(false)
+    setPendingSaveChanges([])
+    setRecordDialogMode("view")
+    setEditDraft(null)
+    const name = String(updated?.fullName ?? "").trim()
+    setRecordSaveNotice(
+      name ? `Changes saved. ${name}'s record has been updated.` : "Changes saved. The record has been updated.",
+    )
+  }, [])
 
   const handleRecordDialogOpenChange = (open) => {
     setRecordDialogOpen(open)
@@ -1258,6 +1478,7 @@ export default function CashierBatchInfo() {
       setEditDraft(null)
       setSaveConfirmOpen(false)
       setPendingSaveChanges([])
+      setRecordSaveNotice("")
     }
   }
 
@@ -1265,35 +1486,21 @@ export default function CashierBatchInfo() {
     setRecordDialogMode("view")
     setActiveRowKey(rowKey(row))
     setEditDraft(null)
+    setRecordSaveNotice("")
     setRecordDialogOpen(true)
+    void syncGranteeFromServer(row)
   }
 
   const openRecordEdit = (row) => {
+    if (program && !recordMatchesProgram(row, program)) return
     setRecordDialogMode("edit")
     setActiveRowKey(rowKey(row))
-    const claimsForRow = ensureSemesterClaimTimestamps(
-      semesterClaimsForRow(row, YEAR_LEVELS),
-      row.lastUpdated,
-    )
-    const { requirementChecklistBySem: _legacyFlat, ...rowRest } = row
-    const rowProgram = program || inferProgramFromRecord(row)
-    if (program && !recordMatchesProgram(row, program)) return
-    const claimLevels = claimsForRow.map((c) => c.yearLevel)
-    const requirementChecklistByYearSem = ensureRequirementSemCompletionTimestamps(
-      normalizeRequirementChecklistByYearSem(row, requirementDefsForBatch, claimLevels),
-      requirementDefsForBatch,
-      claimLevels,
-      row.lastUpdated,
-    )
-    setEditDraft({
-      ...rowRest,
-      program: rowProgram,
-      batchNo: batchNo || rowRest.batchNo,
-      academicYear: academicYear || rowRest.academicYear,
-      semesterClaims: claimsForRow,
-      requirementChecklistByYearSem,
-    })
+    setEditDraft(buildEditDraftFromRow(row))
+    setRecordSaveNotice("")
     setRecordDialogOpen(true)
+    void syncGranteeFromServer(row).then((fresh) => {
+      setEditDraft(buildEditDraftFromRow(fresh))
+    })
   }
 
   const handleSemesterClaimChange = (idx, semesterKey, value) => {
@@ -1303,6 +1510,13 @@ export default function CashierBatchInfo() {
         Array.isArray(prev.semesterClaims) && prev.semesterClaims.length > 0
           ? prev.semesterClaims.map((c) => ({ ...c }))
           : semesterClaimsForRow(prev, YEAR_LEVELS)
+      const semKey = SEMESTER_CLAIM_FIELD_SEM[semesterKey]
+      if (semKey) {
+        const yearLevel = baseClaims[idx]?.yearLevel
+        if (yearLevel && isSemesterClaimEditBlocked(prev, yearLevel, semKey, requirementDefsForBatch)) {
+          return prev
+        }
+      }
       const nextClaims = mapSemesterClaimsWithFieldChange(baseClaims, idx, semesterKey, value)
       return { ...prev, semesterClaims: nextClaims, status: computeStatusFromClaims(nextClaims, prev.yearLevel, prev.status) }
     })
@@ -1333,27 +1547,25 @@ export default function CashierBatchInfo() {
     }
     const levels = semesterClaimsForRow(editDraft, YEAR_LEVELS).map((c) => c.yearLevel)
     const semesterClaims = ensureSemesterClaimTimestamps(
-      editDraft.semesterClaims ?? semesterClaimsForRow(editDraft, YEAR_LEVELS),
+      (editDraft.semesterClaims ?? semesterClaimsForRow(editDraft, YEAR_LEVELS)).map(normalizeSemesterClaim),
       editDraft.lastUpdated,
     )
+    const basisRow = activeRow ?? editDraft
     const savePayload = {
-      ...(activeRow ?? editDraft),
+      ...basisRow,
       semesterClaims,
       status: computeStatusFromClaims(semesterClaims, editDraft.yearLevel, editDraft.status),
       requirementChecklistByYearSem: ensureRequirementSemCompletionTimestamps(
-        normalizeRequirementChecklistByYearSem(activeRow ?? editDraft, requirementDefsForBatch, levels),
+        normalizeRequirementChecklistByYearSem(basisRow, requirementDefsForBatch, levels),
         requirementDefsForBatch,
         levels,
-        (activeRow ?? editDraft).lastUpdated,
+        basisRow.lastUpdated,
       ),
     }
     try {
       setIsSaving(true)
       const updated = await updateGrantee(editDraft.id, savePayload)
-      setRecords((prev) => prev.map((row) => (row.id === updated.id ? updated : row)))
-      setSaveConfirmOpen(false)
-      setPendingSaveChanges([])
-      handleRecordDialogOpenChange(false)
+      applyRecordSaveSuccess(updated)
     } catch (err) {
       console.error("Failed to save grantee:", err)
       window.alert(err?.message ?? "Failed to save changes to the database.")
@@ -1858,7 +2070,7 @@ export default function CashierBatchInfo() {
           ) : null}
 
           <Dialog open={recordDialogOpen} onOpenChange={handleRecordDialogOpenChange}>
-            <DialogContent className="relative flex h-[min(92vw,42rem,calc(100dvh-3rem))] w-[min(92vw,42rem,calc(100dvh-3rem))] max-w-none flex-col gap-0 overflow-hidden border-[#081F5C]/14 bg-white p-6 pt-8 shadow-[0_28px_56px_-16px_rgba(8,31,92,0.22)] dark:border-[#081F5C]/25 dark:bg-slate-950 sm:max-w-none">
+            <DialogContent className="relative flex h-[min(92vw,42rem,calc(100dvh-3rem))] w-[min(94vw,48rem,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden border-[#081F5C]/14 bg-white p-6 pt-8 shadow-[0_28px_56px_-16px_rgba(8,31,92,0.22)] dark:border-[#081F5C]/25 dark:bg-slate-950 sm:max-w-none">
               <div
                 className="pointer-events-none absolute inset-x-0 top-0 z-10 h-1 rounded-t-2xl bg-linear-to-r from-[#04133d] via-[#081F5C] to-[#1447a6]"
                 aria-hidden
@@ -1866,6 +2078,16 @@ export default function CashierBatchInfo() {
               <DialogHeader className="relative shrink-0 pt-1">
                 <DialogTitle>{recordDialogMode === "edit" ? "Update claim status" : "View record"}</DialogTitle>
               </DialogHeader>
+
+              {recordSaveNotice ? (
+                <div
+                  role="status"
+                  className="mt-3 flex shrink-0 items-start gap-2 rounded-lg border border-emerald-200/90 bg-emerald-50 px-3 py-2.5 text-sm leading-snug text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-100"
+                >
+                  <CircleCheck className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>{recordSaveNotice}</span>
+                </div>
+              ) : null}
 
               <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-2 pr-1 [scrollbar-gutter:stable]">
                 {recordDialogMode === "view" && activeRow ? (

@@ -37,6 +37,7 @@ import {
   shouldShowNotification,
 } from "@/lib/cashierSettings"
 import authService, { USER_UPDATED_EVENT } from "@/services/authService"
+import { fetchProgramsFromApi } from "@/lib/osgfaPrograms"
 
 function getUserDisplayName(user) {
   if (!user) return "Cashier"
@@ -133,6 +134,12 @@ export default function CashierLayout() {
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false)
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0)
   const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser())
+
+  useEffect(() => {
+    fetchProgramsFromApi().catch(() => {
+      // Cashier screens still fall back to built-in TES/TDP requirement definitions.
+    })
+  }, [])
 
   const handleLogout = () => {
     try {

@@ -185,6 +185,27 @@ export function filterGranteesForBatch(rows, { batchNo, program, academicYear } 
   })
 }
 
+export async function fetchGranteeById(id) {
+  const granteeId = String(id ?? "").trim()
+  if (!granteeId) {
+    throw new Error("Cannot load grantee: missing database id.")
+  }
+  const response = await fetch(`${API_BASE}/grantees/${encodeURIComponent(granteeId)}`)
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to load grantee record from the database.")
+  }
+  return mapGranteeFromApi(data)
+}
+
+/** Replace one grantee in a list by database id (no-op if not present). */
+export function mergeGranteeIntoRecords(records, grantee) {
+  if (!grantee?.id) return records ?? []
+  const list = records ?? []
+  if (!list.some((row) => row.id === grantee.id)) return list
+  return list.map((row) => (row.id === grantee.id ? grantee : row))
+}
+
 export async function fetchGranteesForBatch({ program, batchNo, academicYear } = {}) {
   const params = new URLSearchParams()
   const prog = String(program ?? "").trim().toUpperCase()
@@ -418,6 +439,14 @@ export async function batchSaveGrantees({ program, batchNo, academicYear, grante
   return data
 }
 
+/** Dispatched on `window` after a grantee is saved so open batch views stay in sync. */
+export const GRANTEE_UPDATED_EVENT = "srms:grantee-updated"
+
+function notifyGranteeUpdated(grantee) {
+  if (typeof window === "undefined" || !grantee?.id) return
+  window.dispatchEvent(new CustomEvent(GRANTEE_UPDATED_EVENT, { detail: grantee }))
+}
+
 export async function updateGrantee(id, row) {
   const granteeId = String(id ?? "").trim()
   if (!granteeId) {
@@ -432,5 +461,7 @@ export async function updateGrantee(id, row) {
   if (!response.ok) {
     throw new Error(data.message || "Failed to save grantee changes to the database.")
   }
-  return mapGranteeFromApi(data)
+  const mapped = mapGranteeFromApi(data)
+  notifyGranteeUpdated(mapped)
+  return mapped
 }
