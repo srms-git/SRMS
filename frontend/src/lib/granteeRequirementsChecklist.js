@@ -1,3 +1,5 @@
+import { sanitizeContactNumber } from "@/lib/contactNumber"
+
 /** @typedef {{ id: string, label: string }} RequirementDef */
 
 /**
@@ -17,6 +19,24 @@ export const REQUIREMENT_SEM_COMPLETED_AT_KEY = {
   second: "secondCompletedAt",
 }
 
+export const REQUIREMENT_SEM_SUBMITTED_BY_KEY = {
+  first: "firstSubmittedBy",
+  second: "secondSubmittedBy",
+}
+
+export const REQUIREMENT_SEM_OTHER_PERSON_KEY = {
+  first: {
+    name: "firstSubmittedOtherName",
+    relation: "firstSubmittedOtherRelation",
+    contact: "firstSubmittedOtherContact",
+  },
+  second: {
+    name: "secondSubmittedOtherName",
+    relation: "secondSubmittedOtherRelation",
+    contact: "secondSubmittedOtherContact",
+  },
+}
+
 export function buildEmptyRequirementChecklistByYearSem(yearLevels, defs) {
   const flags = emptyFlagsForDefs(defs)
   const out = {}
@@ -26,6 +46,14 @@ export function buildEmptyRequirementChecklistByYearSem(yearLevels, defs) {
       second: { ...flags },
       firstCompletedAt: null,
       secondCompletedAt: null,
+      firstSubmittedBy: "",
+      firstSubmittedOtherName: "",
+      firstSubmittedOtherRelation: "",
+      firstSubmittedOtherContact: "",
+      secondSubmittedBy: "",
+      secondSubmittedOtherName: "",
+      secondSubmittedOtherRelation: "",
+      secondSubmittedOtherContact: "",
     }
   }
   return out
@@ -61,6 +89,18 @@ export function normalizeRequirementChecklistByYearSem(row, defs, yearLevels) {
         const rawAt = slice[atKey]
         if (typeof rawAt === "string" && rawAt.trim()) base[yl][atKey] = rawAt.trim()
       }
+      for (const semKey of ["first", "second"]) {
+        const submittedByKey = REQUIREMENT_SEM_SUBMITTED_BY_KEY[semKey]
+        const rawSubmittedBy = slice[submittedByKey]
+        if (typeof rawSubmittedBy === "string") base[yl][submittedByKey] = rawSubmittedBy.trim()
+        for (const personKey of Object.values(REQUIREMENT_SEM_OTHER_PERSON_KEY[semKey])) {
+          const rawPerson = slice[personKey]
+          if (typeof rawPerson === "string") {
+            base[yl][personKey] =
+              personKey.endsWith("Contact") ? sanitizeContactNumber(rawPerson) : rawPerson.trim()
+          }
+        }
+      }
     }
   }
 
@@ -85,6 +125,76 @@ export function normalizeRequirementChecklistByYearSem(row, defs, yearLevels) {
  * @param {"first"|"second"} semKey
  * @param {RequirementDef[]} defs
  */
+export function requirementSemSubmittedBy(checklist, yearLevel, semKey) {
+  const key = REQUIREMENT_SEM_SUBMITTED_BY_KEY[semKey]
+  const raw = checklist?.[yearLevel]?.[key]
+  return typeof raw === "string" ? raw.trim() : ""
+}
+
+export function requirementSemOtherPerson(checklist, yearLevel, semKey) {
+  const keys = REQUIREMENT_SEM_OTHER_PERSON_KEY[semKey]
+  return {
+    name: String(checklist?.[yearLevel]?.[keys.name] ?? "").trim(),
+    relation: String(checklist?.[yearLevel]?.[keys.relation] ?? "").trim(),
+    contact: String(checklist?.[yearLevel]?.[keys.contact] ?? "").trim(),
+  }
+}
+
+/**
+ * @param {Record<string, unknown>} checklist
+ * @param {string} yearLevel
+ * @param {"first"|"second"} semKey
+ * @param {string} submittedBy
+ */
+export function updateRequirementSemSubmittedBy(checklist, yearLevel, semKey, submittedBy) {
+  const submittedByKey = REQUIREMENT_SEM_SUBMITTED_BY_KEY[semKey]
+  const personKeys = REQUIREMENT_SEM_OTHER_PERSON_KEY[semKey]
+  const yearSlice = { ...(checklist?.[yearLevel] ?? {}) }
+  yearSlice[submittedByKey] = submittedBy
+  if (submittedBy !== "Other") {
+    yearSlice[personKeys.name] = ""
+    yearSlice[personKeys.relation] = ""
+    yearSlice[personKeys.contact] = ""
+  }
+  return { ...checklist, [yearLevel]: yearSlice }
+}
+
+/**
+ * @param {Record<string, unknown>} checklist
+ * @param {string} yearLevel
+ * @param {"first"|"second"} semKey
+ * @param {"name"|"relation"|"contact"} field
+ * @param {string} value
+ */
+export function updateRequirementSemOtherPersonField(checklist, yearLevel, semKey, field, value) {
+  const personKeys = REQUIREMENT_SEM_OTHER_PERSON_KEY[semKey]
+  const key = personKeys[field]
+  if (!key) return checklist
+  const storedValue = field === "contact" ? sanitizeContactNumber(value) : value
+  const yearSlice = { ...(checklist?.[yearLevel] ?? {}), [key]: storedValue }
+  return { ...checklist, [yearLevel]: yearSlice }
+}
+
+/** Preserve checklist metadata and normalize contact numbers before API save. */
+export function sanitizeRequirementChecklistForSave(checklist) {
+  if (!checklist || typeof checklist !== "object") return {}
+
+  const out = {}
+  for (const [yearLevel, slice] of Object.entries(checklist)) {
+    if (!slice || typeof slice !== "object") continue
+    const nextSlice = { ...slice }
+    for (const semKey of ["first", "second"]) {
+      for (const personKey of Object.values(REQUIREMENT_SEM_OTHER_PERSON_KEY[semKey])) {
+        if (typeof nextSlice[personKey] === "string" && personKey.endsWith("Contact")) {
+          nextSlice[personKey] = sanitizeContactNumber(nextSlice[personKey])
+        }
+      }
+    }
+    out[yearLevel] = nextSlice
+  }
+  return out
+}
+
 export function requirementSemCompletedAt(checklist, yearLevel, semKey) {
   const atKey = REQUIREMENT_SEM_COMPLETED_AT_KEY[semKey]
   const raw = checklist?.[yearLevel]?.[atKey]

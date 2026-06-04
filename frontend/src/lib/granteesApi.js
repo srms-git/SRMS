@@ -1,4 +1,6 @@
 import { getApiClientBaseUrl } from "@/lib/apiConfig";
+import { normalizeSemesterClaim } from "@/lib/granteeSemesterClaims";
+import { sanitizeRequirementChecklistForSave } from "@/lib/granteeRequirementsChecklist";
 
 const API_BASE =
   getApiClientBaseUrl() ||
@@ -102,11 +104,8 @@ export function mapGranteeToApi(row) {
     phoneNumber: String(row?.phoneNumber ?? "").trim(),
     bankAccount: String(row?.bankAccount ?? "").trim(),
     grantCycle: String(row?.grantCycle ?? "").trim(),
-    semesterClaims: Array.isArray(row?.semesterClaims) ? row.semesterClaims : [],
-    requirementChecklistByYearSem:
-      row?.requirementChecklistByYearSem && typeof row.requirementChecklistByYearSem === "object"
-        ? row.requirementChecklistByYearSem
-        : {},
+    semesterClaims: Array.isArray(row?.semesterClaims) ? row.semesterClaims.map(normalizeSemesterClaim) : [],
+    requirementChecklistByYearSem: sanitizeRequirementChecklistForSave(row?.requirementChecklistByYearSem),
   }
 }
 

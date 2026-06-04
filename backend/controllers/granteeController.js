@@ -3,8 +3,26 @@ const ClaimHistory = require('../models/ClaimHistoryModel');
 const { archiveBatchIfFullyClaimed } = require('../services/archiveService');
 const { createInternalNotification } = require('./notificationController');
 const { logActivity } = require('../services/auditLogger');
+const { sanitizeGranteeOtherPersonFields } = require('../utils/granteeOtherPersonFields');
+
+const DEFAULT_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+
+function yearLevelIndexForDefaults(yearLevel) {
+    const i = DEFAULT_YEAR_LEVELS.indexOf(String(yearLevel ?? '').trim());
+    return i >= 0 ? i : 0;
+}
+
+function buildDefaultSemesterClaims(yearLevel) {
+    const count = yearLevelIndexForDefaults(yearLevel) + 1;
+    return DEFAULT_YEAR_LEVELS.slice(0, count).map((yl) => ({
+        yearLevel: yl,
+        firstSem: 'Unclaimed',
+        secondSem: 'Unclaimed',
+    }));
+}
 
 function mapBatchRow(row, program, batchNo, academicYear) {
+    const yearLevel = String(row?.yearLevel ?? '').trim();
     return {
         program: String(program).trim().toUpperCase(),
         batchNo: String(batchNo).trim(),
@@ -14,7 +32,9 @@ function mapBatchRow(row, program, batchNo, academicYear) {
         awardNumber: String(row?.awardNumber ?? '').trim(),
         fullName: String(row?.fullName ?? '').trim() || 'Unknown',
         enrolledProgram: String(row?.enrolledProgram ?? '').trim(),
-        yearLevel: String(row?.yearLevel ?? '').trim(),
+        yearLevel,
+        status: 'Unclaimed',
+        semesterClaims: buildDefaultSemesterClaims(yearLevel),
     };
 }
 
@@ -284,7 +304,7 @@ exports.updateGrantee = async (req, res) => {
             return res.status(404).json({ message: 'Grantee not found.' });
         }
 
-        const updateBody = { ...req.body };
+        const updateBody = sanitizeGranteeOtherPersonFields({ ...req.body });
         const historyCreates = [];
 
         if (updateBody.semesterClaims && Array.isArray(updateBody.semesterClaims)) {

@@ -50,15 +50,19 @@ import {
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import {
+  OtherPersonFields,
   SemesterClaimCell,
   SemesterClaimClaimerSelect,
   SemesterClaimedAtLabel,
   SemesterClaimStatusSelect,
+  RequirementSubmittedByFields,
+  RequirementSubmittedByInfo,
 } from "@/components/grantee/semester-claim-display"
 import { fetchGranteesByProgram, filterGranteesByProgram, updateGrantee } from "@/lib/granteesApi"
 import {
   ensureSemesterClaimTimestamps,
   mapSemesterClaimsWithFieldChange,
+  normalizeSemesterClaim,
   semesterClaimsForRow,
   yearLevelIndex as yearLevelIndexForLevels,
 } from "@/lib/granteeSemesterClaims"
@@ -68,9 +72,13 @@ import {
   formatRequirementCompletedAt,
   normalizeRequirementChecklistByYearSem,
   requirementCoverageStatusForRow,
+  requirementSemOtherPerson,
+  requirementSemSubmittedBy,
   requirementYearSemProgress,
   REQUIREMENT_SEM_LABEL,
   updateRequirementChecklistCheck,
+  updateRequirementSemOtherPersonField,
+  updateRequirementSemSubmittedBy,
 } from "@/lib/granteeRequirementsChecklist"
 import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
@@ -111,42 +119,66 @@ function sanitizeReqIdSegment(s) {
     .replace(/[^a-zA-Z0-9_-]/g, "")
 }
 
-function RequirementSemesterCell({ progress }) {
+function RequirementSemesterCell({ progress, checklist, yearLevel, semKey }) {
   const completedWhen = progress.isComplete && progress.completedAt ? formatRequirementCompletedAt(progress.completedAt) : ""
+  const submittedBy = requirementSemSubmittedBy(checklist, yearLevel, semKey)
+  const otherPerson = requirementSemOtherPerson(checklist, yearLevel, semKey)
 
   return (
-    <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-      <Badge
-        variant="outline"
-        className={cn(
-          "h-7 w-fit shrink-0 rounded-full px-2.5 text-[11px] font-semibold",
-          progress.isComplete
-            ? "border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-50"
-            : "border-amber-200/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
-        )}
-      >
-        {progress.isComplete ? "Completed" : "Incomplete"}
-      </Badge>
-      {progress.isComplete && completedWhen ? (
-        <span className="text-[11px] text-muted-foreground" title={progress.completedAt}>
-          {completedWhen}
-        </span>
-      ) : null}
-      {!progress.isComplete ? (
-        <span className="text-[11px] text-muted-foreground">
-          {progress.done}/{progress.total} submitted
-        </span>
+    <div className="space-y-1">
+      <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+        <Badge
+          variant="outline"
+          className={cn(
+            "h-7 w-fit shrink-0 rounded-full px-2.5 text-[11px] font-semibold",
+            progress.isComplete
+              ? "border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-50"
+              : "border-amber-200/80 bg-amber-50 text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
+          )}
+        >
+          {progress.isComplete ? "Completed" : "Incomplete"}
+        </Badge>
+        {progress.isComplete && completedWhen ? (
+          <span className="text-[11px] text-muted-foreground" title={progress.completedAt}>
+            {completedWhen}
+          </span>
+        ) : null}
+        {!progress.isComplete ? (
+          <span className="text-[11px] text-muted-foreground">
+            {progress.done}/{progress.total} submitted
+          </span>
+        ) : null}
+      </div>
+      {progress.done > 0 || submittedBy ? (
+        <RequirementSubmittedByInfo
+          submittedBy={submittedBy}
+          otherName={otherPerson.name}
+          otherRelation={otherPerson.relation}
+          otherContact={otherPerson.contact}
+        />
       ) : null}
     </div>
   )
 }
 
-function RequirementSemesterEditCell({ yearLevel, semKey, progress, checklist, definitions, mode, onRequirementCheckChange }) {
+function RequirementSemesterEditCell({
+  yearLevel,
+  semKey,
+  progress,
+  checklist,
+  definitions,
+  mode,
+  onRequirementCheckChange,
+  onRequirementSubmittedByChange,
+}) {
   const semLabel = semKey === "first" ? "1st" : "2nd"
+  const submittedBy = requirementSemSubmittedBy(checklist, yearLevel, semKey)
+  const otherPerson = requirementSemOtherPerson(checklist, yearLevel, semKey)
+  const selectId = `req-submitted-by-${mode}-${sanitizeReqIdSegment(yearLevel)}-${semKey}`
 
   return (
     <div className="min-w-[200px] space-y-2">
-      <RequirementSemesterCell progress={progress} />
+      <RequirementSemesterCell progress={progress} checklist={checklist} yearLevel={yearLevel} semKey={semKey} />
       <ul
         className="list-none space-y-2 border-t border-slate-200/80 pt-2 dark:border-white/10"
         aria-label={`Requirements for ${yearLevel}, ${semLabel} semester`}
@@ -170,11 +202,22 @@ function RequirementSemesterEditCell({ yearLevel, semKey, progress, checklist, d
           )
         })}
       </ul>
+      <RequirementSubmittedByFields
+        selectId={selectId}
+        submittedBy={submittedBy}
+        otherName={otherPerson.name}
+        otherRelation={otherPerson.relation}
+        otherContact={otherPerson.contact}
+        onSubmittedByChange={(e) => onRequirementSubmittedByChange(yearLevel, semKey, "submittedBy", e.target.value)}
+        onOtherNameChange={(e) => onRequirementSubmittedByChange(yearLevel, semKey, "name", e.target.value)}
+        onOtherRelationChange={(e) => onRequirementSubmittedByChange(yearLevel, semKey, "relation", e.target.value)}
+        onOtherContactChange={(e) => onRequirementSubmittedByChange(yearLevel, semKey, "contact", e.target.value)}
+      />
     </div>
   )
 }
 
-function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYearLevel, mode, onRequirementCheckChange }) {
+function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYearLevel, mode, onRequirementCheckChange, onRequirementSubmittedByChange }) {
   const levels = useMemo(() => [...new Set((yearLevels ?? []).map((s) => String(s ?? "").trim()).filter(Boolean))], [yearLevels])
 
   const levelListForNorm = levels.length > 0 ? levels : currentYearLevel ? [currentYearLevel] : []
@@ -234,10 +277,10 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
                           </div>
                         </td>
                         <td className="px-3 py-2.5 align-middle">
-                          <RequirementSemesterCell progress={pFirst} />
+                          <RequirementSemesterCell progress={pFirst} checklist={checklist} yearLevel={yl} semKey="first" />
                         </td>
                         <td className="px-3 py-2.5 align-middle">
-                          <RequirementSemesterCell progress={pSecond} />
+                          <RequirementSemesterCell progress={pSecond} checklist={checklist} yearLevel={yl} semKey="second" />
                         </td>
                       </tr>
                     )
@@ -308,6 +351,7 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
                           definitions={definitions}
                           mode={mode}
                           onRequirementCheckChange={onRequirementCheckChange}
+                          onRequirementSubmittedByChange={onRequirementSubmittedByChange}
                         />
                       </td>
                       <td className="px-3 py-2.5 align-top">
@@ -319,6 +363,7 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
                           definitions={definitions}
                           mode={mode}
                           onRequirementCheckChange={onRequirementCheckChange}
+                          onRequirementSubmittedByChange={onRequirementSubmittedByChange}
                         />
                       </td>
                     </tr>
@@ -558,6 +603,8 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
                           semStatus={c.firstSem}
                           claimerType={c.firstSemClaimer}
                           otherName={c.firstSemOtherName}
+                          otherRelation={c.firstSemOtherRelation}
+                          otherContact={c.firstSemOtherContact}
                           claimedAt={c.firstSemClaimedAt}
                         />
                       </td>
@@ -566,6 +613,8 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
                           semStatus={c.secondSem}
                           claimerType={c.secondSemClaimer}
                           otherName={c.secondSemOtherName}
+                          otherRelation={c.secondSemOtherRelation}
+                          otherContact={c.secondSemOtherContact}
                           claimedAt={c.secondSemClaimedAt}
                         />
                       </td>
@@ -650,13 +699,37 @@ function buildEditChangeSummary(originalRow, draftRow, requirements) {
     const bFirstOther = String(before?.firstSemOtherName ?? "").trim()
     const aFirstOther = String(after.firstSemOtherName ?? "").trim()
     if (bFirstOther !== aFirstOther) {
-      changes.push(`${year} · 1st semester other claimer: ${bFirstOther || "—"} -> ${aFirstOther || "—"}`)
+      changes.push(`${year} · 1st semester other claimer name: ${bFirstOther || "—"} -> ${aFirstOther || "—"}`)
+    }
+
+    const bFirstOtherRelation = String(before?.firstSemOtherRelation ?? "").trim()
+    const aFirstOtherRelation = String(after.firstSemOtherRelation ?? "").trim()
+    if (bFirstOtherRelation !== aFirstOtherRelation) {
+      changes.push(`${year} · 1st semester other claimer relation: ${bFirstOtherRelation || "—"} -> ${aFirstOtherRelation || "—"}`)
+    }
+
+    const bFirstOtherContact = String(before?.firstSemOtherContact ?? "").trim()
+    const aFirstOtherContact = String(after.firstSemOtherContact ?? "").trim()
+    if (bFirstOtherContact !== aFirstOtherContact) {
+      changes.push(`${year} · 1st semester other claimer contact: ${bFirstOtherContact || "—"} -> ${aFirstOtherContact || "—"}`)
     }
 
     const bSecondOther = String(before?.secondSemOtherName ?? "").trim()
     const aSecondOther = String(after.secondSemOtherName ?? "").trim()
     if (bSecondOther !== aSecondOther) {
-      changes.push(`${year} · 2nd semester other claimer: ${bSecondOther || "—"} -> ${aSecondOther || "—"}`)
+      changes.push(`${year} · 2nd semester other claimer name: ${bSecondOther || "—"} -> ${aSecondOther || "—"}`)
+    }
+
+    const bSecondOtherRelation = String(before?.secondSemOtherRelation ?? "").trim()
+    const aSecondOtherRelation = String(after.secondSemOtherRelation ?? "").trim()
+    if (bSecondOtherRelation !== aSecondOtherRelation) {
+      changes.push(`${year} · 2nd semester other claimer relation: ${bSecondOtherRelation || "—"} -> ${aSecondOtherRelation || "—"}`)
+    }
+
+    const bSecondOtherContact = String(before?.secondSemOtherContact ?? "").trim()
+    const aSecondOtherContact = String(after.secondSemOtherContact ?? "").trim()
+    if (bSecondOtherContact !== aSecondOtherContact) {
+      changes.push(`${year} · 2nd semester other claimer contact: ${bSecondOtherContact || "—"} -> ${aSecondOtherContact || "—"}`)
     }
   }
 
@@ -680,13 +753,31 @@ function buildEditChangeSummary(originalRow, draftRow, requirements) {
           )
         }
       }
+
+      const bSubmittedBy = requirementSemSubmittedBy(beforeReq, yl, sem) || "Grantee"
+      const aSubmittedBy = requirementSemSubmittedBy(afterReq, yl, sem) || "Grantee"
+      if (bSubmittedBy !== aSubmittedBy) {
+        changes.push(`${yl} · ${semLabel} requirements submitted by: ${bSubmittedBy} -> ${aSubmittedBy}`)
+      }
+
+      const bOther = requirementSemOtherPerson(beforeReq, yl, sem)
+      const aOther = requirementSemOtherPerson(afterReq, yl, sem)
+      if (bOther.name !== aOther.name) {
+        changes.push(`${yl} · ${semLabel} requirements other submitter name: ${bOther.name || "—"} -> ${aOther.name || "—"}`)
+      }
+      if (bOther.relation !== aOther.relation) {
+        changes.push(`${yl} · ${semLabel} requirements other submitter relation: ${bOther.relation || "—"} -> ${aOther.relation || "—"}`)
+      }
+      if (bOther.contact !== aOther.contact) {
+        changes.push(`${yl} · ${semLabel} requirements other submitter contact: ${bOther.contact || "—"} -> ${aOther.contact || "—"}`)
+      }
     }
   }
 
   return changes
 }
 
-function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onSubmit, programCode, requirements }) {
+function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onRequirementSubmittedByChange, onSubmit, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
   const overallClaimed = draft.status === "Claimed"
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
@@ -822,6 +913,7 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={draft.yearLevel}
           onRequirementCheckChange={onRequirementCheckChange}
+          onRequirementSubmittedByChange={onRequirementSubmittedByChange}
         />
       </div>
 
@@ -883,11 +975,14 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
                                 onChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
                               />
                               {c.firstSemClaimer === "Other" ? (
-                                <Input
-                                  value={c.firstSemOtherName ?? ""}
-                                  onChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
-                                  placeholder="Name of claimer"
-                                  className="h-8 min-w-[160px] text-xs"
+                                <OtherPersonFields
+                                  name={c.firstSemOtherName ?? ""}
+                                  relation={c.firstSemOtherRelation ?? ""}
+                                  contact={c.firstSemOtherContact ?? ""}
+                                  onNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
+                                  onRelationChange={(e) => onSemesterChange(idx, "firstSemOtherRelation", e.target.value)}
+                                  onContactChange={(e) => onSemesterChange(idx, "firstSemOtherContact", e.target.value)}
+                                  namePlaceholder="Name of claimer"
                                   required
                                 />
                               ) : null}
@@ -909,11 +1004,14 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
                                 onChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
                               />
                               {c.secondSemClaimer === "Other" ? (
-                                <Input
-                                  value={c.secondSemOtherName ?? ""}
-                                  onChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
-                                  placeholder="Name of claimer"
-                                  className="h-8 min-w-[160px] text-xs"
+                                <OtherPersonFields
+                                  name={c.secondSemOtherName ?? ""}
+                                  relation={c.secondSemOtherRelation ?? ""}
+                                  contact={c.secondSemOtherContact ?? ""}
+                                  onNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
+                                  onRelationChange={(e) => onSemesterChange(idx, "secondSemOtherRelation", e.target.value)}
+                                  onContactChange={(e) => onSemesterChange(idx, "secondSemOtherContact", e.target.value)}
+                                  namePlaceholder="Name of claimer"
                                   required
                                 />
                               ) : null}
@@ -1142,7 +1240,9 @@ export default function ProgramWorkspace() {
     setRecordDialogMode("edit")
     setActiveSeqNo(row.seqNo)
     const claimsForRow = ensureSemesterClaimTimestamps(
-      semesterClaimsForRow(row, YEAR_LEVELS),
+      Array.isArray(row.semesterClaims) && row.semesterClaims.length > 0
+        ? row.semesterClaims.map(normalizeSemesterClaim)
+        : semesterClaimsForRow(row, YEAR_LEVELS),
       row.lastUpdated,
     )
     const { requirementChecklistBySem: _legacyFlat, ...rowRest } = row
@@ -1220,6 +1320,22 @@ export default function ProgramWorkspace() {
     })
   }
 
+  const handleRequirementSubmittedByChange = (yearLevel, semKey, field, value) => {
+    setEditDraft((prev) => {
+      if (!prev) return prev
+      const levels = semesterClaimsForRow(prev, YEAR_LEVELS).map((c) => c.yearLevel)
+      const merged = normalizeRequirementChecklistByYearSem(prev, requirements, levels)
+      const nextChecklist =
+        field === "submittedBy"
+          ? updateRequirementSemSubmittedBy(merged, yearLevel, semKey, value)
+          : updateRequirementSemOtherPersonField(merged, yearLevel, semKey, field, value)
+      return {
+        ...prev,
+        requirementChecklistByYearSem: nextChecklist,
+      }
+    })
+  }
+
   const saveRecordEdit = async (e) => {
     e?.preventDefault?.()
     if (!editDraft) return
@@ -1232,11 +1348,23 @@ export default function ProgramWorkspace() {
       window.alert("Please enter the claimant name for every semester marked as Claimed by Other.")
       return
     }
+    const levels = semesterClaimsForRow(editDraft, YEAR_LEVELS).map((c) => c.yearLevel)
+    const normalizedReqChecklist = normalizeRequirementChecklistByYearSem(editDraft, requirements, levels)
+    const hasMissingReqOtherName = levels.some((yl) =>
+      ["first", "second"].some((semKey) => {
+        const submittedBy = requirementSemSubmittedBy(normalizedReqChecklist, yl, semKey)
+        const otherName = requirementSemOtherPerson(normalizedReqChecklist, yl, semKey).name
+        return submittedBy === "Other" && !otherName
+      }),
+    )
+    if (hasMissingReqOtherName) {
+      window.alert("Please enter the submitter name for every semester where requirements are marked as submitted by Other.")
+      return
+    }
     if (!editDraft.id) {
       window.alert("This record cannot be saved because it has no database id.")
       return
     }
-    const levels = semesterClaimsForRow(editDraft, YEAR_LEVELS).map((c) => c.yearLevel)
     const payload = {
       ...editDraft,
       semesterClaims: ensureSemesterClaimTimestamps(
@@ -1672,6 +1800,7 @@ export default function ProgramWorkspace() {
                 onChange={handleEditFieldChange}
                 onSemesterChange={handleSemesterClaimChange}
                 onRequirementCheckChange={handleRequirementCheckChange}
+                onRequirementSubmittedByChange={handleRequirementSubmittedByChange}
                 onSubmit={saveRecordEdit}
               />
             ) : null}

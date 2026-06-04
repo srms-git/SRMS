@@ -297,3 +297,148 @@ export function ChartDonutSkeleton({ className }) {
     </div>
   )
 }
+
+export function ClaimHistoryTableRowSkeleton({ className, style }) {
+  return (
+    <tr className={cn("border-t border-slate-200/80", className)} style={style}>
+      <td className="w-[100px]">
+        <Skeleton className="h-4 w-20" />
+      </td>
+      <td className="w-[70px]">
+        <Skeleton className="h-5 w-10 rounded-full" />
+      </td>
+      <td className="w-[80px]">
+        <Skeleton className="h-4 w-10" />
+      </td>
+      <td className="w-[100px]">
+        <Skeleton className="h-4 w-20" />
+      </td>
+      <td className="w-[220px]">
+        <Skeleton className="h-4 w-36 max-w-full" />
+      </td>
+      <td className="w-[240px]">
+        <Skeleton className="h-4 w-44 max-w-full" />
+      </td>
+      <td className="w-[110px]">
+        <Skeleton className="h-4 w-16" />
+      </td>
+      <td className="w-[110px]">
+        <Skeleton className="h-4 w-20" />
+      </td>
+      <td className="w-[120px]">
+        <Skeleton className="h-5 w-16 rounded-full" />
+      </td>
+      <td className="text-center">
+        <Skeleton className="mx-auto h-8 w-8 rounded-md" />
+      </td>
+    </tr>
+  )
+}
+
+export function BatchListTableRowSkeleton({ className, style }) {
+  return (
+    <tr className={cn("border-b border-slate-100", className)} style={style}>
+      <td className="px-4 py-3">
+        <Skeleton className="h-4 w-20" />
+      </td>
+      <td className="px-4 py-3">
+        <Skeleton className="h-4 w-12" />
+      </td>
+      <td className="px-4 py-3">
+        <Skeleton className="h-4 w-24" />
+      </td>
+      <td className="px-4 py-3">
+        <Skeleton className="h-4 w-8" />
+      </td>
+    </tr>
+  )
+}
+
+export function SettingsPageSkeleton() {
+  return (
+    <div className="grid min-h-0 flex-1 items-stretch grid-cols-1 gap-3 lg:grid-cols-[260px_1fr]">
+      <aside className="h-full min-h-full rounded-2xl border border-[#081F5C]/10 bg-white/90 p-4 shadow-sm">
+        <div className="mb-4 flex items-center gap-3">
+          <Skeleton className="h-12 w-12 shrink-0 rounded-full" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-4 w-28 max-w-full" />
+            <Skeleton className="h-3 w-16" />
+          </div>
+        </div>
+        <Skeleton className="mb-3 h-px w-full" />
+        <div className="space-y-3">
+          {Array.from({ length: 3 }, (_, section) => (
+            <div key={section} className="space-y-2">
+              <Skeleton className="h-9 w-full rounded-md" />
+              <div className="space-y-2 pl-6">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-28" />
+                {section < 2 ? <Skeleton className="h-4 w-24" /> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      </aside>
+      <div className="h-full min-h-full rounded-2xl border border-[#081F5C]/10 bg-white/90 p-4 shadow-sm">
+        <div className="space-y-2">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-64 max-w-full" />
+        </div>
+        <div className="mt-6 space-y-4">
+          <Skeleton className="h-10 w-full rounded-md" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
+          <Skeleton className="h-9 w-28 rounded-md" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function RecentBatchItemSkeleton({ className, style }) {
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-xl border border-slate-200/80 bg-white/80 p-4 shadow-sm dark:border-white/10 dark:bg-white/5",
+        className,
+      )}
+      style={style}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-5 w-10 rounded-full" />
+              <Skeleton className="h-5 w-14 rounded-full" />
+            </div>
+            <Skeleton className="h-3 w-28" />
+          </div>
+        </div>
+        <Skeleton className="h-3 w-16" />
+      </div>
+    </div>
+  )
+}
+
+export function QuickActionSkeleton({ className, style }) {
+  return (
+    <div
+      className={cn(
+        "flex w-full items-center gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3 dark:border-white/10 dark:bg-white/5",
+        className,
+      )}
+      style={style}
+    >
+      <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+      <div className="min-w-0 flex-1 space-y-2">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-3 w-40 max-w-full" />
+      </div>
+      <Skeleton className="h-4 w-4 shrink-0 rounded" />
+    </div>
+  )
+}

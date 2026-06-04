@@ -39,16 +39,28 @@ import { Separator } from "@/components/ui/separator"
 import { fetchClaimHistory } from "@/lib/claimHistoryApi"
 import { cn } from "@/lib/utils"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
+import {
+  ClaimHistoryTableRowSkeleton,
+  SKELETON_ROW_COUNT,
+  SummaryStatCardSkeleton,
+  revealItemClass,
+  revealItemStyle,
+  useContentReveal,
+} from "@/lib/osgfaContentReveal"
 
 const PAGE_SIZE = 100
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 
-function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon }) {
+function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, className, style }) {
   return (
     <div
-      className={`group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`}
+      className={cn(
+        `group relative min-h-[124px] overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm ring-1 ring-slate-900/3 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md hover:shadow-slate-900/8 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6 ${accentBar}`,
+        className,
+      )}
+      style={style}
     >
       <div
         className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full blur-2xl opacity-40 transition-opacity duration-300 group-hover:opacity-60 ${glow}`}
@@ -306,6 +318,8 @@ export default function CashierClaimHistory() {
     }
   }, [])
 
+  const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
+
   const uniqueBatches = useMemo(
     () => [...new Set(claimEntries.map((e) => e.batchNo).filter(Boolean))].sort(),
     [claimEntries],
@@ -385,39 +399,66 @@ export default function CashierClaimHistory() {
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
-        <SummaryStatCard
-          label="Total Claims"
-          value={isLoading ? "…" : formatStat(summary.total, "Total Claims")}
-          accentBar="border-l-[3px] border-l-[#081F5C]"
-          glow="bg-[#081F5C]/25"
-          iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
-          Icon={History}
-        />
-        <SummaryStatCard
-          label="TES Claims"
-          value={isLoading ? "…" : formatStat(summary.tes, "TES Claims")}
-          accentBar="border-l-[3px] border-l-emerald-500"
-          glow="bg-emerald-400/30"
-          iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-          Icon={CircleCheck}
-        />
-        <SummaryStatCard
-          label="TDP Claims"
-          value={isLoading ? "…" : formatStat(summary.tdp, "TDP Claims")}
-          accentBar="border-l-[3px] border-l-violet-500"
-          glow="bg-violet-400/30"
-          iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
-          Icon={GraduationCap}
-        />
-        <SummaryStatCard
-          label="Grantees"
-          value={isLoading ? "…" : formatStat(summary.grantees, "Grantees")}
-          accentBar="border-l-[3px] border-l-amber-500"
-          glow="bg-amber-400/30"
-          iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
-          Icon={TableProperties}
-        />
+      <div className="relative min-h-[124px]">
+        {(isLoading || skeletonLeaving) && (
+          <div
+            className={cn(
+              "grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 transition-opacity duration-300 ease-out motion-reduce:transition-none",
+              !isLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+            )}
+            aria-busy={isLoading}
+            aria-hidden={!isLoading}
+          >
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-[#081F5C]" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-emerald-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-violet-500" />
+            <SummaryStatCardSkeleton accentBar="border-l-[3px] border-l-amber-500" />
+          </div>
+        )}
+        {!isLoading && (
+          <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4">
+            <SummaryStatCard
+              label="Total Claims"
+              value={formatStat(summary.total, "Total Claims")}
+              accentBar="border-l-[3px] border-l-[#081F5C]"
+              glow="bg-[#081F5C]/25"
+              iconBg="bg-linear-to-br from-[#04133d]/90 via-[#081F5C] to-[#1447a6] text-white"
+              Icon={History}
+              className={revealItemClass(contentRevealed, 0, 60)}
+              style={revealItemStyle(contentRevealed, 0, 60)}
+            />
+            <SummaryStatCard
+              label="TES Claims"
+              value={formatStat(summary.tes, "TES Claims")}
+              accentBar="border-l-[3px] border-l-emerald-500"
+              glow="bg-emerald-400/30"
+              iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
+              Icon={CircleCheck}
+              className={revealItemClass(contentRevealed, 1, 60)}
+              style={revealItemStyle(contentRevealed, 1, 60)}
+            />
+            <SummaryStatCard
+              label="TDP Claims"
+              value={formatStat(summary.tdp, "TDP Claims")}
+              accentBar="border-l-[3px] border-l-violet-500"
+              glow="bg-violet-400/30"
+              iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"
+              Icon={GraduationCap}
+              className={revealItemClass(contentRevealed, 2, 60)}
+              style={revealItemStyle(contentRevealed, 2, 60)}
+            />
+            <SummaryStatCard
+              label="Grantees"
+              value={formatStat(summary.grantees, "Grantees")}
+              accentBar="border-l-[3px] border-l-amber-500"
+              glow="bg-amber-400/30"
+              iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
+              Icon={TableProperties}
+              className={revealItemClass(contentRevealed, 3, 60)}
+              style={revealItemStyle(contentRevealed, 3, 60)}
+            />
+          </div>
+        )}
       </div>
 
       <div className="mb-4 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
@@ -560,13 +601,13 @@ export default function CashierClaimHistory() {
               </tr>
             </thead>
             <tbody className="[&>tr:nth-child(even)]:bg-slate-50">
-              {isLoading ? (
-                <tr>
-                  <td colSpan={10} className="py-8 text-center text-sm text-slate-500">
-                    Loading claim history…
-                  </td>
-                </tr>
-              ) : null}
+              {(isLoading || skeletonLeaving) &&
+                Array.from({ length: SKELETON_ROW_COUNT }, (_, index) => (
+                  <ClaimHistoryTableRowSkeleton
+                    key={`skeleton-${index}`}
+                    className={!isLoading ? "opacity-0" : undefined}
+                  />
+                ))}
               {!isLoading && !fetchError
                 ? pagedEntries.map((entry) => (
                 <tr

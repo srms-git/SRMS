@@ -1,6 +1,8 @@
 import { CircleCheck, CircleDashed } from "lucide-react"
 
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
+import { Input } from "@/components/ui/input"
+import { sanitizeContactNumber } from "@/lib/contactNumber"
 import { formatSemesterClaimedAt } from "@/lib/granteeSemesterClaims"
 import { cn } from "@/lib/utils"
 
@@ -42,7 +44,66 @@ export function ClaimSemesterBadge({ value }) {
   )
 }
 
-export function SemesterClaimInfo({ claimStatus, claimerType, otherName, claimedAt }) {
+export function OtherPersonDetails({ name, relation, contact, className }) {
+  if (!name && !relation && !contact) return null
+
+  return (
+    <div className={cn("space-y-0.5", className)}>
+      {name ? <p className="text-[11px] text-muted-foreground">Name: {name}</p> : null}
+      {relation ? <p className="text-[11px] text-muted-foreground">Relation: {relation}</p> : null}
+      {contact ? <p className="text-[11px] text-muted-foreground">Contact: {contact}</p> : null}
+    </div>
+  )
+}
+
+export function OtherPersonFields({
+  name,
+  relation,
+  contact,
+  onNameChange,
+  onRelationChange,
+  onContactChange,
+  namePlaceholder = "Name of person",
+  relationPlaceholder = "Relation to grantee",
+  contactPlaceholder = "Contact number",
+  required = false,
+  className,
+}) {
+  return (
+    <div className={cn("space-y-1", className)}>
+      <Input
+        value={name ?? ""}
+        onChange={onNameChange}
+        placeholder={namePlaceholder}
+        className="h-8 min-w-[160px] text-xs"
+        required={required}
+      />
+      <Input
+        value={relation ?? ""}
+        onChange={onRelationChange}
+        placeholder={relationPlaceholder}
+        className="h-8 min-w-[160px] text-xs"
+      />
+      <Input
+        type="tel"
+        inputMode="numeric"
+        autoComplete="tel"
+        pattern="[0-9]*"
+        value={contact ?? ""}
+        onChange={(e) =>
+          onContactChange({
+            ...e,
+            target: { ...e.target, value: sanitizeContactNumber(e.target.value) },
+          })
+        }
+        placeholder={contactPlaceholder}
+        className="h-8 min-w-[160px] text-xs"
+      />
+    </div>
+  )
+}
+
+export function SemesterClaimInfo({ claimStatus, claimerType, otherName, otherRelation, otherContact, claimedAt }) {
   if (claimStatus !== "Claimed") {
     return <p className="text-[11px] text-muted-foreground">No claim yet</p>
   }
@@ -59,8 +120,58 @@ export function SemesterClaimInfo({ claimStatus, claimerType, otherName, claimed
       <p className="text-[11px] font-medium text-slate-700 dark:text-slate-200">
         Claimed by: {claimerType || "Grantee"}
       </p>
-      {claimerType === "Other" && otherName ? (
-        <p className="text-[11px] text-muted-foreground">Name: {otherName}</p>
+      {claimerType === "Other" ? (
+        <OtherPersonDetails name={otherName} relation={otherRelation} contact={otherContact} />
+      ) : null}
+    </div>
+  )
+}
+
+export function RequirementSubmittedByInfo({ submittedBy, otherName, otherRelation, otherContact }) {
+  const by = submittedBy || "Grantee"
+
+  return (
+    <div className="space-y-0.5 border-t border-slate-200/80 pt-2 dark:border-white/10">
+      <p className="text-[11px] font-medium text-slate-700 dark:text-slate-200">Submitted by: {by}</p>
+      {by === "Other" ? (
+        <OtherPersonDetails name={otherName} relation={otherRelation} contact={otherContact} />
+      ) : null}
+    </div>
+  )
+}
+
+export function RequirementSubmittedByFields({
+  submittedBy,
+  otherName,
+  otherRelation,
+  otherContact,
+  onSubmittedByChange,
+  onOtherNameChange,
+  onOtherRelationChange,
+  onOtherContactChange,
+  selectId,
+}) {
+  return (
+    <div className="space-y-1 border-t border-slate-200/80 pt-2 dark:border-white/10">
+      <label htmlFor={selectId} className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+        Submitted by
+      </label>
+      <SemesterClaimClaimerSelect
+        id={selectId}
+        value={submittedBy || "Grantee"}
+        onChange={onSubmittedByChange}
+      />
+      {submittedBy === "Other" ? (
+        <OtherPersonFields
+          name={otherName}
+          relation={otherRelation}
+          contact={otherContact}
+          onNameChange={onOtherNameChange}
+          onRelationChange={onOtherRelationChange}
+          onContactChange={onOtherContactChange}
+          namePlaceholder="Name of person"
+          required
+        />
       ) : null}
     </div>
   )
@@ -77,7 +188,7 @@ export function SemesterClaimedAtLabel({ claimedAt }) {
   )
 }
 
-export function SemesterClaimCell({ semStatus, claimerType, otherName, claimedAt }) {
+export function SemesterClaimCell({ semStatus, claimerType, otherName, otherRelation, otherContact, claimedAt }) {
   return (
     <div className="space-y-1.5">
       <ClaimSemesterBadge value={semStatus} />
@@ -85,6 +196,8 @@ export function SemesterClaimCell({ semStatus, claimerType, otherName, claimedAt
         claimStatus={semStatus}
         claimerType={claimerType}
         otherName={otherName}
+        otherRelation={otherRelation}
+        otherContact={otherContact}
         claimedAt={semStatus === "Claimed" ? claimedAt : null}
       />
     </div>

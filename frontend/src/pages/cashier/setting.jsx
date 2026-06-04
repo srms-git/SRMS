@@ -19,6 +19,8 @@ import {
   writeStoredSettings,
 } from "@/lib/cashierSettings"
 import authService from "@/services/authService"
+import { SettingsPageSkeleton, useContentReveal } from "@/lib/osgfaContentReveal"
+import { cn } from "@/lib/utils"
 
 const SECTIONS = {
   PROFILE: "profile",
@@ -150,6 +152,8 @@ export default function CashierSetting() {
       window.removeEventListener("storage", syncSettings)
     }
   }, [])
+
+  const { contentRevealed, skeletonLeaving } = useContentReveal(profileLoading)
 
   const displayName = useMemo(() => getUserDisplayName(user), [user])
   const initials = useMemo(() => getUserInitial(user), [user])
@@ -327,7 +331,29 @@ export default function CashierSetting() {
           </div>
         </div>
 
-        <div className="grid min-h-0 flex-1 items-stretch grid-cols-1 gap-3 lg:grid-cols-[260px_1fr]">
+        <div className="relative min-h-0 flex-1">
+          {(profileLoading || skeletonLeaving) && (
+            <div
+              className={cn(
+                "transition-opacity duration-300 ease-out motion-reduce:transition-none",
+                !profileLoading && "pointer-events-none absolute inset-0 z-0 opacity-0",
+              )}
+              aria-busy={profileLoading}
+              aria-hidden={!profileLoading}
+              aria-label="Loading settings"
+            >
+              <SettingsPageSkeleton />
+            </div>
+          )}
+
+          {!profileLoading && (
+        <div
+          className={cn(
+            "relative z-10 grid min-h-0 flex-1 items-stretch grid-cols-1 gap-3 lg:grid-cols-[260px_1fr]",
+            "transition-[opacity,transform] duration-500 ease-out motion-reduce:transition-none",
+            contentRevealed ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
+          )}
+        >
           <aside className="h-full min-h-full rounded-2xl border border-[#081F5C]/10 bg-white/90 p-4 shadow-sm">
             <div className="mb-4 flex items-center gap-3">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-linear-to-br from-[#04133d] to-[#0b2b73] text-lg font-semibold text-white">
@@ -908,6 +934,8 @@ export default function CashierSetting() {
 
             {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="cashier" />}
           </div>
+        </div>
+          )}
         </div>
       </div>
     </section>
