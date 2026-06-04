@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getApiClientBaseUrl } from "@/lib/apiConfig";
+import { getApiClientBaseUrl, getNetworkErrorMessage } from "@/lib/apiConfig";
 
 const normalizedBaseUrl = getApiClientBaseUrl();
 
@@ -17,5 +17,16 @@ apiClient.interceptors.request.use((config) => {
   }
   return config;
 });
+
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const networkMessage = getNetworkErrorMessage(error);
+    if (networkMessage) {
+      error.userMessage = networkMessage;
+    }
+    return Promise.reject(error);
+  },
+);
 
 export default apiClient;

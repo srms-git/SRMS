@@ -176,7 +176,7 @@ function isNonCashierAdminTrace(item) {
 /** Operational alerts for cashier workflows (batches, claims, unclaimed, payouts). */
 export function isCashierRelevantNotification(item) {
   const type = String(item?.type ?? "").toLowerCase()
-  if (type === "opportunity" || isNonCashierAdminTrace(item)) {
+  if (type === "opportunity" || type === "announcement" || isNonCashierAdminTrace(item)) {
     return false
   }
   return (

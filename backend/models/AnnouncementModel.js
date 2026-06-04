@@ -23,24 +23,44 @@ const AnnouncementSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        required: [true, 'Announcement description is required.'],
-        trim: true
+        trim: true,
+        default: ''
     },
     type: {
         type: String,
         required: true,
-        enum: ['new_batch', 'requirement_schedule', 'payout_schedule', 'unclaimed', 'opportunity', 'advisory'],
+        enum: ['new_batch', 'requirement_schedule', 'payout_schedule', 'unclaimed', 'opportunity', 'advisory', 'other'],
         default: 'new_batch'
     },
-    date: {
+    customType: {
+        type: String,
+        trim: true,
+        maxlength: 80,
+        default: ''
+    },
+    startDate: {
         type: String,
         required: true,
         default: () => new Date().toISOString().slice(0, 10)
+    },
+    endDate: {
+        type: String,
+        required: true,
+        default: () => new Date().toISOString().slice(0, 10)
+    },
+    /** @deprecated Use startDate — kept for records created before date duration */
+    date: {
+        type: String,
+        required: false
     },
     active: {
         type: Boolean,
         required: true,
         default: true
+    },
+    inactiveAt: {
+        type: Date,
+        default: null
     },
     images: {
         type: [imageSubSchema],
@@ -55,6 +75,8 @@ const AnnouncementSchema = new mongoose.Schema({
 });
 
 AnnouncementSchema.index({ type: 1 });
-AnnouncementSchema.index({ date: -1 });
+AnnouncementSchema.index({ startDate: -1 });
+AnnouncementSchema.index({ endDate: 1, active: 1 });
+AnnouncementSchema.index({ active: 1, inactiveAt: 1 });
 
 module.exports = mongoose.model('Announcement', AnnouncementSchema);

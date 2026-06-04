@@ -7,6 +7,7 @@ const upload = require('../middleware/uploadMiddleware');
 
 // Fetch all announcements archive or post a new announcement (up to 8 image attachments)
 router.get('/', announcementController.getAllAnnouncements);
+router.get('/:id/images/:imageIndex', announcementController.getAnnouncementImage);
 router.post('/', upload.array('images', 8), announcementController.createAnnouncement);
 
 // Modify, toggle visibility states, or hard-delete announcement documents

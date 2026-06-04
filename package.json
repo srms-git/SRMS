@@ -18,6 +18,7 @@
   "scripts": {
     "build": "pnpm --filter frontend build",
     "dev": "pnpm --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
     "start:backend": "pnpm --filter backend start"
   },
   "dependencies": {

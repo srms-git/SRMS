@@ -9,10 +9,7 @@ export function getApiBaseUrl() {
   if (fromEnv) {
     return fromEnv.replace(/\/$/, "");
   }
-  // In dev, call the Node API directly (avoids Vite proxy + stale port-5000 processes).
-  if (import.meta.env.DEV) {
-    return "http://127.0.0.1:5000";
-  }
+  // Same-origin `/api` — Vite proxies to http://127.0.0.1:5000 in dev (see vite.config.js).
   return "/api";
 }
 
@@ -32,7 +29,24 @@ export function isApiConfigured() {
 
 export function getApiSetupHint() {
   if (import.meta.env.DEV) {
-    return 'Start the API with "pnpm dev" from the project root (or frontend folder).';
+    return 'Start the API: from the frontend folder run "pnpm dev" (starts Vite + backend), or in a second terminal run "pnpm dev:api".';
   }
   return "Check that the backend is deployed and reachable at /api, or set VITE_API_URL and rebuild.";
+}
+
+/** User-facing message when the browser cannot reach the API (backend stopped or wrong port). */
+export function getNetworkErrorMessage(error) {
+  if (!error) return null
+  const code = String(error?.code ?? "")
+  const message = String(error?.message ?? "")
+  const isNetworkFailure =
+    code === "ERR_NETWORK" ||
+    message.includes("Network Error") ||
+    message.toLowerCase().includes("connection refused") ||
+    !error?.response
+
+  if (isNetworkFailure && !error?.response) {
+    return `Cannot connect to the API server. ${getApiSetupHint()}`
+  }
+  return null
 }

@@ -11,6 +11,13 @@ import navHeroBackground from "@/assets/navbackground.png"
 import orgLogo from "@/assets/orgLogo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
+import {
+  formatAnnouncementDurationLabel,
+  isAnnouncementVisibleOnLanding,
+  resolveAnnouncementDates,
+} from "@/lib/announcementDates"
+import { getAnnouncementTypeLabel } from "@/lib/announcementTypes"
+import { resolveAnnouncementImageUrls } from "@/lib/announcementImages"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
   getBatchLandingKey,
@@ -23,8 +30,10 @@ import {
   LANDING_PROCESS_SECTION,
   useProcessWorkflowSteps,
 } from "@/lib/processWorkflowSettings"
+import { AnnouncementImageGallery } from "@/components/AnnouncementImageGallery"
 import { LandingPublicHeader } from "@/components/LandingPublicHeader"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 /**
  * Palette (3 pillars):
@@ -1170,15 +1179,6 @@ function ProcessWorkflowTimeline({ steps }) {
 }
 
 const FACEBOOK_PAGE_URL = "https://www.facebook.com/marsuscholarship"
-const ANNOUNCEMENT_TAGS = {
-  new_batch: "New batch",
-  requirement_schedule: "Requirement schedule",
-  payout_schedule: "Payout schedule",
-  unclaimed: "Unclaimed",
-  opportunity: "Opportunity",
-  advisory: "Advisory",
-}
-
 function FacebookPageEmbed({ pageUrl }) {
   const containerRef = useRef(null)
   const [frameSize, setFrameSize] = useState({ width: 0, height: 0 })
@@ -1259,6 +1259,216 @@ function FacebookPageEmbed({ pageUrl }) {
   )
 }
 
+function BillboardAnnouncementSlide({ item, compact = false, variant = "text-only", children }) {
+  const [expanded, setExpanded] = useState(false)
+  const [isTruncated, setIsTruncated] = useState(false)
+  const [lockedImageHeight, setLockedImageHeight] = useState(null)
+  const messageRef = useRef(null)
+  const imageWrapRef = useRef(null)
+
+  const message = String(item.message ?? "").trim()
+  const hasMessage = Boolean(message)
+  const isTextOnly = variant === "text-only"
+  const isSingleImage = variant === "single-image"
+  const hasImages = Boolean(children)
+
+  const messageLineClamp = isTextOnly ? "line-clamp-4 sm:line-clamp-5" : "line-clamp-2"
+  const messageTextClass = isTextOnly
+    ? "text-sm sm:text-base"
+    : compact
+      ? "text-[11px]"
+      : "text-xs sm:text-sm"
+  const titleClass = isTextOnly
+    ? compact
+      ? "text-lg sm:text-xl"
+      : "text-xl sm:text-2xl"
+    : compact
+      ? "text-sm sm:text-base"
+      : "text-base sm:text-lg"
+  const headerPadClass = isSingleImage
+    ? "space-y-1 px-3 pt-3 pb-2 sm:px-4 sm:pt-3.5"
+    : isTextOnly
+      ? ""
+      : "space-y-1 px-1"
+  const actionClassName = cn("font-semibold underline-offset-2 transition hover:underline", messageTextClass)
+
+  useLayoutEffect(() => {
+    setExpanded(false)
+    setLockedImageHeight(null)
+  }, [item.id])
+
+  useLayoutEffect(() => {
+    if (expanded || !hasImages) return undefined
+
+    const el = imageWrapRef.current
+    if (!el) return undefined
+
+    const measureImageHeight = () => {
+      const height = Math.round(el.getBoundingClientRect().height)
+      if (height > 0) setLockedImageHeight(height)
+    }
+
+    measureImageHeight()
+    const observer = new ResizeObserver(measureImageHeight)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [item.id, expanded, hasImages, variant])
+
+  useLayoutEffect(() => {
+    if (!hasMessage) {
+      setIsTruncated(false)
+      return undefined
+    }
+
+    const el = messageRef.current
+    if (!el) return undefined
+
+    const checkTruncation = () => {
+      if (expanded) return
+      setIsTruncated(el.scrollHeight > el.clientHeight + 2)
+    }
+
+    checkTruncation()
+    const observer = new ResizeObserver(checkTruncation)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [item.message, expanded, hasMessage, messageLineClamp])
+
+  const imageWrapStyle =
+    expanded && lockedImageHeight
+      ? { height: lockedImageHeight, flexShrink: 0 }
+      : undefined
+
+  return (
+    <div
+      key={item.id}
+      className={cn(
+        "relative flex h-full min-h-0 w-full flex-col text-center",
+        expanded
+          ? "overflow-y-auto overscroll-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5"
+          : "overflow-hidden",
+        isTextOnly && !expanded && "justify-center",
+      )}
+    >
+      <div
+        className={cn(
+          "w-full",
+          !expanded && hasImages && "flex h-full min-h-0 flex-col",
+          !expanded && isTextOnly && "px-1",
+          expanded && isTextOnly && "px-3 py-3 sm:px-4 sm:py-4",
+        )}
+      >
+        <div
+          className={cn(
+            headerPadClass,
+            "shrink-0",
+            !expanded && isTextOnly && "mb-2",
+          )}
+        >
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            <span
+              className="inline-flex rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white sm:text-[10px]"
+              style={{ backgroundImage: gradientNavyButton }}
+            >
+              {item.tag}
+            </span>
+            <time
+              className={cn(
+                "font-medium",
+                isTextOnly ? "text-xs" : "text-[11px] sm:text-xs",
+              )}
+              style={{ color: textBodyOnLight }}
+              dateTime={item.dateIso}
+            >
+              {item.dateLabel}
+            </time>
+          </div>
+          <h3
+            className={cn(
+              "font-bold",
+              !expanded && "line-clamp-2",
+              isTextOnly ? "leading-snug" : "leading-tight",
+              titleClass,
+            )}
+            style={{ color: navy }}
+          >
+            {item.title}
+          </h3>
+          {hasMessage ? (
+            <div className={cn("relative w-full", !isTextOnly && "mt-0")}>
+              <p
+                ref={messageRef}
+                className={cn(
+                  "leading-snug",
+                  isTruncated ? "text-justify" : "text-center",
+                  !expanded && messageLineClamp,
+                  messageTextClass,
+                  isTextOnly && !expanded && "mt-2",
+                )}
+                style={{ color: textBodyOnLight }}
+              >
+                {message}
+                {expanded && isTruncated ? (
+                  <>
+                    {" "}
+                    <button
+                      type="button"
+                      className={cn("inline align-baseline", actionClassName)}
+                      style={{ color: navyBright }}
+                      onClick={() => setExpanded(false)}
+                    >
+                      See less
+                    </button>
+                  </>
+                ) : null}
+              </p>
+              {isTruncated && !expanded ? (
+                <span className="absolute right-0 bottom-0 left-0 flex justify-end">
+                  <span className="inline-flex max-w-full items-baseline bg-gradient-to-l from-white from-55% via-white/95 to-transparent pl-6 sm:pl-8">
+                    <span className={messageTextClass} style={{ color: textBodyOnLight }} aria-hidden>
+                      …{" "}
+                    </span>
+                    <button
+                      type="button"
+                      className={actionClassName}
+                      style={{ color: navyBright }}
+                      onClick={() => {
+                        const el = imageWrapRef.current
+                        if (el) {
+                          const height = Math.round(el.getBoundingClientRect().height)
+                          if (height > 0) setLockedImageHeight(height)
+                        }
+                        setExpanded(true)
+                      }}
+                    >
+                      See more ...
+                    </button>
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        {hasImages ? (
+          <div
+            ref={imageWrapRef}
+            className={cn(
+              "relative w-full",
+              !expanded && "min-h-0 flex-1 shrink-0",
+              expanded && "shrink-0",
+              variant === "multi-image" && "flex items-stretch justify-center px-1 pb-1",
+            )}
+            style={imageWrapStyle}
+          >
+            {children}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function BillboardCard({
   title,
   subtitle,
@@ -1285,6 +1495,7 @@ function BillboardCard({
   if (!hasCarousel && !children && !emptyMessage) return null
 
   const current = hasCarousel ? items[activeIndex] : null
+  const isSingleImageSlide = (current?.imageUrls?.length ?? 0) === 1
 
   const goTo = (index) => {
     if (!hasCarousel) return
@@ -1292,7 +1503,18 @@ function BillboardCard({
   }
 
   const isEmbed = Boolean(children)
-  const contentPadding = isEmbed ? "p-0" : compact ? "px-4 py-10 sm:px-5 sm:py-12" : "px-5 py-10 sm:px-8 sm:py-12"
+  const hasSlideImages = items.some((item) => item.imageUrls?.length > 0)
+  const contentPadding = isEmbed
+    ? "p-0"
+    : isSingleImageSlide
+      ? "p-0"
+      : hasSlideImages
+        ? compact
+          ? "px-3 py-3 sm:px-4 sm:py-3"
+          : "px-4 py-3 sm:px-5 sm:py-3"
+        : compact
+          ? "px-4 py-10 sm:px-5 sm:py-12"
+          : "px-5 py-10 sm:px-8 sm:py-12"
 
   return (
     <div
@@ -1332,14 +1554,14 @@ function BillboardCard({
             className={`relative flex flex-col ${
               isEmbed
                 ? "min-h-[280px] flex-1 overflow-hidden sm:min-h-[320px] lg:min-h-[360px]"
-                : "min-h-[280px] justify-center sm:min-h-[320px] lg:min-h-[360px]"
+                : "h-[280px] overflow-hidden sm:h-[320px] lg:h-[360px]"
             } ${contentPadding}`}
             style={{
               backgroundImage: isEmbed ? undefined : `linear-gradient(180deg, #ffffff 0%, ${bvIce} 100%)`,
               backgroundColor: isEmbed ? "#ffffff" : undefined,
             }}
           >
-            {!isEmbed ? (
+            {!isEmbed && !isSingleImageSlide ? (
               <div
                 className="pointer-events-none absolute inset-0 opacity-[0.07]"
                 style={{
@@ -1353,7 +1575,7 @@ function BillboardCard({
             {children ? (
               <div className="relative flex h-full min-h-0 w-full flex-1 flex-col">{children}</div>
             ) : !hasCarousel ? (
-              <div className="relative w-full text-center">
+              <div className="relative flex h-full min-h-0 w-full flex-col justify-center text-center">
                 <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
                   <span
                     className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
@@ -1378,32 +1600,29 @@ function BillboardCard({
                   Please check back later for official scholarship updates and notices.
                 </p>
               </div>
+            ) : current.imageUrls?.length > 0 ? (
+              <BillboardAnnouncementSlide
+                item={current}
+                compact={compact}
+                variant={current.imageUrls.length === 1 ? "single-image" : "multi-image"}
+              >
+                <AnnouncementImageGallery
+                  urls={current.imageUrls}
+                  maxVisible={current.imageUrls.length === 1 ? 1 : 3}
+                  compact
+                  layout="strip"
+                  singleLarge={current.imageUrls.length === 1}
+                  borderless={current.imageUrls.length > 1}
+                  className={current.imageUrls.length === 1 ? "h-full w-full" : "w-full"}
+                  stripHeightClass={
+                    current.imageUrls.length === 1
+                      ? undefined
+                      : "h-full min-h-[7.5rem] max-h-[10.5rem] sm:max-h-[11.5rem]"
+                  }
+                />
+              </BillboardAnnouncementSlide>
             ) : (
-              <div key={current.id} className="relative w-full text-center">
-                <div className="mb-3 flex flex-wrap items-center justify-center gap-2">
-                  <span
-                    className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
-                    style={{ backgroundImage: gradientNavyButton }}
-                  >
-                    {current.tag}
-                  </span>
-                  <time className="text-xs font-medium" style={{ color: textBodyOnLight }} dateTime={current.dateIso}>
-                    {current.dateLabel}
-                  </time>
-                </div>
-                <h3
-                  className={`font-bold leading-snug ${compact ? "text-lg sm:text-xl" : "text-xl sm:text-2xl"}`}
-                  style={{ color: navy }}
-                >
-                  {current.title}
-                </h3>
-                <p
-                  className={`mt-3 leading-relaxed ${compact ? "text-xs sm:text-sm" : "text-sm sm:text-base"}`}
-                  style={{ color: textBodyOnLight }}
-                >
-                  {current.message}
-                </p>
-              </div>
+              <BillboardAnnouncementSlide item={current} compact={compact} variant="text-only" />
             )}
           </div>
 
@@ -1488,21 +1707,25 @@ export default function LandingPage() {
         const response = await apiClient.get("/announcements")
         const fetched = Array.isArray(response.data) ? response.data : []
         const activeAnnouncements = fetched
-          .filter((item) => item && item.active !== false)
-          .sort((a, b) => new Date(b.date || b.createdAt || 0) - new Date(a.date || a.createdAt || 0))
+          .filter((item) => item && isAnnouncementVisibleOnLanding(item))
+          .sort((a, b) => {
+            const aStart = resolveAnnouncementDates(a).startDate
+            const bStart = resolveAnnouncementDates(b).startDate
+            return new Date(bStart || b.createdAt || 0) - new Date(aStart || a.createdAt || 0)
+          })
           .map((item, index) => {
-            const rawDate = item.date || item.createdAt
-            const dateObj = rawDate ? new Date(rawDate) : null
-            const hasValidDate = dateObj instanceof Date && !Number.isNaN(dateObj.getTime())
+            const { startDate, endDate } = resolveAnnouncementDates(item)
+            const id = item.id || item._id || `announcement-${index}`
+            const imageUrls = resolveAnnouncementImageUrls({ ...item, id })
             return {
-              id: item.id || item._id || `announcement-${index}`,
-              tag: ANNOUNCEMENT_TAGS[item.type] || "General",
-              dateIso: hasValidDate ? dateObj.toISOString().slice(0, 10) : "",
-              dateLabel: hasValidDate
-                ? dateObj.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
-                : "No date",
+              id,
+              tag: getAnnouncementTypeLabel(item),
+              dateIso: startDate || "",
+              dateLabel: formatAnnouncementDurationLabel(startDate, endDate),
               title: item.title || "Untitled announcement",
               message: item.description || "",
+              imageUrls,
+              imageUrl: imageUrls[0] ?? null,
             }
           })
         setAnnouncements(activeAnnouncements)
