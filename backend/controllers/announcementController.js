@@ -1,36 +1,51 @@
 const Announcement = require('../models/AnnouncementModel');
 const { createInternalNotification } = require('./notificationController');
 const { logActivity } = require('../services/auditLogger');
+const {
+    todayDateString,
+    coerceDateString,
+    resolveAnnouncementDates,
+    validateDateRange,
+    formatAnnouncementResponse,
+} = require('../utils/announcementDates');
+const { resolveAnnouncementTypePayload } = require('../utils/announcementTypes');
+const { runAnnouncementMaintenance, applyActiveState } = require('../utils/announcementMaintenance');
 const sharp = require('sharp');
 
-/**
- * Helper to map announcement type tokens to structural notification group keys
- * to guarantee that the frontend rendering engine picks up the correct colors/icons.
- */
-const mapAnnouncementToNotifType = (announcementType) => {
-    switch (announcementType) {
-        case 'new_batch':
-            return 'batch';
-        case 'requirement_schedule':
-        case 'unclaimed':
-            return 'reminder';
-        case 'payout_schedule':
-            return 'claim';
-        case 'opportunity':
-        default:
-            return 'system';
-    }
-};
+function parseAnnouncementDuration(body) {
+    const today = todayDateString();
+    const legacyDate = body?.date;
+    const startDate = coerceDateString(body?.startDate || legacyDate, today);
+    const endDateRaw = body?.endDate ?? (legacyDate && !body?.startDate ? legacyDate : '');
+    const endDate = endDateRaw ? coerceDateString(endDateRaw, '') : '';
+    validateDateRange(startDate, endDate, today);
+    return { startDate, endDate, date: startDate };
+}
 
 /**
- * Helper function to downscale and highly compress image buffers 
+ * Helper function to downscale and highly compress image buffers
  * to ensure our MongoDB storage footprint remains small.
  */
+function parseBoolean(value, defaultValue) {
+    if (value === undefined || value === null || value === '') return defaultValue;
+    if (value === true || value === 'true') return true;
+    if (value === false || value === 'false') return false;
+    return Boolean(value);
+}
+
+function stripImageBinary(doc) {
+    const obj = doc?.toObject ? doc.toObject() : { ...doc };
+    if (Array.isArray(obj.images)) {
+        obj.images = obj.images.map(({ data, ...meta }) => meta);
+    }
+    return obj;
+}
+
 async function compressImage(fileBuffer) {
     try {
         return await sharp(fileBuffer)
-            .resize({ width: 800, withoutEnlargement: true }) // Downscale wide resolution profiles
-            .jpeg({ quality: 65, progressive: true })       // High compression ratio to yield minimal byte sizes
+            .resize({ width: 800, withoutEnlargement: true })
+            .jpeg({ quality: 65, progressive: true })
             .toBuffer();
     } catch (error) {
         console.error('Image compression sub-process failed:', error);
@@ -41,11 +56,11 @@ async function compressImage(fileBuffer) {
 // 1. Fetch all announcements
 exports.getAllAnnouncements = async (req, res) => {
     try {
-        // Exclude the heavy raw binary data array from list view queries to maximize network response speed
+        await runAnnouncementMaintenance();
         const announcements = await Announcement.find({})
             .select('-images.data')
-            .sort({ date: -1, createdAt: -1 });
-        return res.status(200).json(announcements);
+            .sort({ startDate: -1, date: -1, createdAt: -1 });
+        return res.status(200).json(announcements.map(formatAnnouncementResponse));
     } catch (error) {
         return res.status(500).json({ message: error.message || 'Error pulling announcements archive.' });
     }
@@ -54,38 +69,46 @@ exports.getAllAnnouncements = async (req, res) => {
 // 2. Create a new announcement
 exports.createAnnouncement = async (req, res) => {
     try {
-        const { title, description, type, date, active } = req.body;
+        const { title, description, active } = req.body;
 
-        if (!title || !description) {
-            return res.status(400).json({ message: 'Title and description fields cannot be blank.' });
+        if (!title?.trim()) {
+            return res.status(400).json({ message: 'Title cannot be blank.' });
         }
 
+        let duration;
+        let typeFields;
+        try {
+            duration = parseAnnouncementDuration(req.body);
+            typeFields = resolveAnnouncementTypePayload(req.body);
+        } catch (validationError) {
+            return res.status(validationError.statusCode || 400).json({ message: validationError.message });
+        }
+
+        const isActive = parseBoolean(active, true);
         const announcementData = {
             title: title.trim(),
-            description: description.trim(),
-            type: type || 'new_batch',
-            date: date || new Date().toISOString().slice(0, 10),
-            active: active !== undefined ? active : true,
-            createdBy: req.user?.id || req.userId || null, // Handles either req mutation variant from auth layer
+            description: (description || '').trim(),
+            ...typeFields,
+            ...duration,
+            active: isActive,
+            inactiveAt: isActive ? null : new Date(),
+            createdBy: req.user?.id || req.userId || null,
             images: []
         };
 
-        // If files are provided via Multer array payload (e.g., upload.array('images', 8))
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-            // Strict enforcement of a maximum of 8 images
             if (req.files.length > 8) {
-                return res.status(400).json({ 
-                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.' 
+                return res.status(400).json({
+                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.'
                 });
             }
 
-            // Process and compress image files concurrently
             announcementData.images = await Promise.all(
                 req.files.map(async (file) => {
                     const compressedBuffer = await compressImage(file.buffer);
                     return {
                         data: compressedBuffer,
-                        contentType: 'image/jpeg', // Uniformly force JPEG content type following sharp encoding
+                        contentType: 'image/jpeg',
                         fileName: file.originalname || 'attachment.jpg'
                     };
                 })
@@ -94,15 +117,12 @@ exports.createAnnouncement = async (req, res) => {
 
         const newAnnouncement = await Announcement.create(announcementData);
 
-        // Trigger a real-time Notification Center entry whenever a public announcement drops
-        const notifType = mapAnnouncementToNotifType(newAnnouncement.type);
         await createInternalNotification(
             newAnnouncement.title,
             newAnnouncement.description,
-            notifType
+            'announcement'
         );
 
-        // Capture creation action to the audit logs
         logActivity({
             userId: req.user?.id || req.userId || null,
             action: 'CREATE_ANNOUNCEMENT',
@@ -113,7 +133,7 @@ exports.createAnnouncement = async (req, res) => {
             ipAddress: req.ip || req.headers['x-forwarded-for'] || null
         });
 
-        return res.status(201).json(newAnnouncement);
+        return res.status(201).json(formatAnnouncementResponse(stripImageBinary(newAnnouncement)));
     } catch (error) {
         return res.status(500).json({ message: error.message });
     }
@@ -123,9 +143,8 @@ exports.createAnnouncement = async (req, res) => {
 exports.updateAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
-        const { title, description, type, date, active, clearExistingImages } = req.body;
+        const { title, description, active, clearExistingImages, startDate, endDate, date } = req.body;
 
-        // Fetch the record before updating to capture data modification deltas
         const oldRecord = await Announcement.findById(id);
         if (!oldRecord) {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
@@ -134,16 +153,50 @@ exports.updateAnnouncement = async (req, res) => {
         const updates = {
             title: title?.trim(),
             description: description?.trim(),
-            type,
-            date,
-            active
         };
 
-        // Handle image mutations if new sets are provided via Multi-part request streams
+        if (req.body.type !== undefined || req.body.customType !== undefined) {
+            try {
+                Object.assign(
+                    updates,
+                    resolveAnnouncementTypePayload(
+                        {
+                            type: req.body.type ?? oldRecord.type,
+                            customType: req.body.customType ?? oldRecord.customType,
+                        },
+                        oldRecord.type
+                    )
+                );
+            } catch (validationError) {
+                return res.status(validationError.statusCode || 400).json({ message: validationError.message });
+            }
+        }
+        if (startDate !== undefined || endDate !== undefined || date !== undefined) {
+            try {
+                const duration = parseAnnouncementDuration({
+                    startDate: startDate ?? oldRecord.startDate ?? oldRecord.date,
+                    endDate: endDate ?? oldRecord.endDate ?? oldRecord.date,
+                    date: date ?? oldRecord.date,
+                });
+                Object.assign(updates, duration);
+            } catch (durationError) {
+                return res.status(durationError.statusCode || 400).json({ message: durationError.message });
+            }
+        }
+        if (active !== undefined) {
+            const nextActive = parseBoolean(active, oldRecord.active);
+            updates.active = nextActive;
+            if (nextActive) {
+                updates.inactiveAt = null;
+            } else if (oldRecord.active !== false) {
+                updates.inactiveAt = new Date();
+            }
+        }
+
         if (req.files && Array.isArray(req.files)) {
             if (req.files.length > 8) {
-                return res.status(400).json({ 
-                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.' 
+                return res.status(400).json({
+                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.'
                 });
             }
 
@@ -159,7 +212,6 @@ exports.updateAnnouncement = async (req, res) => {
                     })
                 );
             } else if (clearExistingImages === 'true') {
-                // If no new images are supplied but explicitly marked to drop existing array records
                 updates.images = [];
             }
         }
@@ -167,18 +219,15 @@ exports.updateAnnouncement = async (req, res) => {
         const updatedRecord = await Announcement.findByIdAndUpdate(
             id,
             updates,
-            { new: true, runValidators: true } // Return modified version and ensure structural validation
+            { new: true, runValidators: true }
         );
 
-        // Send out an amendment update notification trace if modified successfully
-        const notifType = mapAnnouncementToNotifType(updatedRecord.type);
         await createInternalNotification(
             `Updated: ${updatedRecord.title}`,
             `The details for this notice have been modified. Review the announcements board for up-to-date adjustments.`,
-            notifType
+            'announcement'
         );
 
-        // Capture data modification delta states to audit logs
         logActivity({
             userId: req.user?.id || req.userId || null,
             action: 'UPDATE_ANNOUNCEMENT',
@@ -189,7 +238,30 @@ exports.updateAnnouncement = async (req, res) => {
             ipAddress: req.ip || req.headers['x-forwarded-for'] || null
         });
 
-        return res.status(200).json(updatedRecord);
+        return res.status(200).json(formatAnnouncementResponse(stripImageBinary(updatedRecord)));
+    } catch (error) {
+        return res.status(500).json({ message: error.message });
+    }
+};
+
+// Serve a single stored image (list/detail responses omit binary payloads)
+exports.getAnnouncementImage = async (req, res) => {
+    try {
+        const { id, imageIndex } = req.params;
+        const index = Number.parseInt(imageIndex, 10);
+        if (!Number.isInteger(index) || index < 0) {
+            return res.status(400).json({ message: 'Invalid image index.' });
+        }
+
+        const record = await Announcement.findById(id).select('images');
+        if (!record?.images?.[index]?.data) {
+            return res.status(404).json({ message: 'Image not found.' });
+        }
+
+        const image = record.images[index];
+        res.set('Content-Type', image.contentType || 'image/jpeg');
+        res.set('Cache-Control', 'public, max-age=86400');
+        return res.send(image.data);
     } catch (error) {
         return res.status(500).json({ message: error.message });
     }
@@ -205,24 +277,19 @@ exports.toggleAnnouncementStatus = async (req, res) => {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
         }
 
-        // Deep-clone or transform Mongoose document snapshot before making alterations
         const oldValuesSnapshot = record.toObject ? record.toObject() : { ...record._doc };
 
-        // Flip the underlying state
-        record.active = !record.active;
+        applyActiveState(record, !record.active);
         await record.save();
 
-        // Dispatches system alert tracking visibility configurations changes
         if (record.active) {
-            const notifType = mapAnnouncementToNotifType(record.type);
             await createInternalNotification(
                 `Notice Reactivated: ${record.title}`,
                 `An update regarding ${record.title.toLowerCase()} is active and visible on your dashboard charts.`,
-                notifType
+                'announcement'
             );
         }
 
-        // Capture state visibility mutation inside audit logs
         logActivity({
             userId: req.user?.id || req.userId || null,
             action: 'TOGGLE_ANNOUNCEMENT_STATUS',
@@ -233,7 +300,7 @@ exports.toggleAnnouncementStatus = async (req, res) => {
             ipAddress: req.ip || req.headers['x-forwarded-for'] || null
         });
 
-        return res.status(200).json(record);
+        return res.status(200).json(formatAnnouncementResponse(record));
     } catch (error) {
         return res.status(500).json({ message: error.message });
     }
@@ -244,7 +311,6 @@ exports.deleteAnnouncement = async (req, res) => {
     try {
         const { id } = req.params;
 
-        // Pull document prior to deletion to preserve field context for systemic history trackers
         const recordToDelete = await Announcement.findById(id);
         if (!recordToDelete) {
             return res.status(404).json({ message: 'Target announcement record could not be found.' });
@@ -252,7 +318,6 @@ exports.deleteAnnouncement = async (req, res) => {
 
         await Announcement.findByIdAndDelete(id);
 
-        // Record full document data snapshot inside the oldValues parameter for destruction records
         logActivity({
             userId: req.user?.id || req.userId || null,
             action: 'DELETE_ANNOUNCEMENT',

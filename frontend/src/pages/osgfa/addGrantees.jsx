@@ -29,6 +29,7 @@ import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landin
 import { downloadGranteePdfAsXlsx, parseGranteeXlsxFromFile } from "@/lib/granteePdfConverterApi"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
+import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import {
   granteeBatchSaveErrorMessage,
   granteeBatchSaveSuccessMessage,
@@ -275,13 +276,18 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
   )
 }
 
-function SectionCardHeader({ eyebrow, title, description, icon: Icon, badge }) {
+function SectionCardHeader({ eyebrow, title, description, icon: Icon, badge, compact = false }) {
   return (
-    <div className="flex items-start gap-3 border-b border-slate-100 pb-4 dark:border-white/10">
-      <div className={osgfaIconWrapClass} aria-hidden>
-        <Icon className="h-5 w-5" />
+    <div
+      className={cn(
+        "flex items-start border-b border-slate-100 dark:border-white/10",
+        compact ? "gap-2 pb-2" : "gap-3 pb-4",
+      )}
+    >
+      <div className={cn(osgfaIconWrapClass, compact && "h-9 w-9")} aria-hidden>
+        <Icon className={cn("h-5 w-5", compact && "h-4 w-4")} />
       </div>
-      <div className="min-w-0 flex-1 space-y-1">
+      <div className={cn("min-w-0 flex-1", compact ? "space-y-0.5" : "space-y-1")}>
         <div className="flex flex-wrap items-center gap-2">
           <p className={osgfaEyebrowClass}>{eyebrow}</p>
           {badge ? badge : null}
@@ -488,7 +494,7 @@ function PdfToExcelConverterPanel({ file, loading, error, onFileChange, onConver
   )
 }
 
-function LatestBatchesAside({ loading, skeletonLeaving, contentRevealed, batches, onBatchClick }) {
+function LatestBatchesAside({ loading, skeletonLeaving, contentRevealed, batches, loadError, onBatchClick }) {
   return (
     <aside className={`${osgfaCardClass} flex h-full min-h-0 flex-col p-4`}>
       <div className={osgfaCardGlowClass} aria-hidden />
@@ -517,12 +523,14 @@ function LatestBatchesAside({ loading, skeletonLeaving, contentRevealed, batches
           <div className="relative z-10 grid min-h-0 flex-1 grid-cols-1 gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
             {batches.length === 0 ? (
               <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-5 text-center text-sm text-slate-600 dark:border-white/10 dark:bg-slate-900/30 dark:text-slate-300">
-                No grantee batches saved yet. Add a batch to see it here.
+                {loadError
+                  ? "Could not load batches. Refresh the page or check your connection."
+                  : "No grantee batches saved yet. Add a batch to see it here."}
               </p>
             ) : (
               batches.map((row, index) => (
                 <div
-                  key={`${row.batchNo}-${row.program}`}
+                  key={`${row.batchNo}-${row.program}-${row.schoolYear ?? ""}`}
                   className={revealItemClass(contentRevealed, index, 45)}
                   style={revealItemStyle(contentRevealed, index, 45)}
                 >
@@ -539,6 +547,7 @@ function LatestBatchesAside({ loading, skeletonLeaving, contentRevealed, batches
 
 function LatestBatchCard({ row, onClick }) {
   const program = String(row?.program ?? "").trim().toUpperCase()
+  const schoolYear = String(row?.schoolYear ?? "").trim()
   const grantees = row?.grantees ?? row?.total ?? 0
 
   return (
@@ -565,16 +574,17 @@ function LatestBatchCard({ row, onClick }) {
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1.5">
-            {program === "TDP" ? (
-              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-px text-[10px] font-semibold text-slate-800">
-                TDP
+            {program ? (
+              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-px text-[10px] font-semibold text-slate-800 dark:border-white/10 dark:bg-slate-950/50 dark:text-slate-200">
+                {program}
               </span>
-            ) : (
-              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-px text-[10px] font-semibold text-slate-800">
-                TES
+            ) : null}
+            {schoolYear ? (
+              <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-1.5 py-px text-[10px] font-semibold text-slate-800 dark:border-white/10 dark:bg-slate-950/50 dark:text-slate-200">
+                AY {schoolYear}
               </span>
-            )}
-            <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-semibold text-emerald-900">
+            ) : null}
+            <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-px text-[10px] font-semibold text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-950/40 dark:text-emerald-200">
               Total: {grantees}
             </span>
           </div>
@@ -617,9 +627,9 @@ export default function AddGrantees() {
     setAlertState({ open: true, variant, title, message })
   }
 
-  const reloadGranteeRecords = async () => {
+  const reloadGranteeRecords = async ({ silent = false } = {}) => {
     try {
-      setGranteesLoading(true)
+      if (!silent) setGranteesLoading(true)
       setGranteesLoadError("")
       const rows = await fetchAllGrantees()
       setGranteeRecords(rows)
@@ -628,7 +638,7 @@ export default function AddGrantees() {
       setGranteeRecords([])
       setGranteesLoadError("We couldn't load existing grantee records. Refresh the page or check your connection, then try again.")
     } finally {
-      setGranteesLoading(false)
+      if (!silent) setGranteesLoading(false)
     }
   }
 
@@ -788,10 +798,13 @@ export default function AddGrantees() {
     }
   }, [granteeRecords, landingVisibility])
 
-  const latestBatchGrantees = useMemo(
-    () => buildLatestBatchGranteeCards(granteeRecords, 8),
-    [granteeRecords]
-  )
+  const activeProgramCodes = useMemo(() => buildActiveProgramCodeSet(programs), [programs])
+
+  const latestBatchGrantees = useMemo(() => {
+    const cards = buildLatestBatchGranteeCards(granteeRecords, 8)
+    if (activeProgramCodes.size === 0) return cards
+    return cards.filter((row) => activeProgramCodes.has(String(row.program ?? "").trim().toUpperCase()))
+  }, [granteeRecords, activeProgramCodes])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(granteesLoading)
 
@@ -842,7 +855,7 @@ export default function AddGrantees() {
         granteeRows: mappedRows,
       })
 
-      await reloadGranteeRecords()
+      await reloadGranteeRecords({ silent: true })
 
       setFormNotice(null)
       showAlert(
@@ -1011,10 +1024,13 @@ export default function AddGrantees() {
           skeletonLeaving={skeletonLeaving}
           contentRevealed={contentRevealed}
           batches={latestBatchGrantees}
+          loadError={granteesLoadError}
           onBatchClick={(row) => {
             const params = new URLSearchParams()
             params.set("batchNo", String(row?.batchNo ?? ""))
-            if (row?.program) params.set("program", String(row.program))
+            params.set("program", String(row?.program ?? "").trim().toUpperCase())
+            const year = String(row?.schoolYear ?? "").trim()
+            if (year) params.set("academicYear", year)
             params.set("from", "add-grantees")
             navigate(`/osgfa/batch-info?${params.toString()}`)
           }}
@@ -1024,18 +1040,18 @@ export default function AddGrantees() {
       <form id="add-grantees-form" className="w-full min-w-0" onSubmit={handleSubmit}>
         <section
           aria-label="Add grantees batch details"
-          className="w-full space-y-6 border-b border-slate-200/80 py-8 dark:border-white/10"
+          className="w-full space-y-3 border-b border-slate-200/80 py-4 dark:border-white/10"
         >
           <SectionCardHeader
             eyebrow="Step 2 · Batch details"
             title="Add Grantees"
-            description="Choose the program, batch number, and academic year for this import."
             icon={GraduationCap}
+            compact
           />
 
-          <div className="space-y-6">
-          <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
+          <div className="space-y-3">
+          <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
               <label htmlFor="program" className={fieldLabelClass}>
                 Program
               </label>
@@ -1047,7 +1063,7 @@ export default function AddGrantees() {
                     setFormNotice(null)
                     setProgram(event.target.value)
                   }}
-                  className={selectFieldClass}
+                  className={cn(selectFieldClass, "h-10")}
                 >
                   <option value="" disabled>
                     Select program
@@ -1062,7 +1078,7 @@ export default function AddGrantees() {
               </div>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label htmlFor="batchNo" className={fieldLabelClass}>
                 Batch Number
               </label>
@@ -1077,20 +1093,20 @@ export default function AddGrantees() {
                     setFormNotice(null)
                     setBatchNo(event.target.value)
                   }}
-                  className={inputFieldClass}
+                  className={cn(inputFieldClass, "h-10")}
                 />
               </div>
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 shrink-0 text-[#081F5C] dark:text-sky-300" aria-hidden />
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <CalendarDays className="h-3.5 w-3.5 shrink-0 text-[#081F5C] dark:text-sky-300" aria-hidden />
               <span className={fieldLabelClass}>Academic Year</span>
             </div>
 
-            <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-3">
-              <div className="space-y-1.5">
+            <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="space-y-1">
                 <label htmlFor="fromYear" className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                   From
                 </label>
@@ -1104,7 +1120,7 @@ export default function AddGrantees() {
                       setFromYear(nextFrom)
                       setToYear(nextFrom ? String(Number(nextFrom) + 1) : "")
                     }}
-                    className={selectFieldClass}
+                    className={cn(selectFieldClass, "h-10")}
                   >
                     <option value="" disabled>
                       Select start year
@@ -1119,7 +1135,7 @@ export default function AddGrantees() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <label htmlFor="toYear" className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
                   To
                 </label>
@@ -1131,7 +1147,7 @@ export default function AddGrantees() {
                       setFormNotice(null)
                       setToYear(event.target.value)
                     }}
-                    className={selectFieldClass}
+                    className={cn(selectFieldClass, "h-10")}
                   >
                     <option value="" disabled>
                       Select end year
@@ -1146,9 +1162,9 @@ export default function AddGrantees() {
                 </div>
               </div>
 
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">Preview</span>
-                <div className="flex h-11 items-center justify-between rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm shadow-sm dark:border-white/10 dark:bg-slate-950/40">
+                <div className="flex h-10 items-center justify-between rounded-xl border border-slate-200 bg-slate-50/80 px-3 text-sm shadow-sm dark:border-white/10 dark:bg-slate-950/40">
                   <span className="text-xs font-medium text-slate-500 dark:text-slate-400">AY</span>
                   <span className="font-bold tabular-nums text-[#081F5C] dark:text-sky-300">
                     {fromYear && toYear ? `${fromYear}–${toYear}` : "—"}

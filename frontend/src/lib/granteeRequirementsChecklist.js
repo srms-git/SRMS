@@ -298,19 +298,24 @@ export function formatRequirementCompletedAt(iso) {
 }
 
 /**
- * "complete" if every (year level × 1st|2nd sem) bucket has all requirements checked.
+ * "complete" if every (year level × semester) bucket has all requirements checked.
  * "incomplete" if any bucket is missing a checked item (or has zero defs — treated incomplete only if total>0 fails).
  * @param {unknown} row
  * @param {RequirementDef[]} defs
  * @param {string[]} yearLevels
+ * @param {{ semesters?: ("first"|"second")[] }} [options] Defaults to both semesters.
  * @returns {"complete"|"incomplete"}
  */
-export function requirementCoverageStatusForRow(row, defs, yearLevels) {
+export function requirementCoverageStatusForRow(row, defs, yearLevels, options) {
   const levels = [...new Set(yearLevels.map((s) => String(s ?? "").trim()).filter(Boolean))]
   if (levels.length === 0) return "complete"
+  const semKeys =
+    Array.isArray(options?.semesters) && options.semesters.length > 0
+      ? options.semesters.filter((s) => s === "first" || s === "second")
+      : ["first", "second"]
   const checklist = normalizeRequirementChecklistByYearSem(row, defs, levels)
   for (const yl of levels) {
-    for (const sem of ["first", "second"]) {
+    for (const sem of semKeys) {
       if (!requirementYearSemProgress(checklist, yl, sem, defs).isComplete) return "incomplete"
     }
   }

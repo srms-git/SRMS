@@ -1,5 +1,20 @@
 const mongoose = require('mongoose');
 
+const imageSubSchema = {
+    data: {
+        type: Buffer,
+        required: false
+    },
+    contentType: {
+        type: String,
+        required: false
+    },
+    fileName: {
+        type: String,
+        trim: true
+    }
+};
+
 const AnnouncementSchema = new mongoose.Schema({
     title: {
         type: String,
@@ -8,51 +23,60 @@ const AnnouncementSchema = new mongoose.Schema({
     },
     description: {
         type: String,
-        required: [true, 'Announcement description is required.'],
-        trim: true
+        trim: true,
+        default: ''
     },
     type: {
         type: String,
         required: true,
-        enum: ['new_batch', 'requirement_schedule', 'payout_schedule', 'unclaimed', 'opportunity', 'advisory'],
+        enum: ['new_batch', 'requirement_schedule', 'payout_schedule', 'unclaimed', 'opportunity', 'advisory', 'other'],
         default: 'new_batch'
     },
-    date: {
+    customType: {
+        type: String,
+        trim: true,
+        maxlength: 80,
+        default: ''
+    },
+    startDate: {
         type: String,
         required: true,
-        default: () => new Date().toISOString().slice(0, 10) // YYYY-MM-DD formatting string
+        default: () => new Date().toISOString().slice(0, 10)
+    },
+    endDate: {
+        type: String,
+        required: true,
+        default: () => new Date().toISOString().slice(0, 10)
+    },
+    /** @deprecated Use startDate — kept for records created before date duration */
+    date: {
+        type: String,
+        required: false
     },
     active: {
         type: Boolean,
         required: true,
         default: true
     },
-    // Sub-document schema to store raw image media payloads directly inside MongoDB
-    image: {
-        data: {
-            type: Buffer,
-            required: false // Optional field if announcements don't always contain attachments
-        },
-        contentType: {
-            type: String,
-            required: false // e.g., 'image/png', 'image/jpeg', 'image/webp'
-        },
-        fileName: {
-            type: String,
-            trim: true
-        }
+    inactiveAt: {
+        type: Date,
+        default: null
     },
-    // Optional audit trail to track which administrative staff member created the record
+    images: {
+        type: [imageSubSchema],
+        default: []
+    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }
 }, {
-    timestamps: true // Tracks database insertion dates automatically
+    timestamps: true
 });
 
-// Create index for fast date retrieval and type querying
 AnnouncementSchema.index({ type: 1 });
-AnnouncementSchema.index({ date: -1 });
+AnnouncementSchema.index({ startDate: -1 });
+AnnouncementSchema.index({ endDate: 1, active: 1 });
+AnnouncementSchema.index({ active: 1, inactiveAt: 1 });
 
 module.exports = mongoose.model('Announcement', AnnouncementSchema);

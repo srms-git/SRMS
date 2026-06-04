@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { BellRing, CheckCheck, CheckCircle2, CircleAlert, Clock3, Info, Search, SlidersHorizontal } from "lucide-react"
+import { BellRing, CheckCheck, CheckCircle2, CircleAlert, Clock3, Info, Megaphone, Search, SlidersHorizontal } from "lucide-react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import apiClient from "@/lib/apiClient"
@@ -37,6 +37,11 @@ const NOTIF_TYPES = {
     label: "System",
     icon: Info,
     pill: "border-violet-200 bg-violet-50 text-violet-700",
+  },
+  announcement: {
+    label: "Announcement",
+    icon: Megaphone,
+    pill: "border-sky-200 bg-sky-50 text-sky-800",
   },
 }
 
@@ -204,7 +209,7 @@ export default function NotificationPage() {
               </div>
               <div>
                 <h2 className="text-xl font-bold tracking-tight">Notification Center</h2>
-                <p className="mt-1 text-xs text-sky-100/90">Track updates for batches, claims, reminders, and system activity in one place.</p>
+                <p className="mt-1 text-xs text-sky-100/90">Track announcements, batches, claims, reminders, and system activity in one place.</p>
               </div>
             </div>
             
@@ -234,6 +239,7 @@ export default function NotificationPage() {
               <option value="claim">Claim</option>
               <option value="reminder">Reminder</option>
               <option value="system">System</option>
+              <option value="announcement">Announcement</option>
             </select>
             <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
           </div>

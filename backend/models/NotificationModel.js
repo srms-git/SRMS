@@ -14,7 +14,7 @@ const NotificationSchema = new mongoose.Schema({
     type: {
         type: String,
         required: true,
-        enum: ['batch', 'claim', 'reminder', 'system', 'unclaimed', 'opportunity'],
+        enum: ['batch', 'claim', 'reminder', 'system', 'unclaimed', 'opportunity', 'announcement'],
         default: 'system'
     },
     read: {

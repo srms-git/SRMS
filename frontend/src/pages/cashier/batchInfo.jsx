@@ -1756,8 +1756,8 @@ export default function CashierBatchInfo() {
                         <defs>
                           {yearLevelDonut.map((entry, i) => (
                             <linearGradient key={entry.name} id={`batchDonutGrad-${i}`} x1="0" y1="0" x2="1" y2="1">
-                              <stop offset="0%" stopColor={entry.color} stopOpacity={1} />
-                              <stop offset="100%" stopColor={entry.color} stopOpacity={0.65} />
+                              <stop offset="0%" stopColor={entry.colorFrom ?? entry.color} stopOpacity={0.98} />
+                              <stop offset="100%" stopColor={entry.colorTo ?? entry.color} stopOpacity={0.72} />
                             </linearGradient>
                           ))}
                         </defs>
