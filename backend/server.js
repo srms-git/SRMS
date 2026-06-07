@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const app = require('./app');
+const { startAnnouncementMaintenanceSchedule } = require('./utils/announcementMaintenance');
 const PORT = Number(process.env.PORT) || 5000;
 
 let server;
@@ -29,6 +30,7 @@ server = app.listen(PORT, () => {
     console.log(`Server listening on port ${PORT}`);
     console.log(`Landing batches: http://127.0.0.1:${PORT}/api/landing-batches`);
     console.log(`Landing privacy: http://127.0.0.1:${PORT}/api/landing-batches/page-settings`);
+    startAnnouncementMaintenanceSchedule();
 });
 
 server.on('error', (err) => {

@@ -3,12 +3,10 @@ const { logActivity } = require('../services/auditLogger');
 const { todayDateString } = require('./announcementDates');
 
 const INACTIVE_DELETE_AFTER_DAYS = 3;
+const INACTIVE_DELETE_AFTER_MS = INACTIVE_DELETE_AFTER_DAYS * 24 * 60 * 60 * 1000;
 
 function inactiveDeleteCutoffDate() {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - INACTIVE_DELETE_AFTER_DAYS);
-    cutoff.setHours(0, 0, 0, 0);
-    return cutoff;
+    return new Date(Date.now() - INACTIVE_DELETE_AFTER_MS);
 }
 
 async function expireEndedAnnouncements() {
@@ -31,22 +29,32 @@ async function expireEndedAnnouncements() {
     );
 }
 
+/** Records marked inactive before inactiveAt existed — use stable createdAt, not updatedAt. */
 async function backfillInactiveTimestamps() {
     await Announcement.updateMany(
         {
             active: false,
             $or: [{ inactiveAt: null }, { inactiveAt: { $exists: false } }],
         },
-        [{ $set: { inactiveAt: { $ifNull: ['$updatedAt', '$createdAt'] } } }],
+        [{ $set: { inactiveAt: { $ifNull: ['$createdAt', new Date()] } } }],
         { updatePipeline: true }
     );
 }
 
 async function deleteStaleInactiveAnnouncements() {
     const cutoff = inactiveDeleteCutoffDate();
+
     const staleRecords = await Announcement.find({
         active: false,
-        inactiveAt: { $ne: null, $lte: cutoff },
+        $or: [
+            { inactiveAt: { $ne: null, $lte: cutoff } },
+            {
+                $and: [
+                    { $or: [{ inactiveAt: null }, { inactiveAt: { $exists: false } }] },
+                    { createdAt: { $lte: cutoff } },
+                ],
+            },
+        ],
     });
 
     if (staleRecords.length === 0) {
@@ -85,12 +93,43 @@ function applyActiveState(record, nextActive) {
     }
 }
 
+let maintenanceIntervalId = null;
+
+function startAnnouncementMaintenanceSchedule(intervalMs = 60 * 60 * 1000) {
+    if (maintenanceIntervalId) return;
+
+    const run = async () => {
+        try {
+            const deleted = await runAnnouncementMaintenance();
+            if (deleted > 0) {
+                console.log(`Announcement maintenance: auto-deleted ${deleted} inactive record(s).`);
+            }
+        } catch (error) {
+            console.error('Announcement maintenance failed:', error);
+        }
+    };
+
+    void run();
+    maintenanceIntervalId = setInterval(run, intervalMs);
+    maintenanceIntervalId.unref?.();
+}
+
+function stopAnnouncementMaintenanceSchedule() {
+    if (maintenanceIntervalId) {
+        clearInterval(maintenanceIntervalId);
+        maintenanceIntervalId = null;
+    }
+}
+
 module.exports = {
     INACTIVE_DELETE_AFTER_DAYS,
+    INACTIVE_DELETE_AFTER_MS,
     inactiveDeleteCutoffDate,
     expireEndedAnnouncements,
     backfillInactiveTimestamps,
     deleteStaleInactiveAnnouncements,
     runAnnouncementMaintenance,
     applyActiveState,
+    startAnnouncementMaintenanceSchedule,
+    stopAnnouncementMaintenanceSchedule,
 };

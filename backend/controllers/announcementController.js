@@ -9,8 +9,9 @@ const {
     formatAnnouncementResponse,
 } = require('../utils/announcementDates');
 const { resolveAnnouncementTypePayload } = require('../utils/announcementTypes');
-const { runAnnouncementMaintenance, applyActiveState } = require('../utils/announcementMaintenance');
-const sharp = require('sharp');
+const { applyActiveState } = require('../utils/announcementMaintenance');
+const { processUploadedAnnouncementImages } = require('../services/announcementImageProcessing');
+const { MAX_ANNOUNCEMENT_IMAGE_COUNT } = require('../middleware/announcementUpload');
 
 function parseAnnouncementDuration(body) {
     const today = todayDateString();
@@ -41,22 +42,9 @@ function stripImageBinary(doc) {
     return obj;
 }
 
-async function compressImage(fileBuffer) {
-    try {
-        return await sharp(fileBuffer)
-            .resize({ width: 800, withoutEnlargement: true })
-            .jpeg({ quality: 65, progressive: true })
-            .toBuffer();
-    } catch (error) {
-        console.error('Image compression sub-process failed:', error);
-        throw new Error('Failed to process and compress target image attachment.');
-    }
-}
-
 // 1. Fetch all announcements
 exports.getAllAnnouncements = async (req, res) => {
     try {
-        await runAnnouncementMaintenance();
         const announcements = await Announcement.find({})
             .select('-images.data')
             .sort({ startDate: -1, date: -1, createdAt: -1 });
@@ -97,22 +85,13 @@ exports.createAnnouncement = async (req, res) => {
         };
 
         if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-            if (req.files.length > 8) {
+            if (req.files.length > MAX_ANNOUNCEMENT_IMAGE_COUNT) {
                 return res.status(400).json({
-                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.'
+                    message: `Upload restriction exceeded. A maximum of ${MAX_ANNOUNCEMENT_IMAGE_COUNT} images are allowed per announcement.`,
                 });
             }
 
-            announcementData.images = await Promise.all(
-                req.files.map(async (file) => {
-                    const compressedBuffer = await compressImage(file.buffer);
-                    return {
-                        data: compressedBuffer,
-                        contentType: 'image/jpeg',
-                        fileName: file.originalname || 'attachment.jpg'
-                    };
-                })
-            );
+            announcementData.images = await processUploadedAnnouncementImages(req.files);
         }
 
         const newAnnouncement = await Announcement.create(announcementData);
@@ -135,7 +114,8 @@ exports.createAnnouncement = async (req, res) => {
 
         return res.status(201).json(formatAnnouncementResponse(stripImageBinary(newAnnouncement)));
     } catch (error) {
-        return res.status(500).json({ message: error.message });
+        const status = error.message?.includes('too large') ? 413 : 500;
+        return res.status(status).json({ message: error.message || 'Failed to create announcement.' });
     }
 };
 
@@ -194,23 +174,14 @@ exports.updateAnnouncement = async (req, res) => {
         }
 
         if (req.files && Array.isArray(req.files)) {
-            if (req.files.length > 8) {
+            if (req.files.length > MAX_ANNOUNCEMENT_IMAGE_COUNT) {
                 return res.status(400).json({
-                    message: 'Upload restriction exceeded. A maximum of 8 images are allowed per announcement.'
+                    message: `Upload restriction exceeded. A maximum of ${MAX_ANNOUNCEMENT_IMAGE_COUNT} images are allowed per announcement.`,
                 });
             }
 
             if (req.files.length > 0) {
-                updates.images = await Promise.all(
-                    req.files.map(async (file) => {
-                        const compressedBuffer = await compressImage(file.buffer);
-                        return {
-                            data: compressedBuffer,
-                            contentType: 'image/jpeg',
-                            fileName: file.originalname || 'attachment.jpg'
-                        };
-                    })
-                );
+                updates.images = await processUploadedAnnouncementImages(req.files);
             } else if (clearExistingImages === 'true') {
                 updates.images = [];
             }
@@ -240,7 +211,8 @@ exports.updateAnnouncement = async (req, res) => {
 
         return res.status(200).json(formatAnnouncementResponse(stripImageBinary(updatedRecord)));
     } catch (error) {
-        return res.status(500).json({ message: error.message });
+        const status = error.message?.includes('too large') ? 413 : 500;
+        return res.status(status).json({ message: error.message || 'Failed to update announcement.' });
     }
 };
 

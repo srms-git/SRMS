@@ -61,11 +61,13 @@ function isVisibleOnLanding(record, today = todayDateString()) {
 function formatAnnouncementResponse(doc) {
     const obj = doc?.toObject ? doc.toObject() : { ...doc };
     const { startDate, endDate } = resolveAnnouncementDates(obj);
+    const inactiveAt = obj.inactiveAt ? new Date(obj.inactiveAt).toISOString() : null;
     return {
         ...obj,
         startDate,
         endDate,
         date: startDate,
+        inactiveAt,
     };
 }
 

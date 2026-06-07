@@ -212,11 +212,11 @@ function HeroTypewriterTitle() {
   )
 }
 
-/** Center-anchored slot: height grows evenly toward top and bottom. */
-const featuredBatchScrollerTrackClassName = "min-h-[12.25rem] items-center sm:min-h-[13rem]"
+/** Center-anchored slot: compact on mobile; full size from sm upward. */
+const featuredBatchScrollerTrackClassName = "min-h-[7.75rem] items-center sm:min-h-[13rem]"
 
 const featuredBatchCardSlotClassName =
-  "relative z-0 shrink-0 self-center w-[min(100%,268px)] h-[10rem] transition-[width,height] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none hover:z-20 hover:w-[368px] hover:h-[12.75rem] sm:w-[300px] sm:h-[10.5rem] sm:hover:w-[368px] sm:hover:h-[12.75rem] md:w-[328px] md:h-[11rem] md:hover:w-[408px] md:hover:h-[13rem]"
+  "relative z-0 shrink-0 self-center w-[min(calc(100vw-2.5rem),218px)] h-[7.25rem] transition-[width,height] duration-[450ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none max-sm:hover:w-[min(calc(100vw-2.5rem),218px)] max-sm:hover:h-[7.25rem] sm:w-[300px] sm:h-[10.5rem] sm:hover:z-20 sm:hover:w-[368px] sm:hover:h-[12.75rem] md:w-[328px] md:h-[11rem] md:hover:w-[408px] md:hover:h-[13rem]"
 
 const FEATURED_PROGRAM_DISPLAY_ORDER = ["TES", "TDP"]
 
@@ -482,7 +482,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
         aria-hidden={duplicate ? true : undefined}
       >
         <div
-          className="group/batch h-full rounded-[1.35rem] p-[1.5px] shadow-[0_16px_40px_-20px_rgba(8,31,92,0.28)] transition-shadow duration-500 hover:shadow-[0_24px_48px_-18px_rgba(8,31,92,0.38)]"
+          className="group/batch h-full rounded-[1.05rem] p-px shadow-[0_10px_24px_-16px_rgba(8,31,92,0.28)] transition-shadow duration-500 sm:rounded-[1.35rem] sm:p-[1.5px] sm:shadow-[0_16px_40px_-20px_rgba(8,31,92,0.28)] hover:shadow-[0_24px_48px_-18px_rgba(8,31,92,0.38)]"
           style={{
             backgroundImage: `linear-gradient(135deg, ${accent.color} 0%, ${accent.colorLight} 55%, ${bvViolet} 100%)`,
           }}
@@ -494,13 +494,13 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
               program: String(batch.program ?? ""),
               academicYear: String(batch.schoolYear ?? ""),
             }).toString()}`}
-            className="group/batch relative flex h-full w-full flex-col overflow-hidden rounded-[1.2rem] bg-white/95 p-4 text-left backdrop-blur-md transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-[0_20px_40px_-16px_rgba(8,31,92,0.28)] sm:p-5"
+            className="group/batch relative flex h-full w-full flex-col justify-center overflow-hidden rounded-[0.95rem] bg-white/95 p-2.5 text-left backdrop-blur-md transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:justify-start sm:rounded-[1.2rem] sm:p-4 sm:hover:-translate-y-0.5 sm:hover:shadow-[0_20px_40px_-16px_rgba(8,31,92,0.28)] md:p-5"
             style={{ backgroundImage: `linear-gradient(160deg, #ffffff 0%, ${bvIce} 88%, ${bvPeriwinkle}33 100%)` }}
             tabIndex={duplicate ? -1 : undefined}
           >
             <span
-              className="pointer-events-none absolute -right-1 -top-3 select-none font-black tabular-nums leading-none opacity-[0.07]"
-              style={{ fontSize: "clamp(2.75rem, 8vw, 4.25rem)", color: accent.color }}
+              className="pointer-events-none absolute -right-1 -top-2 select-none font-black tabular-nums leading-none opacity-[0.07] sm:-top-3"
+              style={{ fontSize: "clamp(1.75rem, 6vw, 4.25rem)", color: accent.color }}
               aria-hidden
             >
               {batchLabel}
@@ -520,9 +520,9 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
               aria-hidden
             />
 
-            <div className="relative flex items-start gap-3">
+            <div className="relative flex items-center gap-2 sm:items-start sm:gap-3">
               <div
-                className="flex size-12 shrink-0 items-center justify-center rounded-2xl text-sm font-bold tracking-tight text-white shadow-[0_10px_24px_-8px_rgba(8,31,92,0.45)] ring-2 ring-white transition-transform duration-500 group-hover/batch:scale-105 sm:size-13"
+                className="flex size-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-bold tracking-tight text-white shadow-[0_8px_18px_-8px_rgba(8,31,92,0.45)] ring-1 ring-white transition-transform duration-500 sm:size-12 sm:rounded-2xl sm:text-sm sm:ring-2 sm:shadow-[0_10px_24px_-8px_rgba(8,31,92,0.45)] sm:group-hover/batch:scale-105 md:size-13"
                 style={{
                   backgroundImage: `linear-gradient(145deg, ${accent.color} 0%, ${accent.colorLight} 100%)`,
                 }}
@@ -532,47 +532,52 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1 sm:gap-1.5">
                   {privacy.showProgramTag ? (
                     <span
-                      className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
+                      className="inline-flex rounded-full px-1.5 py-px text-[8px] font-bold uppercase tracking-wider text-white sm:px-2.5 sm:py-0.5 sm:text-[10px]"
                       style={{ backgroundImage: gradientNavyButton }}
                     >
                       {accent.label}
                     </span>
                   ) : null}
                   <span
-                    className="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    className="rounded-full border px-1.5 py-px text-[8px] font-semibold uppercase tracking-[0.1em] sm:px-2 sm:py-0.5 sm:text-[10px] sm:tracking-[0.12em]"
                     style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
                   >
                     Batch
                   </span>
                 </div>
 
-                <h3 className="mt-2 text-base font-bold leading-snug sm:text-lg" style={{ color: navy }}>
+                <h3 className="mt-1 truncate text-xs font-bold leading-tight sm:mt-2 sm:text-base sm:leading-snug md:text-lg" style={{ color: navy }}>
                   Batch {batchLabel}
                 </h3>
                 {privacy.showDateAdded ? (
-                  <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: textBodyOnLight }}>
+                  <p className="mt-px truncate text-[9px] font-medium uppercase tracking-[0.08em] sm:mt-1 sm:text-[11px] sm:tracking-[0.12em]" style={{ color: textBodyOnLight }}>
                     {batch.createdAt}
                   </p>
                 ) : null}
 
-                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <div
+                  className={cn(
+                    "mt-1.5 grid gap-1 sm:mt-2.5 sm:flex sm:flex-wrap sm:items-center sm:gap-1.5",
+                    privacy.showAcademicYear ? "grid-cols-2" : "grid-cols-1",
+                  )}
+                >
                   {privacy.showAcademicYear ? (
                     <span
-                      className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]"
+                      className="flex min-w-0 items-center justify-center rounded-full border px-1 py-px text-center text-[8px] font-semibold leading-tight sm:inline-flex sm:px-2 sm:py-0.5 sm:text-[10px] md:text-[11px]"
                       style={{ borderColor: borderBvSoft, color: navy }}
                     >
-                      AY {batch.schoolYear || "—"}
+                      <span className="truncate">AY {batch.schoolYear || "—"}</span>
                     </span>
                   ) : null}
                   <span
-                    className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white sm:text-[11px]"
+                    className="flex min-w-0 items-center justify-center gap-0.5 rounded-full px-1 py-px text-[8px] font-bold text-white sm:inline-flex sm:gap-1 sm:px-2 sm:py-0.5 sm:text-[10px] md:text-[11px]"
                     style={{ backgroundImage: `linear-gradient(135deg, ${accent.colorLight} 0%, #34d399 100%)` }}
                   >
-                    <span className="size-1.5 rounded-full bg-white/90" aria-hidden />
-                    {granteeLabel}
+                    <span className="size-1 shrink-0 rounded-full bg-white/90 sm:size-1.5" aria-hidden />
+                    <span className="truncate">{granteeLabel}</span>
                   </span>
                 </div>
               </div>
@@ -603,16 +608,16 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
             bumpInteractionPause()
           }
         }}
-        className={`-mx-1 flex max-w-full gap-4 overflow-x-auto overflow-y-hidden px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${featuredBatchScrollerTrackClassName}`}
+        className={`-mx-1 flex max-w-full gap-2.5 overflow-x-auto overflow-y-hidden px-1 py-0.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:gap-4 sm:py-1 ${featuredBatchScrollerTrackClassName}`}
         tabIndex={0}
         role="region"
         aria-label={`${programLabel} batch list${shouldLoop ? ", auto-scrolling" : ""}`}
       >
-        <div ref={stripRef} className="flex shrink-0 items-center gap-4 self-center">
+        <div ref={stripRef} className="flex shrink-0 items-center gap-2.5 self-center sm:gap-4">
           {uniqueItems.map((batch) => renderCard(batch, "a", false))}
         </div>
         {shouldLoop ? (
-          <div className="flex shrink-0 items-center gap-4 self-center" aria-hidden>
+          <div className="flex shrink-0 items-center gap-2.5 self-center sm:gap-4" aria-hidden>
             {uniqueItems.map((batch) => renderCard(batch, "b", true))}
           </div>
         ) : null}
@@ -746,7 +751,7 @@ function AboutImageSlideshow({ slides }) {
   return (
     <div
       ref={containerRef}
-      className="relative order-1 w-full overflow-hidden overscroll-none outline-none touch-pan-y [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:order-1 lg:touch-none"
+      className="relative order-1 w-full min-w-0 overflow-hidden overscroll-none outline-none touch-pan-y [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:order-1 lg:w-full lg:touch-none"
       role="region"
       aria-label="About the organization photo slideshow"
       aria-roledescription="carousel"
@@ -760,17 +765,17 @@ function AboutImageSlideshow({ slides }) {
       }}
     >
       <div
-        className="relative h-[280px] w-full overflow-hidden outline-none sm:h-[385px] lg:h-[420px]"
+        className="relative mx-auto h-[250px] w-full min-w-0 overflow-hidden px-1 outline-none min-[400px]:h-[270px] sm:h-[385px] sm:px-2 lg:mx-0 lg:h-[450px] lg:w-full lg:px-0 xl:h-[470px]"
         style={{ perspective: "1200px" }}
         aria-live="polite"
       >
         <div
-          className="pointer-events-none absolute -left-6 -top-10 size-32 rounded-full opacity-60 blur-3xl sm:-left-10 sm:-top-12 sm:size-36"
+          className="pointer-events-none absolute left-0 -top-10 size-32 rounded-full opacity-60 blur-3xl sm:-top-12 sm:size-36"
           style={{ background: "radial-gradient(circle, rgba(20,71,166,0.35) 0%, transparent 72%)" }}
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -bottom-12 -right-6 size-36 rounded-full opacity-55 blur-3xl sm:-bottom-16 sm:-right-10 sm:size-44"
+          className="pointer-events-none absolute -bottom-12 right-0 size-36 rounded-full opacity-55 blur-3xl sm:-bottom-16 sm:size-44"
           style={{ background: "radial-gradient(circle, rgba(165,180,252,0.42) 0%, transparent 74%)" }}
           aria-hidden
         />
@@ -779,38 +784,24 @@ function AboutImageSlideshow({ slides }) {
           if (Math.abs(offset) > 1) return null
 
           const isCenter = offset === 0
-          const isLeftSide = offset === -1
           const isHovered = hoveredIndex === index
-          const baseScale = isCenter ? 1.04 : 0.84
-          const scale = isHovered ? (isCenter ? 1.1 : 0.95) : baseScale
-          const translateX = offset * 36
+          const baseScale = isCenter ? 1.05 : 0.76
+          const scale = isHovered ? (isCenter ? 1.08 : 0.84) : baseScale
           const zIndex = isHovered ? 30 : 20 - Math.abs(offset) * 5
 
-          const slidePositionClass = isLeftSide
-            ? "left-0"
-            : isCenter
-              ? "left-[calc(50%-0.125rem)] sm:left-[calc(50%-0.25rem)] lg:left-[calc(50%-0.375rem)]"
-              : "left-1/2"
-
-          const slideTransform = isLeftSide
-            ? isHovered
-              ? `translateY(-50%) translateX(-0.75rem) scale(${scale})`
-              : `translateY(-50%) scale(${scale})`
-            : isCenter
-              ? `translate(-50%, -50%) scale(${scale})`
-              : `translate(-50%, -50%) translateX(${translateX}%) scale(${scale})`
-
-          const slideTransformOrigin = isLeftSide ? "left center" : "center center"
+          // Side cards sit further under the center so peeks stay inside padding and stay even.
+          const spreadPct = offset === 0 ? 0 : offset * (isHovered ? 30 : 34)
+          const slideTransform = `translate(-50%, -50%) translateX(${spreadPct}%) scale(${scale})`
 
           return (
             <article
               key={slide.alt}
-              className={`absolute top-1/2 aspect-4/3 w-[min(84%,325px)] overflow-hidden rounded-[1.4rem] border border-white/50 transition-[transform,opacity,box-shadow,filter] duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] will-change-transform sm:w-[min(82%,345px)] lg:w-[min(80%,370px)] ${slidePositionClass} ${
+              className={`absolute left-1/2 top-1/2 aspect-4/3 w-[min(68vw,248px)] overflow-hidden rounded-[1.25rem] border border-white/50 transition-[transform,opacity,box-shadow,filter] duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] will-change-transform min-[400px]:w-[min(66vw,272px)] min-[400px]:rounded-[1.35rem] sm:w-[min(72%,320px)] sm:rounded-[1.4rem] lg:w-[min(82%,385px)] xl:w-[min(84%,405px)] ${
                 !isCenter ? "cursor-pointer" : "cursor-default"
               }`}
               style={{
                 transform: slideTransform,
-                transformOrigin: slideTransformOrigin,
+                transformOrigin: "center center",
                 zIndex,
                 opacity: isCenter || isHovered ? 1 : 0.84,
                 boxShadow: isCenter
@@ -1286,10 +1277,10 @@ function BillboardAnnouncementSlide({ item, compact = false, variant = "text-onl
       ? "text-sm sm:text-base"
       : "text-base sm:text-lg"
   const headerPadClass = isSingleImage
-    ? "space-y-1 px-3 pt-3 pb-2 sm:px-4 sm:pt-3.5"
+    ? "space-y-1 px-3 pt-3 pb-1.5 sm:px-4 sm:pt-3.5 sm:pb-2"
     : isTextOnly
       ? ""
-      : "space-y-1 px-1"
+      : "space-y-1 px-1 pb-0.5 sm:pb-1"
   const actionClassName = cn("font-semibold underline-offset-2 transition hover:underline", messageTextClass)
 
   useLayoutEffect(() => {
@@ -1457,7 +1448,9 @@ function BillboardAnnouncementSlide({ item, compact = false, variant = "text-onl
               "relative w-full",
               !expanded && "min-h-0 flex-1 shrink-0",
               expanded && "shrink-0",
-              variant === "multi-image" && "flex items-stretch justify-center px-1 pb-1",
+              variant === "multi-image" &&
+                "mt-2.5 flex items-stretch justify-center px-1.5 pb-1.5 sm:mt-3 sm:px-2 sm:pb-2",
+              variant === "single-image" && "px-2.5 pb-2.5 sm:px-3 sm:pb-3",
             )}
             style={imageWrapStyle}
           >
@@ -1626,7 +1619,7 @@ function BillboardCard({
             )}
           </div>
 
-          {hasCarousel ? (
+          {hasCarousel && items.length > 1 ? (
             <div
               className={`flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-4 py-3 ${compact ? "sm:px-4" : "sm:px-5"}`}
               style={{ borderColor: borderNavySoft, backgroundColor: "#f8fafc" }}
@@ -1875,7 +1868,7 @@ export default function LandingPage() {
           </div>
 
           <div className="relative z-10 text-white lg:pointer-events-none lg:fixed lg:inset-x-0 lg:top-0 lg:z-10 lg:h-[min(88vh,680px)]">
-            <div className="pointer-events-auto mx-auto w-full max-w-7xl px-4 pb-10 pt-24 sm:px-6 sm:pb-12 sm:pt-28 lg:flex lg:h-full lg:items-center lg:px-8 lg:pb-16 lg:pt-36">
+            <div className="pointer-events-auto mx-auto w-full max-w-7xl px-4 pb-6 pt-24 sm:px-6 sm:pb-8 sm:pt-28 lg:flex lg:h-full lg:items-center lg:px-8 lg:pb-16 lg:pt-36">
               {heroContent}
             </div>
           </div>
@@ -1885,7 +1878,7 @@ export default function LandingPage() {
           <button
             type="button"
             onClick={() => scrollToSection("about")}
-            className="relative z-20 mx-auto mb-5 flex text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent motion-reduce:animate-none sm:mb-6 lg:absolute lg:bottom-6 lg:left-1/2 lg:mb-0 lg:-translate-x-1/2"
+            className="relative z-20 mx-auto mb-1 flex text-white/90 transition hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent motion-reduce:animate-none sm:mb-2 lg:absolute lg:bottom-6 lg:left-1/2 lg:mb-0 lg:-translate-x-1/2"
             aria-label="Scroll to About the Organization"
           >
             <ChevronDown className="h-7 w-7 animate-bounce drop-shadow-[0_2px_8px_rgba(4,19,61,0.45)] sm:h-8 sm:w-8" aria-hidden />
@@ -1894,19 +1887,26 @@ export default function LandingPage() {
 
         <section
           id="about"
-          className="relative z-40 w-full scroll-mt-17 overflow-x-hidden border-b"
+          className="relative z-40 -mt-2 w-full scroll-mt-17 overflow-x-hidden border-b-0 sm:-mt-3 lg:mt-0 lg:border-b"
           style={{
             borderColor: borderNavySoft,
             backgroundImage: `linear-gradient(180deg, ${bvIce} 0%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
           }}
         >
-          <div className="mx-auto w-full max-w-7xl px-4 pb-10 pt-8 sm:px-6 sm:pb-12 sm:pt-10 lg:px-8 lg:py-12">
-            <div className="grid items-center gap-5 overflow-x-hidden lg:grid-cols-2 lg:gap-6">
-              <div className="order-1 min-w-0 overflow-hidden lg:mx-0">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-0 h-10 sm:h-12 lg:hidden"
+            style={{
+              background: `linear-gradient(180deg, ${navyDeep} 0%, ${bvIce} 100%)`,
+            }}
+            aria-hidden
+          />
+          <div className="relative z-10 mx-auto w-full max-w-7xl overflow-x-hidden px-4 pb-10 pt-3 sm:px-6 sm:pb-12 sm:pt-4 lg:px-8 lg:py-12">
+            <div className="grid min-w-0 items-center gap-5 overflow-x-hidden lg:grid-cols-2 lg:gap-3 xl:gap-4">
+              <div className="order-1 min-w-0 overflow-hidden lg:mx-0 lg:w-full">
                 <AboutImageSlideshow slides={aboutSlideshowSlides} />
               </div>
 
-              <div className="order-2 min-w-0">
+              <div className="order-2 min-w-0 overflow-hidden lg:pl-0">
                 <h2 className="relative text-[clamp(1.65rem,3.5vw,2.75rem)] font-extrabold leading-[1.15] tracking-tight">
                   <span
                     className="bg-clip-text text-transparent"

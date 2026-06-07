@@ -16,7 +16,7 @@ const upload = multer({
     storage: storage,
     fileFilter: imageFilter,
     limits: {
-        fileSize: 5 * 1024 * 1024, // 5MB max payload constraint per individual file
+        fileSize: 20 * 1024 * 1024, // 20MB max payload constraint per individual file
     }
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import {
   CalendarDays,
   CheckCircle,
@@ -23,6 +23,16 @@ import {
   AnnouncementImageGallery,
   AnnouncementPhotoFrame,
 } from "@/components/AnnouncementImageGallery"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -39,8 +49,10 @@ import {
 } from "@/lib/announcementDates"
 import {
   draftImagesToUploadFiles,
+  MAX_ANNOUNCEMENT_IMAGE_MB,
   MAX_ANNOUNCEMENT_IMAGES,
   normalizeAnnouncementImages,
+  prepareAnnouncementImageFiles,
 } from "@/lib/announcementImages"
 import {
   AnnouncementCardSkeleton,
@@ -59,17 +71,46 @@ import { cn } from "@/lib/utils"
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 
-const PAGE_SIZE = 3
-const MAX_ANNOUNCEMENT_IMAGE_BYTES = 2 * 1024 * 1024
+const MAX_ANNOUNCEMENT_IMAGE_BYTES = MAX_ANNOUNCEMENT_IMAGE_MB * 1024 * 1024
+const ANNOUNCEMENT_UPLOAD_TIMEOUT_MS = 5 * 60 * 1000
 const ANNOUNCEMENT_IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif"
 
-function validateAnnouncementImageFile(file) {
+const formInputErrorClass =
+  "border-red-500 focus:border-red-500 focus:ring-red-500/25 aria-invalid:border-red-500"
+
+function FormFieldError({ id, message }) {
+  if (!message) return null
+  return (
+    <p id={id} role="alert" className="text-xs font-medium leading-snug text-red-600">
+      {message}
+    </p>
+  )
+}
+
+function focusAnnouncementFormField(fieldRefs, fieldKey) {
+  requestAnimationFrame(() => {
+    const section = fieldRefs.current[fieldKey]
+    if (!section) return
+    section.scrollIntoView({ behavior: "smooth", block: "center" })
+    const focusable = section.querySelector(
+      "input:not([type=hidden]):not([type=file]), select, textarea",
+    )
+    focusable?.focus({ preventScroll: true })
+  })
+}
+
+function formatFileSizeMb(bytes) {
+  return (bytes / (1024 * 1024)).toFixed(1)
+}
+
+function getAnnouncementImageFileError(file) {
   if (!file?.type?.startsWith("image/")) {
-    throw new Error("Please choose a JPEG, PNG, WebP, or GIF image.")
+    return `"${file.name}" is not supported. Use JPEG, PNG, WebP, or GIF.`
   }
   if (file.size > MAX_ANNOUNCEMENT_IMAGE_BYTES) {
-    throw new Error("Image must be 2 MB or smaller.")
+    return `"${file.name}" (${formatFileSizeMb(file.size)} MB) exceeds the ${MAX_ANNOUNCEMENT_IMAGE_MB} MB limit per picture.`
   }
+  return ""
 }
 
 function revokeBlobPreviewUrl(url) {
@@ -84,6 +125,20 @@ function revokeDraftImagePreviews(images) {
       revokeBlobPreviewUrl(image.previewUrl)
     }
   }
+}
+
+function getAnnouncementSaveError(err) {
+  if (err?.code === "ECONNABORTED") {
+    return "Upload timed out. Try fewer pictures at once or wait and try again."
+  }
+  if (err?.response?.status === 413) {
+    return err?.response?.data?.message || "One or more images are too large to upload."
+  }
+  return (
+    err?.response?.data?.message ||
+    err?.userMessage ||
+    "Failed to save announcement. Please try again."
+  )
 }
 
 function buildAnnouncementFormData({
@@ -123,6 +178,9 @@ function saveAnnouncementWithFormData(method, url, formData) {
     method,
     url,
     data: formData,
+    timeout: ANNOUNCEMENT_UPLOAD_TIMEOUT_MS,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
     transformRequest: [
       (data, headers) => {
         delete headers["Content-Type"]
@@ -225,58 +283,6 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-inner ring-1 ring-black/4 dark:ring-white/10 ${iconBg}`}>
           <Icon className="h-5 w-5" strokeWidth={2} aria-hidden />
         </div>
-      </div>
-    </div>
-  )
-}
-
-function paginateList(items, page) {
-  const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
-  const safePage = Math.min(Math.max(1, page), pageCount)
-  const start = (safePage - 1) * PAGE_SIZE
-  return {
-    page: safePage,
-    pageCount,
-    items: items.slice(start, start + PAGE_SIZE),
-  }
-}
-
-function AnnouncementSectionPagination({ page, pageCount, total, onPageChange, noun = "announcement" }) {
-  if (total <= PAGE_SIZE) return null
-
-  const start = (page - 1) * PAGE_SIZE + 1
-  const end = Math.min(page * PAGE_SIZE, total)
-  const plural = total === 1 ? noun : `${noun}s`
-
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs">
-      <p className="text-slate-600">
-        Showing{" "}
-        <span className="font-semibold text-[#081F5C]">
-          {start}-{end}
-        </span>{" "}
-        of <span className="font-semibold text-slate-900">{total}</span> {plural}
-      </p>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => onPageChange(Math.max(1, page - 1))}
-          disabled={page <= 1}
-          className="h-8 rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 shadow-sm transition hover:border-[#081F5C]/30 hover:text-[#081F5C] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Prev
-        </button>
-        <span className="tabular-nums text-slate-600">
-          Page <span className="font-semibold text-[#081F5C]">{page}</span> / {pageCount}
-        </span>
-        <button
-          type="button"
-          onClick={() => onPageChange(Math.min(pageCount, page + 1))}
-          disabled={page >= pageCount}
-          className="h-8 rounded-lg border border-slate-200 bg-white px-3 font-semibold text-slate-700 shadow-sm transition hover:border-[#081F5C]/30 hover:text-[#081F5C] disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Next
-        </button>
       </div>
     </div>
   )
@@ -415,6 +421,19 @@ function AnnouncementSectionHeader({ title, description, count, variant }) {
   )
 }
 
+const INACTIVE_AUTO_DELETE_DAYS = 3
+const INACTIVE_AUTO_DELETE_MS = INACTIVE_AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000
+
+function getInactiveAutoDeleteLabel(item) {
+  if (item?.active !== false || !item?.inactiveAt) return null
+  const inactiveMs = new Date(item.inactiveAt).getTime()
+  if (Number.isNaN(inactiveMs)) return null
+  const msLeft = inactiveMs + INACTIVE_AUTO_DELETE_MS - Date.now()
+  if (msLeft <= 0) return "Removing soon"
+  const daysLeft = Math.ceil(msLeft / (24 * 60 * 60 * 1000))
+  return daysLeft === 1 ? "Auto-deletes in 1 day" : `Auto-deletes in ${daysLeft} days`
+}
+
 const SCHEDULE_STATUS_META = {
   live: { label: "Live", className: "bg-emerald-400/90 text-white" },
   scheduled: { label: "Scheduled", className: "bg-amber-400/90 text-slate-900" },
@@ -467,6 +486,17 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
               <time className="text-[11px] text-slate-300" title="Posting duration">
                 {formatAnnouncementDurationLabel(startDate, endDate)}
               </time>
+              {(() => {
+                const autoDeleteLabel = muted ? getInactiveAutoDeleteLabel(item) : null
+                return autoDeleteLabel ? (
+                  <span
+                    className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-medium text-amber-100"
+                    title="Inactive announcements are removed automatically after 3 days"
+                  >
+                    {autoDeleteLabel}
+                  </span>
+                ) : null
+              })()}
               <span className="hidden items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/90 sm:inline-flex">
                 <Megaphone className="h-3 w-3" aria-hidden />
                 OSGFA
@@ -550,16 +580,20 @@ export default function AnnouncementPage() {
   const [draftType, setDraftType] = useState("new_batch")
   const [draftCustomType, setDraftCustomType] = useState("")
   const [typeError, setTypeError] = useState("")
+  const [titleError, setTitleError] = useState("")
   const [draftStartDate, setDraftStartDate] = useState(() => getTodayDateString())
   const [draftEndDate, setDraftEndDate] = useState("")
+  const [startDateError, setStartDateError] = useState("")
   const [durationError, setDurationError] = useState("")
+  const formFieldRefs = useRef({})
   const [draftImages, setDraftImages] = useState([])
   const [draftImagesDirty, setDraftImagesDirty] = useState(false)
   const [imageError, setImageError] = useState("")
+  const [isPreparingImages, setIsPreparingImages] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [activePage, setActivePage] = useState(1)
-  const [inactivePage, setInactivePage] = useState(1)
-
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [isConfirming, setIsConfirming] = useState(false)
   const normalizeAnnouncement = (item) => normalizeAnnouncementImages(normalizeAnnouncementRecord(item))
 
   const minimumEndDate = useMemo(
@@ -567,9 +601,9 @@ export default function AnnouncementPage() {
     [draftStartDate],
   )
 
-  const loadAnnouncements = async () => {
+  const loadAnnouncements = async ({ silent = false } = {}) => {
     try {
-      setIsLoading(true)
+      if (!silent) setIsLoading(true)
       setError("")
       const response = await apiClient.get("/announcements")
       const fetched = Array.isArray(response.data) ? response.data.map(normalizeAnnouncement) : []
@@ -582,7 +616,7 @@ export default function AnnouncementPage() {
           "Failed to load announcements. Please try again.",
       )
     } finally {
-      setIsLoading(false)
+      if (!silent) setIsLoading(false)
     }
   }
 
@@ -608,7 +642,9 @@ export default function AnnouncementPage() {
     setDraftImagesDirty(false)
     setImageError("")
     setDurationError("")
+    setStartDateError("")
     setTypeError("")
+    setTitleError("")
   }
 
   const openEditAnnouncement = (item) => {
@@ -624,6 +660,7 @@ export default function AnnouncementPage() {
     setDraftImages(
       imageUrls.map((previewUrl, index) => ({
         key: `existing-${index}`,
+        existingIndex: index,
         previewUrl,
         fileName: item.images?.[index]?.fileName || `Picture ${index + 1}`,
         isExisting: true,
@@ -632,11 +669,13 @@ export default function AnnouncementPage() {
     setDraftImagesDirty(false)
     setImageError("")
     setDurationError("")
+    setStartDateError("")
     setTypeError("")
+    setTitleError("")
     setDialogOpen(true)
   }
 
-  const handleImageFileChange = (event) => {
+  const handleImageFileChange = async (event) => {
     const selectedFiles = Array.from(event.target.files ?? [])
     event.target.value = ""
     if (!selectedFiles.length) return
@@ -653,9 +692,35 @@ export default function AnnouncementPage() {
         setImageError(`Only ${availableSlots} more picture${availableSlots === 1 ? "" : "s"} can be added (max ${MAX_ANNOUNCEMENT_IMAGES}).`)
       }
 
-      const additions = []
+      const fileErrors = []
+      const validFiles = []
       for (const file of nextFiles) {
-        validateAnnouncementImageFile(file)
+        const fileError = getAnnouncementImageFileError(file)
+        if (fileError) {
+          fileErrors.push(fileError)
+          continue
+        }
+        validFiles.push(file)
+      }
+
+      if (!validFiles.length) {
+        if (fileErrors.length) {
+          setImageError(fileErrors.join(" "))
+          focusAnnouncementFormField(formFieldRefs, "images")
+        }
+        return
+      }
+
+      setIsPreparingImages(true)
+      const optimizedFiles = await prepareAnnouncementImageFiles(validFiles)
+
+      const additions = []
+      for (const file of optimizedFiles) {
+        const fileError = getAnnouncementImageFileError(file)
+        if (fileError) {
+          fileErrors.push(fileError)
+          continue
+        }
         additions.push({
           key: `new-${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
           previewUrl: URL.createObjectURL(file),
@@ -665,10 +730,20 @@ export default function AnnouncementPage() {
         })
       }
 
-      setDraftImages((prev) => [...prev, ...additions])
-      setDraftImagesDirty(true)
+      if (fileErrors.length) {
+        setImageError(fileErrors.join(" "))
+        focusAnnouncementFormField(formFieldRefs, "images")
+      }
+
+      if (additions.length) {
+        setDraftImages((prev) => [...prev, ...additions])
+        setDraftImagesDirty(true)
+      }
     } catch (err) {
       setImageError(err?.message || "Invalid image file.")
+      focusAnnouncementFormField(formFieldRefs, "images")
+    } finally {
+      setIsPreparingImages(false)
     }
   }
 
@@ -684,40 +759,89 @@ export default function AnnouncementPage() {
     setImageError("")
   }
 
-  const handleDeleteAnnouncement = (item) => {
+  const openDeleteConfirm = (item) => {
     if (!item?.id) return
+    setConfirmAction({ type: "delete", item })
+    setConfirmOpen(true)
+  }
 
-    const doDelete = async () => {
-      try {
-        setError("")
+  const openToggleActiveConfirm = (item) => {
+    if (!item?.id) return
+    setConfirmAction({ type: "toggle", item })
+    setConfirmOpen(true)
+  }
+
+  const handleConfirmAnnouncementAction = async () => {
+    const item = confirmAction?.item
+    if (!item?.id || !confirmAction?.type) return
+
+    try {
+      setIsConfirming(true)
+      setError("")
+
+      if (confirmAction.type === "delete") {
         await apiClient.delete(`/announcements/${item.id}`)
-        const nextAnnouncements = announcements.filter((announcement) => announcement.id !== item.id)
-        setAnnouncements(nextAnnouncements)
-      } catch (err) {
-        console.error("Failed to delete announcement:", err)
-        setError("Failed to delete announcement. Please try again.")
+      } else {
+        await apiClient.patch(`/announcements/${item.id}/toggle`)
       }
-    }
 
-    void doDelete()
+      await loadAnnouncements({ silent: true })
+      setConfirmOpen(false)
+      setConfirmAction(null)
+    } catch (err) {
+      console.error("Failed to confirm announcement action:", err)
+      if (confirmAction.type === "delete") {
+        setError("Failed to delete announcement. Please try again.")
+      } else {
+        setError("Failed to toggle announcement status. Please try again.")
+      }
+    } finally {
+      setIsConfirming(false)
+    }
   }
 
   const handleCreateAnnouncement = (event) => {
     event.preventDefault()
+    if (isSaving) return
+
     const title = draftTitle.trim()
     const description = draftDescription.trim()
-    if (!title || !draftStartDate || isSaving) return
-    const durationValidationMessage = validateAnnouncementDurationInput(draftStartDate, draftEndDate)
-    if (durationValidationMessage) {
-      setDurationError(durationValidationMessage)
-      return
-    }
+
+    setTitleError("")
+    setStartDateError("")
     setDurationError("")
+    setTypeError("")
+
+    let firstInvalidField = null
+    const markInvalid = (field) => {
+      if (!firstInvalidField) firstInvalidField = field
+    }
+
     if (isOtherAnnouncementType(draftType) && !draftCustomType.trim()) {
-      setTypeError("Please enter a type when Other is selected.")
+      setTypeError("Please enter a custom type. This field is required when Other is selected.")
+      markInvalid("type")
+    }
+
+    if (!String(draftStartDate ?? "").trim()) {
+      setStartDateError("Please select a start date.")
+      markInvalid("duration")
+    } else {
+      const durationValidationMessage = validateAnnouncementDurationInput(draftStartDate, draftEndDate)
+      if (durationValidationMessage) {
+        setDurationError(durationValidationMessage)
+        markInvalid("duration")
+      }
+    }
+
+    if (!title) {
+      setTitleError("Please enter a title. This field is required.")
+      markInvalid("title")
+    }
+
+    if (firstInvalidField) {
+      focusAnnouncementFormField(formFieldRefs, firstInvalidField)
       return
     }
-    setTypeError("")
 
     const existingActive = editingId ? announcements.find((a) => a.id === editingId)?.active ?? true : true
     const existingRecord = editingId ? announcements.find((a) => a.id === editingId) : null
@@ -736,7 +860,7 @@ export default function AnnouncementPage() {
         } else if (draftImages.length === 0 && hadImages) {
           clearExistingImages = true
         } else if (draftImagesDirty) {
-          imageFiles = await draftImagesToUploadFiles(draftImages)
+          imageFiles = await draftImagesToUploadFiles(draftImages, editingId)
         }
 
         const formData = buildAnnouncementFormData({
@@ -772,33 +896,22 @@ export default function AnnouncementPage() {
         setDateRange("__")
       } catch (err) {
         console.error("Failed to save announcement:", err)
-        setError("Failed to save announcement. Please try again.")
+        const message = getAnnouncementSaveError(err)
+        setError(message)
+        if (
+          err?.response?.status === 413 ||
+          err?.code === "ECONNABORTED" ||
+          /image|upload|too large/i.test(message)
+        ) {
+          setImageError(message)
+          focusAnnouncementFormField(formFieldRefs, "images")
+        }
       } finally {
         setIsSaving(false)
       }
     }
 
     void submit()
-  }
-
-  const toggleActive = (item) => {
-    if (!item?.id) return
-
-    const toggle = async () => {
-      try {
-        setError("")
-        const response = await apiClient.patch(`/announcements/${item.id}/toggle`)
-        const updated = normalizeAnnouncement(response.data)
-        setAnnouncements((prev) =>
-          prev.map((a) => (a.id === updated.id ? updated : a)),
-        )
-      } catch (err) {
-        console.error("Failed to toggle announcement status:", err)
-        setError("Failed to toggle announcement status. Please try again.")
-      }
-    }
-
-    void toggle()
   }
 
   const filteredAnnouncements = useMemo(() => {
@@ -856,28 +969,6 @@ export default function AnnouncementPage() {
     [announcements],
   )
 
-  const activePagination = useMemo(() => paginateList(activeFiltered, activePage), [activeFiltered, activePage])
-  const inactivePagination = useMemo(() => paginateList(inactiveFiltered, inactivePage), [inactiveFiltered, inactivePage])
-
-  useEffect(() => {
-    setActivePage(1)
-    setInactivePage(1)
-  }, [searchTerm, typeFilter, dateRange])
-
-  useEffect(() => {
-    setActivePage((prev) => {
-      const next = Math.min(Math.max(1, prev), activePagination.pageCount)
-      return next === prev ? prev : next
-    })
-  }, [activePagination.pageCount, activeFiltered.length])
-
-  useEffect(() => {
-    setInactivePage((prev) => {
-      const next = Math.min(Math.max(1, prev), inactivePagination.pageCount)
-      return next === prev ? prev : next
-    })
-  }, [inactivePagination.pageCount, inactiveFiltered.length])
-
   const renderAnnouncementList = (items, { muted = false } = {}) => (
     <ul className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
       {items.map((item) => (
@@ -886,8 +977,8 @@ export default function AnnouncementPage() {
           item={item}
           muted={muted}
           onEdit={openEditAnnouncement}
-          onDelete={handleDeleteAnnouncement}
-          onToggleActive={toggleActive}
+          onDelete={openDeleteConfirm}
+          onToggleActive={openToggleActiveConfirm}
         />
       ))}
     </ul>
@@ -1094,15 +1185,7 @@ export default function AnnouncementPage() {
               variant="active"
             />
             {activeFiltered.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {renderAnnouncementList(activePagination.items)}
-                <AnnouncementSectionPagination
-                  page={activePagination.page}
-                  pageCount={activePagination.pageCount}
-                  total={activeFiltered.length}
-                  onPageChange={setActivePage}
-                />
-              </div>
+              renderAnnouncementList(activeFiltered)
             ) : (
               <AnnouncementSectionEmpty
                 variant="active"
@@ -1123,15 +1206,7 @@ export default function AnnouncementPage() {
               variant="inactive"
             />
             {inactiveFiltered.length > 0 ? (
-              <div className="flex flex-col gap-4">
-                {renderAnnouncementList(inactivePagination.items, { muted: true })}
-                <AnnouncementSectionPagination
-                  page={inactivePagination.page}
-                  pageCount={inactivePagination.pageCount}
-                  total={inactiveFiltered.length}
-                  onPageChange={setInactivePage}
-                />
-              </div>
+              renderAnnouncementList(inactiveFiltered, { muted: true })
             ) : (
               <AnnouncementSectionEmpty
                 variant="inactive"
@@ -1179,7 +1254,12 @@ export default function AnnouncementPage() {
           </DialogHeader>
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleCreateAnnouncement}>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
-            <div className="grid gap-2">
+            <div
+              ref={(node) => {
+                formFieldRefs.current.type = node
+              }}
+              className="grid gap-2"
+            >
               <label htmlFor="announcement-type" className="text-sm font-semibold text-slate-700">
                 Type
               </label>
@@ -1195,7 +1275,12 @@ export default function AnnouncementPage() {
                     }
                     setTypeError("")
                   }}
-                  className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20"
+                  aria-invalid={Boolean(typeError)}
+                  aria-describedby={typeError ? "announcement-type-error" : undefined}
+                  className={cn(
+                    "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20",
+                    typeError && formInputErrorClass,
+                  )}
                 >
                   {ANNOUNCEMENT_TYPE_FILTER_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1220,15 +1305,24 @@ export default function AnnouncementPage() {
                     }}
                     placeholder="Enter announcement type"
                     maxLength={80}
-                    className="h-8"
+                    aria-invalid={Boolean(typeError)}
+                    aria-describedby={typeError ? "announcement-type-error" : undefined}
+                    className={cn("h-8", typeError && formInputErrorClass)}
                   />
                 </div>
               ) : null}
-              {typeError ? <p className="text-xs text-red-600">{typeError}</p> : null}
+              <FormFieldError id="announcement-type-error" message={typeError} />
             </div>
 
-            <div className="grid gap-2">
-              <p className="text-sm font-semibold text-slate-700">Date duration</p>
+            <div
+              ref={(node) => {
+                formFieldRefs.current.duration = node
+              }}
+              className="grid gap-2"
+            >
+              <p className="text-sm font-semibold text-slate-700">
+                Date duration <span className="font-normal text-slate-500">(required)</span>
+              </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <label htmlFor="announcement-start-date" className="text-xs font-medium text-slate-600">
@@ -1245,9 +1339,12 @@ export default function AnnouncementPage() {
                       if (draftEndDate && draftEndDate < nextMinEnd) {
                         setDraftEndDate("")
                       }
+                      setStartDateError("")
                       setDurationError("")
                     }}
-                    className="h-8"
+                    aria-invalid={Boolean(startDateError)}
+                    aria-describedby={startDateError ? "announcement-start-date-error" : undefined}
+                    className={cn("h-8", startDateError && formInputErrorClass)}
                   />
                   <p className="text-[11px] leading-snug text-slate-500">
                     When this appears on the landing page.
@@ -1255,7 +1352,7 @@ export default function AnnouncementPage() {
                 </div>
                 <div className="grid gap-1.5">
                   <label htmlFor="announcement-end-date" className="text-xs font-medium text-slate-600">
-                    End
+                    End <span className="text-red-600">*</span>
                   </label>
                   <Input
                     id="announcement-end-date"
@@ -1266,27 +1363,42 @@ export default function AnnouncementPage() {
                       setDraftEndDate(event.target.value)
                       setDurationError("")
                     }}
-                    className="h-8"
+                    aria-invalid={Boolean(durationError)}
+                    aria-describedby={durationError ? "announcement-end-date-error" : undefined}
+                    className={cn("h-8", durationError && formInputErrorClass)}
                   />
                   <p className="text-[11px] leading-snug text-slate-500">
                     The announcement auto-inactivates after this date.
                   </p>
                 </div>
               </div>
-              {durationError ? <p className="text-xs text-red-600">{durationError}</p> : null}
+              <FormFieldError id="announcement-start-date-error" message={startDateError} />
+              <FormFieldError id="announcement-end-date-error" message={durationError} />
             </div>
 
-            <div className="grid gap-2">
+            <div
+              ref={(node) => {
+                formFieldRefs.current.title = node
+              }}
+              className="grid gap-2"
+            >
               <label htmlFor="announcement-title" className="text-sm font-semibold text-slate-700">
-                Title
+                Title <span className="font-normal text-red-600">*</span>
               </label>
               <Input
                 id="announcement-title"
                 type="text"
                 value={draftTitle}
-                onChange={(event) => setDraftTitle(event.target.value)}
+                onChange={(event) => {
+                  setDraftTitle(event.target.value)
+                  setTitleError("")
+                }}
                 placeholder="Enter announcement title"
+                aria-invalid={Boolean(titleError)}
+                aria-describedby={titleError ? "announcement-title-error" : undefined}
+                className={cn(titleError && formInputErrorClass)}
               />
+              <FormFieldError id="announcement-title-error" message={titleError} />
             </div>
 
             <div className="grid gap-2">
@@ -1306,13 +1418,21 @@ export default function AnnouncementPage() {
               />
             </div>
 
-            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/40 p-3 sm:p-4">
+            <div
+              ref={(node) => {
+                formFieldRefs.current.images = node
+              }}
+              className={cn(
+                "space-y-3 rounded-xl border bg-slate-50/40 p-3 sm:p-4",
+                imageError ? "border-red-300 bg-red-50/30" : "border-slate-200",
+              )}
+            >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <label htmlFor="announcement-images" className="text-sm font-semibold text-slate-700">
                   Pictures
                 </label>
                 <span className="text-xs text-slate-500">
-                  Optional · up to {MAX_ANNOUNCEMENT_IMAGES} · max 2 MB each
+                  Optional · up to {MAX_ANNOUNCEMENT_IMAGES} · max {MAX_ANNOUNCEMENT_IMAGE_MB} MB each
                 </span>
               </div>
 
@@ -1373,12 +1493,15 @@ export default function AnnouncementPage() {
                 accept={ANNOUNCEMENT_IMAGE_ACCEPT}
                 multiple
                 className="hidden"
+                disabled={isPreparingImages || isSaving}
                 onChange={handleImageFileChange}
               />
 
-              {imageError ? (
-                <p className="text-xs text-red-600">{imageError}</p>
+              {isPreparingImages ? (
+                <p className="text-xs font-medium text-[#081F5C]">Preparing pictures for upload…</p>
               ) : null}
+
+              <FormFieldError id="announcement-images-error" message={imageError} />
             </div>
             </div>
 
@@ -1392,15 +1515,89 @@ export default function AnnouncementPage() {
               </button>
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || isPreparingImages}
                 className="inline-flex h-11 items-center justify-center rounded-lg bg-[#081F5C] px-4 text-sm font-semibold text-white transition hover:bg-[#0b2f6a] disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSaving ? "Saving…" : editingId ? "Save changes" : "Create announcement"}
+                {isPreparingImages
+                  ? "Preparing pictures…"
+                  : isSaving
+                    ? "Uploading…"
+                    : editingId
+                      ? "Save changes"
+                      : "Create announcement"}
               </button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {confirmAction ? (
+        <AlertDialog
+          open={confirmOpen}
+          onOpenChange={(open) => {
+            setConfirmOpen(open)
+            if (!open && !isConfirming) setConfirmAction(null)
+          }}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {confirmAction.type === "delete"
+                  ? "Delete announcement?"
+                  : confirmAction.item?.active === false
+                    ? "Mark as active?"
+                    : "Mark as inactive?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmAction.type === "delete" ? (
+                  <>
+                    Are you sure you want to delete{" "}
+                    <span className="font-semibold text-slate-900">
+                      {confirmAction.item?.title || "this announcement"}
+                    </span>
+                    ? This action cannot be undone.
+                  </>
+                ) : confirmAction.item?.active === false ? (
+                  <>
+                    Are you sure you want to mark{" "}
+                    <span className="font-semibold text-slate-900">
+                      {confirmAction.item?.title || "this announcement"}
+                    </span>{" "}
+                    as active? It will be eligible to appear on the landing page within its date range.
+                  </>
+                ) : (
+                  <>
+                    Are you sure you want to mark{" "}
+                    <span className="font-semibold text-slate-900">
+                      {confirmAction.item?.title || "this announcement"}
+                    </span>{" "}
+                    as inactive? It will be hidden from the landing page.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isConfirming}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant={confirmAction.type === "delete" ? "destructive" : "default"}
+                onClick={(event) => {
+                  event.preventDefault()
+                  void handleConfirmAnnouncementAction()
+                }}
+                disabled={isConfirming}
+              >
+                {isConfirming
+                  ? "Please wait…"
+                  : confirmAction.type === "delete"
+                    ? "Delete"
+                    : confirmAction.item?.active === false
+                      ? "Mark active"
+                      : "Mark inactive"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
     </section>
   )
 }
