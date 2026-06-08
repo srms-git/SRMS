@@ -3,9 +3,12 @@ import { useNavigate, useSearchParams } from "react-router-dom"
 import {
   BookOpen,
   CalendarDays,
+  CheckCircle,
+  CheckSquare,
   ChevronDown,
   CircleCheck,
   CircleDashed,
+  CircleOff,
   Download,
   Eye,
   Fingerprint,
@@ -19,6 +22,7 @@ import {
   Receipt,
   Search,
   SlidersHorizontal,
+  TriangleAlert,
   User,
 } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
@@ -57,10 +61,14 @@ import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import {
   buildMonthlyClaimTrend,
   buildYearLevelDonut,
+  bulkUpdateGranteesActive,
   fetchGranteeById,
   fetchGranteesForBatch,
   GRANTEE_UPDATED_EVENT,
+  granteeInactiveRemarks,
+  granteeRecordStatusLabel,
   inferProgramFromRecord,
+  isGranteeRecordActive,
   mergeGranteeIntoRecords,
   recordMatchesProgram,
   updateGrantee,
@@ -706,14 +714,59 @@ function buildBatchEditChangeSummary(originalRow, draftRow, requirementDefs) {
   return changes
 }
 
+function GranteeInactiveStatusIndicator({ row, iconClassName = "size-3.5" }) {
+  if (isGranteeRecordActive(row)) return null
+
+  const remarks = granteeInactiveRemarks(row)
+  const label = remarks ? `Inactive: ${remarks}` : "Inactive record"
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex size-6 shrink-0 items-center justify-center self-center rounded-md text-amber-600 transition-colors hover:bg-amber-50 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
+          aria-label={label}
+        >
+          <TriangleAlert className={iconClassName} strokeWidth={2.25} aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="center"
+        sideOffset={8}
+        className="max-w-[280px] flex-col items-start gap-0 border border-amber-200/90 bg-white px-0 py-0 text-left text-slate-800 shadow-lg dark:border-amber-500/35 dark:bg-slate-900 dark:text-slate-100 [&>svg]:fill-white dark:[&>svg]:fill-slate-900"
+      >
+        <div className="flex w-full items-start gap-2.5 px-3 py-2.5">
+          <span
+            className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200"
+            aria-hidden
+          >
+            <TriangleAlert className="size-3.5" strokeWidth={2.25} />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-semibold leading-none text-amber-800 dark:text-amber-200">Inactive record</p>
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              {remarks || "No remarks on file."}
+            </p>
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function BatchRecordView({ row, formatStudentId }) {
   const overallClaimed = row.status === "Claimed"
+  const recordIsActive = isGranteeRecordActive(row)
+  const inactiveRemarks = granteeInactiveRemarks(row)
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const programInferred = inferProgramFromRecord(row)
   const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const detailItems = [
+    { label: "Record status", value: granteeRecordStatusLabel(row), icon: CheckCircle },
     { label: "Batch number", value: row.batchNo, icon: Layers },
     { label: "Student ID", value: row.studentId, icon: User },
     { label: "Sequence no.", value: row.seqNo, icon: Fingerprint },
@@ -729,6 +782,23 @@ function BatchRecordView({ row, formatStudentId }) {
 
   return (
     <div className="space-y-5">
+      {!recordIsActive ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-500/12 dark:text-amber-50"
+        >
+          <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/35">
+            <TriangleAlert className="size-4" strokeWidth={2.25} aria-hidden />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold leading-snug">This grantee record is inactive</p>
+            <p className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+              {inactiveRemarks || "No inactive remarks were recorded for this grantee."}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/85 bg-linear-to-br from-white via-slate-50/40 to-[#081F5C]/[0.07] p-4 shadow-sm ring-1 ring-slate-900/4 dark:border-white/10 dark:from-slate-950 dark:via-slate-900/50 dark:to-[#081F5C]/15 dark:ring-white/6">
         <div
           className="pointer-events-none absolute -right-16 -top-20 h-40 w-40 rounded-full bg-[#081F5C]/10 blur-3xl dark:bg-[#1447a6]/20"
@@ -768,6 +838,22 @@ function BatchRecordView({ row, formatStudentId }) {
                   )}
                   Overall: {row.status || "—"}
                 </Badge>
+                <Badge
+                  className={cn(
+                    "h-6 gap-1.5 rounded-full px-2.5 text-[11px] font-semibold",
+                    recordIsActive
+                      ? "border-sky-200/80 bg-sky-50 text-sky-900 hover:bg-sky-50 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-50"
+                      : "border-amber-200/80 bg-amber-50 text-amber-950 hover:bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
+                  )}
+                  variant="outline"
+                >
+                  {recordIsActive ? (
+                    <CheckCircle className="size-3.5 opacity-90" aria-hidden />
+                  ) : (
+                    <TriangleAlert className="size-3.5 opacity-90" aria-hidden />
+                  )}
+                  Record: {granteeRecordStatusLabel(row)}
+                </Badge>
                 <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-medium">
                   {row.enrolledProgram || "Program"}
                 </Badge>
@@ -779,6 +865,20 @@ function BatchRecordView({ row, formatStudentId }) {
           </div>
         </div>
       </div>
+
+      {!recordIsActive && inactiveRemarks ? (
+        <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="flex items-start gap-2.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800 dark:text-amber-200">
+                Inactive remarks
+              </p>
+              <p className="text-sm leading-relaxed text-amber-950 dark:text-amber-50">{inactiveRemarks}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Profile & grant details</p>
@@ -1173,8 +1273,15 @@ export default function BatchInfo() {
   const [trendRange, setTrendRange] = useState(TREND_RANGE.THIS_YEAR)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("__")
+  const [recordActiveFilter, setRecordActiveFilter] = useState("__")
   const [semestralFilter, setSemestralFilter] = useState("__")
   const [requirementsCoverageFilter, setRequirementsCoverageFilter] = useState("__")
+  const [selectionModeOpen, setSelectionModeOpen] = useState(false)
+  const [selectedRowKeys, setSelectedRowKeys] = useState(() => new Set())
+  const [statusUpdateConfirmOpen, setStatusUpdateConfirmOpen] = useState(false)
+  const [pendingStatusUpdate, setPendingStatusUpdate] = useState(null)
+  const [pendingInactiveRemarks, setPendingInactiveRemarks] = useState("")
+  const [isUpdatingRecordStatus, setIsUpdatingRecordStatus] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [pendingExportFormat, setPendingExportFormat] = useState("")
   const [page, setPage] = useState(1)
@@ -1227,8 +1334,10 @@ export default function BatchInfo() {
   useEffect(() => {
     setSearchTerm("")
     setStatusFilter("__")
+    setRecordActiveFilter("__")
     setSemestralFilter("__")
     setRequirementsCoverageFilter("__")
+    setSelectedRowKeys(new Set())
     setPage(1)
     setActiveRowKey(null)
     setEditDraft(null)
@@ -1271,6 +1380,8 @@ export default function BatchInfo() {
     }
     return displayedRows.filter((row) => {
       if (statusFilter !== "__" && statusFilter !== "" && String(row.status ?? "") !== statusFilter) return false
+      if (recordActiveFilter === "active" && !isGranteeRecordActive(row)) return false
+      if (recordActiveFilter === "inactive" && isGranteeRecordActive(row)) return false
       if (!matchesSemestralFilter(row)) return false
       if (requirementsCoverageFilter !== "__" && requirementsCoverageFilter !== "") {
         const levels = semesterClaimsForRow(row, YEAR_LEVELS).map((c) => c.yearLevel)
@@ -1292,14 +1403,14 @@ export default function BatchInfo() {
         String(row.yearLevel ?? "").toLowerCase().includes(q)
       )
     })
-  }, [displayedRows, searchTerm, statusFilter, semestralFilter, requirementsCoverageFilter])
+  }, [displayedRows, searchTerm, statusFilter, recordActiveFilter, semestralFilter, requirementsCoverageFilter])
 
   const PAGE_SIZE = 100
   const pageCount = useMemo(() => Math.max(1, Math.ceil(tableRows.length / PAGE_SIZE)), [tableRows.length])
 
   useEffect(() => {
     setPage(1)
-  }, [searchTerm, statusFilter, semestralFilter, requirementsCoverageFilter, displayedRows])
+  }, [searchTerm, statusFilter, recordActiveFilter, semestralFilter, requirementsCoverageFilter, displayedRows])
 
   useEffect(() => {
     setPage((prev) => Math.min(Math.max(1, prev), pageCount))
@@ -1408,6 +1519,106 @@ export default function BatchInfo() {
     )
   }
 
+  const pagedRowKeys = useMemo(() => pagedRows.map((row) => rowKey(row)), [pagedRows])
+  const allPagedRowsSelected = pagedRowKeys.length > 0 && pagedRowKeys.every((key) => selectedRowKeys.has(key))
+  const selectedCount = selectedRowKeys.size
+  const tableColSpan = selectionModeOpen ? 9 : 8
+
+  const closeSelectionMode = useCallback(() => {
+    setSelectionModeOpen(false)
+    setSelectedRowKeys(new Set())
+  }, [])
+
+  const toggleSelectionMode = useCallback(() => {
+    setSelectionModeOpen((open) => {
+      if (open) {
+        setSelectedRowKeys(new Set())
+        return false
+      }
+      return true
+    })
+  }, [])
+
+  const toggleRowSelection = useCallback((key, checked) => {
+    setSelectedRowKeys((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }, [])
+
+  const toggleSelectAllPagedRows = useCallback(
+    (checked) => {
+      setSelectedRowKeys((prev) => {
+        const next = new Set(prev)
+        for (const key of pagedRowKeys) {
+          if (checked) next.add(key)
+          else next.delete(key)
+        }
+        return next
+      })
+    },
+    [pagedRowKeys],
+  )
+
+  const requestRecordStatusUpdate = useCallback((rows, active) => {
+    const targets = (rows ?? []).filter((row) => {
+      if (!row?.id) return false
+      return active ? !isGranteeRecordActive(row) : isGranteeRecordActive(row)
+    })
+    if (targets.length === 0) return
+    setPendingInactiveRemarks("")
+    setPendingStatusUpdate({ rows: targets, active })
+    setStatusUpdateConfirmOpen(true)
+  }, [])
+
+  const applyRecordStatusUpdate = useCallback(async () => {
+    if (!pendingStatusUpdate?.rows?.length) return
+    const ids = pendingStatusUpdate.rows.map((row) => row.id).filter(Boolean)
+    if (ids.length === 0) return
+    const remarks = String(pendingInactiveRemarks ?? "").trim()
+    if (!pendingStatusUpdate.active && !remarks) return
+
+    try {
+      setIsUpdatingRecordStatus(true)
+      const { grantees } = await bulkUpdateGranteesActive(ids, pendingStatusUpdate.active, remarks)
+      setRecords((prev) => {
+        const byId = new Map(grantees.map((row) => [row.id, row]))
+        return prev.map((row) => (byId.has(row.id) ? byId.get(row.id) : row))
+      })
+      setSelectedRowKeys((prev) => {
+        const next = new Set(prev)
+        for (const row of grantees) next.delete(rowKey(row))
+        return next
+      })
+      setStatusUpdateConfirmOpen(false)
+      setPendingStatusUpdate(null)
+      setPendingInactiveRemarks("")
+    } catch (err) {
+      console.error("Failed to update grantee record status:", err)
+      window.alert(err?.message ?? "Failed to update record status.")
+    } finally {
+      setIsUpdatingRecordStatus(false)
+    }
+  }, [pendingInactiveRemarks, pendingStatusUpdate])
+
+  const selectedRows = useMemo(
+    () => tableRows.filter((row) => selectedRowKeys.has(rowKey(row))),
+    [tableRows, selectedRowKeys],
+  )
+  const selectedActiveCount = useMemo(
+    () => selectedRows.filter((row) => isGranteeRecordActive(row)).length,
+    [selectedRows],
+  )
+  const selectedInactiveCount = selectedRows.length - selectedActiveCount
+  const canBulkSetActive = selectedInactiveCount > 0
+  const canBulkSetInactive = selectedActiveCount > 0
+  const pendingStatusRows = pendingStatusUpdate?.rows ?? []
+  const pendingStatusCount = pendingStatusRows.length
+  const isPendingStatusActive = Boolean(pendingStatusUpdate?.active)
+  const inactiveRemarksReady = String(pendingInactiveRemarks ?? "").trim().length > 0
+
   const requirementDefsForBatch = getRequirementsForProgramCode(program)
 
   const syncGranteeFromServer = useCallback(async (row) => {
@@ -1507,6 +1718,7 @@ export default function BatchInfo() {
 
   const openRecordEdit = (row) => {
     if (program && !recordMatchesProgram(row, program)) return
+    if (!isGranteeRecordActive(row)) return
     setRecordDialogMode("edit")
     setActiveRowKey(rowKey(row))
     setEditDraft(buildEditDraftFromRow(row))
@@ -1881,7 +2093,22 @@ export default function BatchInfo() {
             )}
           </div>
 
-          <div className="mb-2 flex justify-end">
+          <div className="mb-2 flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={selectionModeOpen ? "default" : "outline"}
+              className={cn(
+                "h-9 gap-2",
+                selectionModeOpen &&
+                  "border-transparent bg-linear-to-r from-[#081F5C] to-[#1447a6] text-white shadow-sm hover:opacity-95",
+              )}
+              onClick={toggleSelectionMode}
+              disabled={tableRows.length === 0}
+            >
+              <CheckSquare className="size-4" aria-hidden />
+              {selectionModeOpen ? "Done selecting" : "Select records"}
+            </Button>
             <div className="relative">
               <button
                 type="button"
@@ -1948,7 +2175,7 @@ export default function BatchInfo() {
           ) : null}
 
           <div className="mb-3 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
-            <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-3 md:col-span-7 lg:col-span-8">
+            <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 md:col-span-7 lg:col-span-8">
               <div className="relative min-w-0 w-full">
                 <select
                   id="batch-status-filter"
@@ -1957,11 +2184,28 @@ export default function BatchInfo() {
                   className={`${selectShellClass} ${statusFilter === "__" ? "text-neutral-500" : "text-neutral-900"}`}
                 >
                   <option value="__" disabled hidden>
-                    Status
+                    Claim status
                   </option>
-                  <option value="">All</option>
+                  <option value="">All claims</option>
                   <option value="Claimed">Claimed</option>
                   <option value="Unclaimed">Unclaimed</option>
+                </select>
+                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+              </div>
+
+              <div className="relative min-w-0 w-full">
+                <select
+                  id="batch-record-status-filter"
+                  value={recordActiveFilter}
+                  onChange={(e) => setRecordActiveFilter(e.target.value)}
+                  className={`${selectShellClass} ${recordActiveFilter === "__" ? "text-neutral-500" : "text-neutral-900"}`}
+                >
+                  <option value="__" disabled hidden>
+                    Record status
+                  </option>
+                  <option value="">All records</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
                 </select>
                 <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
               </div>
@@ -2025,11 +2269,90 @@ export default function BatchInfo() {
             </div>
           </div>
 
+          {selectionModeOpen ? (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#081F5C]/20 bg-white px-4 py-3 shadow-sm dark:border-[#081F5C]/30 dark:bg-slate-900/70">
+              <div className="flex min-w-0 flex-wrap items-center gap-3">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#081F5C]/10 text-[#081F5C] dark:bg-[#081F5C]/25 dark:text-sky-200">
+                  <CheckSquare className="size-4" aria-hidden />
+                </div>
+                {selectedCount > 0 ? (
+                  <>
+                    <p className="text-sm font-medium text-slate-900 dark:text-white">
+                      <span className="font-semibold tabular-nums">{selectedCount}</span> record
+                      {selectedCount === 1 ? "" : "s"} selected
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {selectedActiveCount > 0 ? (
+                        <Badge variant="secondary" className="h-6 gap-1 px-2 text-[11px] font-medium">
+                          <CheckCircle className="size-3" aria-hidden />
+                          {selectedActiveCount} active
+                        </Badge>
+                      ) : null}
+                      {selectedInactiveCount > 0 ? (
+                        <Badge
+                          variant="outline"
+                          className="h-6 gap-1 border-amber-300/80 bg-amber-50/80 px-2 text-[11px] font-medium text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/10 dark:text-amber-100"
+                        >
+                          <CircleOff className="size-3" aria-hidden />
+                          {selectedInactiveCount} inactive
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-slate-300">Tick rows below to update record status in bulk.</p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedCount > 0 ? (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5"
+                      disabled={isUpdatingRecordStatus || !canBulkSetActive}
+                      title={!canBulkSetActive ? "All selected records are already active" : undefined}
+                      onClick={() => requestRecordStatusUpdate(selectedRows, true)}
+                    >
+                      <CheckCircle className="size-3.5" aria-hidden />
+                      Set active
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5"
+                      disabled={isUpdatingRecordStatus || !canBulkSetInactive}
+                      title={!canBulkSetInactive ? "All selected records are already inactive" : undefined}
+                      onClick={() => requestRecordStatusUpdate(selectedRows, false)}
+                    >
+                      <CircleOff className="size-3.5" aria-hidden />
+                      Set inactive
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setSelectedRowKeys(new Set())}>
+                      Clear
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-900/40 dark:ring-white/6">
             <div className="max-h-[min(420px,55vh)] overflow-auto [scrollbar-gutter:stable]">
-              <table className="w-full min-w-[980px] text-xs sm:text-sm [&_th]:px-2 [&_th]:py-2.5 [&_td]:px-2 [&_td]:py-2.5 sm:[&_th]:px-3 sm:[&_td]:px-3">
+              <table className="w-full min-w-[1020px] text-xs sm:text-sm [&_th]:px-2 [&_th]:py-2.5 [&_td]:px-2 [&_td]:py-2.5 sm:[&_th]:px-3 sm:[&_td]:px-3">
                 <thead className="sticky top-0 z-1 bg-slate-100/95 text-slate-700 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-200">
                   <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:text-left [&>th]:text-xs [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide dark:[&>th]:border-white/10">
+                    {selectionModeOpen ? (
+                      <th className="w-[44px] text-center">
+                        <Checkbox
+                          checked={allPagedRowsSelected}
+                          onCheckedChange={(value) => toggleSelectAllPagedRows(value === true)}
+                          aria-label="Select all records on this page"
+                        />
+                      </th>
+                    ) : null}
                     <th className="w-[90px]">Batch no.</th>
                     <th className="w-[80px]">Seq no</th>
                     <th className="w-[110px]">Student ID</th>
@@ -2054,16 +2377,36 @@ export default function BatchInfo() {
                       />
                     ))}
                   {!isLoading &&
-                    pagedRows.map((row, index) => (
+                    pagedRows.map((row, index) => {
+                      const key = rowKey(row)
+                      const isSelected = selectedRowKeys.has(key)
+                      const recordIsActive = isGranteeRecordActive(row)
+                      return (
                     <tr
                       key={row.id || String(row.seqNo ?? row.studentId ?? row.awardNumber ?? row.fullName)}
                       className={cn(
                         "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5",
+                        !recordIsActive && "bg-amber-50/35 dark:bg-amber-500/8",
+                        isSelected && "bg-[#081F5C]/[0.05] dark:bg-[#081F5C]/12",
                         revealItemClass(contentRevealed, index, 35),
                       )}
                       style={revealItemStyle(contentRevealed, index, 35)}
                     >
-                      <td className="w-[90px] whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">{row.batchNo || "—"}</td>
+                      {selectionModeOpen ? (
+                        <td className="text-center">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(value) => toggleRowSelection(key, value === true)}
+                            aria-label={`Select ${row.fullName || "record"}`}
+                          />
+                        </td>
+                      ) : null}
+                      <td className="w-[90px] whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="min-w-0 truncate">{row.batchNo || "—"}</span>
+                          <GranteeInactiveStatusIndicator row={row} iconClassName="size-3.5" />
+                        </div>
+                      </td>
                       <td className="w-[80px] whitespace-nowrap font-medium text-pink-600 dark:text-pink-400">{row.seqNo || "—"}</td>
                       <td className="w-[110px] whitespace-nowrap text-blue-600 dark:text-sky-300">
                         {formatStudentId(row.studentId, "listCard")}
@@ -2085,24 +2428,41 @@ export default function BatchInfo() {
                               <MoreHorizontal className="size-4" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="min-w-36">
+                          <DropdownMenuContent align="end" className="min-w-40">
                             <DropdownMenuItem className="gap-2" onSelect={() => openRecordView(row)}>
                               <Eye className="size-4 opacity-70" />
                               View
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="gap-2" onSelect={() => openRecordEdit(row)}>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              disabled={!recordIsActive}
+                              title={!recordIsActive ? "Inactive records cannot be edited" : undefined}
+                              onSelect={() => openRecordEdit(row)}
+                            >
                               <Pencil className="size-4 opacity-70" />
                               Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              disabled={!row.id}
+                              onSelect={() => requestRecordStatusUpdate([row], !recordIsActive)}
+                            >
+                              {recordIsActive ? (
+                                <CircleOff className="size-4 opacity-70" />
+                              ) : (
+                                <CheckCircle className="size-4 opacity-70" />
+                              )}
+                              {recordIsActive ? "Set inactive" : "Set active"}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {!isLoading && tableRows.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={8}
+                        colSpan={tableColSpan}
                         className={cn("px-3 py-12 text-center", revealItemClass(contentRevealed, 0))}
                         style={revealItemStyle(contentRevealed, 0)}
                       >
@@ -2215,7 +2575,12 @@ export default function BatchInfo() {
                   <Button type="button" variant="outline" onClick={() => handleRecordDialogOpenChange(false)}>
                     Close
                   </Button>
-                  <Button type="button" onClick={() => openRecordEdit(activeRow)}>
+                  <Button
+                    type="button"
+                    disabled={!isGranteeRecordActive(activeRow)}
+                    title={!isGranteeRecordActive(activeRow) ? "Inactive records cannot be edited" : undefined}
+                    onClick={() => openRecordEdit(activeRow)}
+                  >
                     Edit
                   </Button>
                 </DialogFooter>
@@ -2244,6 +2609,130 @@ export default function BatchInfo() {
                 <AlertDialogCancel>Cancel</AlertDialogCancel>
                 <AlertDialogAction onClick={saveRecordEdit} disabled={isSaving}>
                   {isSaving ? "Saving…" : "Yes, save changes"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <AlertDialog
+            open={statusUpdateConfirmOpen}
+            onOpenChange={(open) => {
+              setStatusUpdateConfirmOpen(open)
+              if (!open) {
+                setPendingStatusUpdate(null)
+                setPendingInactiveRemarks("")
+              }
+            }}
+          >
+            <AlertDialogContent
+              size="sm"
+              className="w-[min(94vw,36rem)] max-w-[36rem]! min-w-0 gap-5 overflow-x-hidden"
+            >
+              <AlertDialogHeader className="place-items-start gap-3 text-left sm:place-items-start sm:text-left">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span
+                    className={cn(
+                      "mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full ring-1",
+                      isPendingStatusActive
+                        ? "bg-emerald-50 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-200 dark:ring-emerald-500/30"
+                        : "bg-amber-50 text-amber-700 ring-amber-200/80 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/30",
+                    )}
+                    aria-hidden
+                  >
+                    {isPendingStatusActive ? <CheckCircle className="size-5" /> : <CircleOff className="size-5" />}
+                  </span>
+                  <div className="min-w-0 space-y-1">
+                    <AlertDialogTitle>
+                      {isPendingStatusActive
+                        ? `Activate ${pendingStatusCount} record${pendingStatusCount === 1 ? "" : "s"}?`
+                        : `Deactivate ${pendingStatusCount} record${pendingStatusCount === 1 ? "" : "s"}?`}
+                    </AlertDialogTitle>
+                    <AlertDialogDescription className="text-left">
+                      {isPendingStatusActive
+                        ? "These grantees will be active again and visible in batch operations."
+                        : "Please confirm and provide a short reason before continuing."}
+                    </AlertDialogDescription>
+                  </div>
+                </div>
+              </AlertDialogHeader>
+
+              {!isPendingStatusActive ? (
+                <div className="flex min-w-0 items-start gap-2.5 rounded-lg border border-amber-200/80 bg-amber-50/70 px-3 py-2.5 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-50">
+                  <Info className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-200" aria-hidden />
+                  <p className="min-w-0 leading-snug">Inactive records are hidden from the public landing page.</p>
+                </div>
+              ) : null}
+
+              {pendingStatusCount === 1 ? (
+                <div className="min-w-0 rounded-lg border border-slate-200/80 bg-slate-50/70 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
+                  <p className="truncate text-sm font-medium text-slate-900 dark:text-white">
+                    {pendingStatusRows[0]?.fullName || "Unknown grantee"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {formatStudentId(pendingStatusRows[0]?.studentId, "listCard") || "—"}
+                    {pendingStatusRows[0]?.seqNo ? ` · Seq ${pendingStatusRows[0].seqNo}` : ""}
+                  </p>
+                </div>
+              ) : pendingStatusCount > 1 ? (
+                <details className="group min-w-0 overflow-hidden rounded-lg border border-slate-200/80 dark:border-white/10">
+                  <summary className="flex min-w-0 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-slate-900 dark:text-white [&::-webkit-details-marker]:hidden">
+                    <span className="min-w-0 truncate">
+                      {pendingStatusCount} grantee{pendingStatusCount === 1 ? "" : "s"} selected
+                    </span>
+                    <ChevronDown
+                      className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+                      aria-hidden
+                    />
+                  </summary>
+                  <ul className="max-h-40 min-w-0 space-y-0 overflow-y-auto overflow-x-hidden border-t border-slate-200/80 px-3 py-1 dark:border-white/10 [scrollbar-gutter:stable]">
+                    {pendingStatusRows.map((row, idx) => (
+                      <li
+                        key={row.id || `${idx}-${row.seqNo}`}
+                        className="min-w-0 border-b border-slate-200/60 py-2 last:border-b-0 dark:border-white/8"
+                      >
+                        <p className="truncate text-xs font-medium text-foreground">{row.fullName || "Unknown"}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                          {formatStudentId(row.studentId, "listCard") || "—"}
+                          {row.seqNo ? ` · Seq ${row.seqNo}` : ""}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+
+              {!isPendingStatusActive ? (
+                <div className="min-w-0 space-y-2">
+                  <label htmlFor="inactive-remarks" className="text-sm font-medium text-foreground">
+                    Reason for deactivation <span className="text-destructive">*</span>
+                  </label>
+                  <textarea
+                    id="inactive-remarks"
+                    value={pendingInactiveRemarks}
+                    onChange={(e) => setPendingInactiveRemarks(e.target.value)}
+                    rows={3}
+                    placeholder="e.g. Transferred program, duplicate entry, no longer eligible"
+                    className="w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+                  />
+                  <p className="text-xs text-muted-foreground">Staff can view this on the inactive indicator in the table.</p>
+                </div>
+              ) : null}
+
+              <AlertDialogFooter className="gap-2 sm:gap-2">
+                <AlertDialogCancel disabled={isUpdatingRecordStatus}>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={applyRecordStatusUpdate}
+                  disabled={isUpdatingRecordStatus || (!isPendingStatusActive && !inactiveRemarksReady)}
+                  className={cn(
+                    !isPendingStatusActive &&
+                      "bg-amber-600 text-white hover:bg-amber-700 focus-visible:ring-amber-500/30 dark:bg-amber-600 dark:hover:bg-amber-500",
+                  )}
+                >
+                  {isUpdatingRecordStatus
+                    ? "Updating…"
+                    : isPendingStatusActive
+                      ? "Mark active"
+                      : "Mark inactive"}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

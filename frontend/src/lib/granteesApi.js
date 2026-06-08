@@ -35,6 +35,22 @@ export function recordMatchesProgram(row, targetProgram) {
   return false
 }
 
+export function isGranteeRecordActive(row) {
+  return row?.active !== false
+}
+
+export function granteeRecordStatusLabel(row) {
+  return isGranteeRecordActive(row) ? "Active" : "Inactive"
+}
+
+export function granteeInactiveRemarks(row) {
+  return String(row?.inactiveRemarks ?? "").trim()
+}
+
+export function filterActiveGrantees(rows) {
+  return (rows ?? []).filter((row) => isGranteeRecordActive(row))
+}
+
 export function filterGranteesByProgram(rows, targetProgram) {
   const target = String(targetProgram ?? "").trim().toUpperCase()
   if (!target) return rows ?? []
@@ -127,6 +143,8 @@ export function mapGranteeFromApi(doc) {
     fullName: String(doc.fullName ?? "").trim() || "Unknown",
     batchNo: String(doc.batchNo ?? "").trim(),
     status: String(doc.status ?? "Unclaimed").trim() || "Unclaimed",
+    active: doc.active !== false,
+    inactiveRemarks: String(doc.inactiveRemarks ?? "").trim(),
     enrolledProgram: String(doc.enrolledProgram ?? "").trim(),
     yearLevel: String(doc.yearLevel ?? "").trim(),
     email: String(doc.email ?? "").trim(),
@@ -159,6 +177,8 @@ export function mapGranteeToApi(row) {
     enrolledProgram: String(row?.enrolledProgram ?? "").trim(),
     yearLevel: String(row?.yearLevel ?? "").trim(),
     status: String(row?.status ?? "Unclaimed").trim() || "Unclaimed",
+    active: row?.active !== false,
+    inactiveRemarks: String(row?.inactiveRemarks ?? "").trim(),
     email: String(row?.email ?? "").trim(),
     phoneNumber: String(row?.phoneNumber ?? "").trim(),
     bankAccount: String(row?.bankAccount ?? "").trim(),
@@ -265,7 +285,7 @@ export function mergeGranteeIntoRecords(records, grantee) {
   return list.map((row) => (row.id === grantee.id ? grantee : row))
 }
 
-export async function fetchGranteesForBatch({ program, batchNo, academicYear } = {}) {
+export async function fetchGranteesForBatch({ program, batchNo, academicYear, activeOnly = false } = {}) {
   const params = new URLSearchParams()
   const prog = String(program ?? "").trim().toUpperCase()
   if (prog) params.set("program", prog)
@@ -273,6 +293,7 @@ export async function fetchGranteesForBatch({ program, batchNo, academicYear } =
   if (batch) params.set("batchNo", batch)
   const year = String(academicYear ?? "").trim()
   if (year) params.set("academicYear", year)
+  if (activeOnly) params.set("activeOnly", "true")
 
   const qs = params.toString()
   const url = `${API_BASE}/grantees${qs ? `?${qs}` : ""}`
@@ -512,6 +533,48 @@ export const GRANTEE_UPDATED_EVENT = "srms:grantee-updated"
 function notifyGranteeUpdated(grantee) {
   if (typeof window === "undefined" || !grantee?.id) return
   window.dispatchEvent(new CustomEvent(GRANTEE_UPDATED_EVENT, { detail: grantee }))
+}
+
+export async function bulkUpdateGranteesActive(ids, active, remarks = "") {
+  const normalizedIds = [...new Set((ids ?? []).map((id) => String(id ?? "").trim()).filter(Boolean))]
+  if (normalizedIds.length === 0) {
+    throw new Error("Cannot update grantee status: no valid record ids.")
+  }
+  if (typeof active !== "boolean") {
+    throw new Error("Cannot update grantee status: active must be true or false.")
+  }
+
+  const normalizedRemarks = String(remarks ?? "").trim()
+  if (!active && !normalizedRemarks) {
+    throw new Error("Remarks are required when marking grantees inactive.")
+  }
+
+  const response = await fetch(`${API_BASE}/grantees/bulk-active`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ids: normalizedIds,
+      active,
+      remarks: active ? "" : normalizedRemarks,
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    let message = data.message || "Failed to update grantee record status."
+    if (response.status === 404 && !data.message) {
+      message = "Grantee status update is unavailable. Restart the backend server and try again."
+    }
+    throw new Error(message)
+  }
+
+  const updated = Array.isArray(data.grantees) ? data.grantees.map(mapGranteeFromApi).filter(Boolean) : []
+  for (const grantee of updated) {
+    notifyGranteeUpdated(grantee)
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("srms-landing-batches-changed"))
+  }
+  return { count: data.count ?? updated.length, grantees: updated }
 }
 
 export async function updateGrantee(id, row) {

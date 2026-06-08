@@ -34,6 +34,7 @@ function mapBatchRow(row, program, batchNo, academicYear) {
         enrolledProgram: String(row?.enrolledProgram ?? '').trim(),
         yearLevel,
         status: 'Unclaimed',
+        active: true,
         semesterClaims: buildDefaultSemesterClaims(yearLevel),
     };
 }
@@ -268,10 +269,69 @@ function buildGranteeListQuery(req) {
         parts.push({ academicYear });
     }
 
+    if (String(req.query.activeOnly ?? '').trim().toLowerCase() === 'true') {
+        parts.push({ active: { $ne: false } });
+    }
+
     if (parts.length === 0) return {};
     if (parts.length === 1) return parts[0];
     return { $and: parts };
 }
+
+exports.bulkUpdateGranteeActive = async (req, res) => {
+    try {
+        const { ids, active } = req.body;
+
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ message: 'ids must be a non-empty array.' });
+        }
+
+        if (typeof active !== 'boolean') {
+            return res.status(400).json({ message: 'active must be a boolean.' });
+        }
+
+        const normalizedIds = [...new Set(ids.map((id) => String(id ?? '').trim()).filter(Boolean))];
+        if (normalizedIds.length === 0) {
+            return res.status(400).json({ message: 'ids must contain at least one valid grantee id.' });
+        }
+
+        const remarks = String(req.body?.remarks ?? req.body?.inactiveRemarks ?? '').trim();
+        if (!active && !remarks) {
+            return res.status(400).json({ message: 'Remarks are required when marking grantees inactive.' });
+        }
+
+        const updateSet = { active };
+        updateSet.inactiveRemarks = active ? '' : remarks;
+
+        const result = await Grantee.updateMany({ _id: { $in: normalizedIds } }, { $set: updateSet });
+        const updatedGrantees = await Grantee.find({ _id: { $in: normalizedIds } }).sort({ seqNo: 1, createdAt: -1 });
+
+        logActivity({
+            userId: req.user?.id || req.userId || null,
+            action: active ? 'GRANTEE_RECORDS_ACTIVATED' : 'GRANTEE_RECORDS_DEACTIVATED',
+            entityType: 'grantees',
+            entityId: normalizedIds.join(','),
+            oldValues: null,
+            newValues: {
+                active,
+                inactiveRemarks: active ? '' : remarks,
+                totalRecordsAffected: result.modifiedCount,
+            },
+            ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+        });
+
+        return res.status(200).json({
+            message: active
+                ? `${result.modifiedCount} grantee record(s) marked active.`
+                : `${result.modifiedCount} grantee record(s) marked inactive.`,
+            count: result.modifiedCount,
+            grantees: updatedGrantees,
+        });
+    } catch (error) {
+        console.error('bulkUpdateGranteeActive error:', error);
+        return res.status(500).json({ message: error.message || 'Failed to update grantee record status.' });
+    }
+};
 
 exports.getAllGrantees = async (req, res) => {
     try {

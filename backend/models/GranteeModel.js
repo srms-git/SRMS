@@ -47,6 +47,15 @@ const GranteeSchema = new mongoose.Schema({
         default: 'Unclaimed',
         trim: true,
     },
+    active: {
+        type: Boolean,
+        default: true,
+    },
+    inactiveRemarks: {
+        type: String,
+        trim: true,
+        default: '',
+    },
     email: {
         type: String,
         trim: true,

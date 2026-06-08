@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { ChevronDown, ChevronRight, Globe, LayoutList, ListChecks, Megaphone } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
@@ -1742,8 +1742,9 @@ export default function LandingPage() {
 
   const publicLandingBatches = useMemo(
     () =>
-      publishedLandingBatches.filter((batch) =>
-        isActiveProgramCode(batch.program, programs),
+      publishedLandingBatches.filter(
+        (batch) =>
+          isActiveProgramCode(batch.program, programs) && (Number(batch.grantees) || 0) > 0,
       ),
     [programs, publishedLandingBatches],
   )

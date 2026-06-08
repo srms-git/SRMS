@@ -8,6 +8,10 @@ router.post('/batch-save', granteeController.batchSaveGrantees);
 // BATCH OPERATIONS - PATCH: Update batch number, program, and academic year for all grantees in a batch
 router.patch('/batch-update', granteeController.batchUpdateGrantees);
 
+// BATCH OPERATIONS - POST/PATCH: Set active/inactive status for one or more grantees
+router.post('/bulk-active', granteeController.bulkUpdateGranteeActive);
+router.patch('/bulk-active', granteeController.bulkUpdateGranteeActive);
+
 // CREATE - POST: Add a new student record manually
 router.post('/', granteeController.createGrantee);
 

@@ -39,6 +39,7 @@ async function countGranteesForBatch({ batchNo, program, academicYear }) {
         batchNo,
         program,
         academicYear,
+        active: { $ne: false },
     });
 }
 
@@ -94,6 +95,10 @@ exports.listLandingBatches = async (req, res) => {
                 return serializeLandingBatch({ ...row, granteeCount });
             }),
         );
+
+        if (req.query.published === 'true') {
+            return res.status(200).json(payload.filter((row) => row.granteeCount > 0));
+        }
 
         return res.status(200).json(payload);
     } catch (error) {

@@ -19,6 +19,7 @@ import {
 import { loadMergedBeneficiaryRecords, saveBeneficiaryRecords } from "@/lib/beneficiariesStore"
 import {
   fetchGranteesForBatch,
+  filterActiveGrantees,
   inferProgramFromRecord,
   recordMatchesProgram,
 } from "@/lib/granteesApi"
@@ -518,7 +519,7 @@ export default function LandingPageBatch() {
 
     const run = async () => {
       try {
-        const rows = await fetchGranteesForBatch({ program, batchNo, academicYear })
+        const rows = await fetchGranteesForBatch({ program, batchNo, academicYear, activeOnly: true })
         if (cancelled) return
         setRecords(rows)
         saveBeneficiaryRecords(rows)
@@ -540,7 +541,7 @@ export default function LandingPageBatch() {
   }, [batchNo, program, academicYear])
 
   const filteredStored = useMemo(() => {
-    return records.filter((r) => {
+    return filterActiveGrantees(records).filter((r) => {
       if (batchNo && String(r?.batchNo ?? "").trim() !== batchNo) return false
       if (program && !recordMatchesProgram(r, program)) return false
       if (academicYear && String(r?.academicYear ?? "").trim() !== academicYear) return false

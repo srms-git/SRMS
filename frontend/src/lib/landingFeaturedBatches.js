@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 
 import apiClient from "@/lib/apiClient"
-import { buildBatchesFromGrantees } from "@/lib/granteesApi"
+import { buildBatchesFromGrantees, isGranteeRecordActive } from "@/lib/granteesApi"
 
 export const LANDING_BATCH_VISIBILITY_STORAGE_KEY = "srmsLandingBatchVisibility"
 export const LANDING_BATCH_VISIBILITY_CHANGED_EVENT = "srms-landing-batch-visibility-changed"
@@ -282,6 +282,7 @@ export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandi
   const seen = new Set()
 
   for (const item of grantees ?? []) {
+    if (!isGranteeRecordActive(item)) continue
     const batchNo = String(item.batchNo ?? "").trim()
     const program = String(item.program ?? "").trim().toUpperCase()
     const schoolYear = String(item.academicYear ?? "").trim()
@@ -304,6 +305,7 @@ export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandi
       granteeCounts.get(`${batch.batchNo}|${program}|${schoolYear}`)
       ?? granteeCounts.get(`${batch.batchNo}|${program}`)
       ?? 0
+    if (granteesCount <= 0) continue
     cards.push({
       batchNo: batch.batchNo,
       schoolYear: batch.schoolYear,

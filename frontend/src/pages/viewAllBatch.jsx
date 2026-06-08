@@ -169,8 +169,9 @@ export default function ViewAllBatch() {
 
   const landingBatches = useMemo(
     () =>
-      publishedLandingBatches.filter((batch) =>
-        isActiveProgramCode(batch.program, programs),
+      publishedLandingBatches.filter(
+        (batch) =>
+          isActiveProgramCode(batch.program, programs) && (Number(batch.grantees) || 0) > 0,
       ),
     [programs, publishedLandingBatches],
   )
