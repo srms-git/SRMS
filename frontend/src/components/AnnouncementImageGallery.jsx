@@ -5,7 +5,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 export const ANNOUNCEMENT_LIGHTBOX_VIEW_CLASS =
-  "flex h-[min(78vh,680px)] w-[min(92vw,720px)] items-center justify-center overflow-hidden rounded-lg bg-slate-100/90"
+  "flex h-[min(calc(100dvh-11rem),calc(100vw-2.5rem),680px)] w-full max-w-full min-w-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100/90 sm:h-[min(calc(100dvh-10rem),680px)]"
 
 function AnnouncementLightboxImage({ src, alt = "" }) {
   return (
@@ -186,13 +186,13 @@ export function AnnouncementImageGallery({
       <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
         <DialogContent
           showCloseButton={false}
-          className="gap-3 border border-slate-200 bg-white p-4 shadow-xl sm:max-w-[760px]"
+          className="w-full max-w-[min(calc(100vw-2rem),760px)] gap-2 overflow-x-hidden border border-slate-200 bg-white p-3 shadow-xl sm:gap-3 sm:p-4"
         >
-          <div className="relative">
+          <div className="relative min-w-0 w-full">
             <button
               type="button"
               onClick={() => setLightboxOpen(false)}
-              className="absolute top-2 right-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-200"
+              className="absolute top-1.5 right-1.5 z-20 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-slate-600 shadow-sm ring-1 ring-slate-200 transition hover:bg-slate-200 sm:top-2 sm:right-2"
               aria-label="Close gallery"
             >
               <X className="h-4 w-4" />
@@ -209,7 +209,7 @@ export function AnnouncementImageGallery({
                 <button
                   type="button"
                   onClick={() => goLightbox(-1)}
-                  className="absolute top-1/2 left-3 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white"
+                  className="absolute top-1/2 left-1.5 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white sm:left-3"
                   aria-label="Previous picture"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -217,7 +217,7 @@ export function AnnouncementImageGallery({
                 <button
                   type="button"
                   onClick={() => goLightbox(1)}
-                  className="absolute top-1/2 right-3 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white"
+                  className="absolute top-1/2 right-1.5 z-10 inline-flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-slate-700 shadow-sm ring-1 ring-slate-200 transition hover:bg-white sm:right-3"
                   aria-label="Next picture"
                 >
                   <ChevronRight className="h-4 w-4" />
