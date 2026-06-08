@@ -3,6 +3,7 @@ import { Navigate, useParams } from "react-router-dom"
 import {
   BookOpen,
   CalendarDays,
+  CheckCircle,
   CircleCheck,
   CircleDashed,
   Eye,
@@ -17,6 +18,7 @@ import {
   Search,
   SlidersHorizontal,
   TableProperties,
+  TriangleAlert,
   User,
 } from "lucide-react"
 
@@ -49,6 +51,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   OtherPersonFields,
   SemesterClaimCell,
@@ -58,7 +61,14 @@ import {
   RequirementSubmittedByFields,
   RequirementSubmittedByInfo,
 } from "@/components/grantee/semester-claim-display"
-import { fetchGranteesByProgram, filterGranteesByProgram, updateGrantee } from "@/lib/granteesApi"
+import {
+  fetchGranteesByProgram,
+  filterGranteesByProgram,
+  granteeInactiveRemarks,
+  granteeRecordStatusLabel,
+  isGranteeRecordActive,
+  updateGrantee,
+} from "@/lib/granteesApi"
 import {
   ensureSemesterClaimTimestamps,
   mapSemesterClaimsWithFieldChange,
@@ -378,11 +388,60 @@ function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYea
   )
 }
 
+function GranteeInactiveStatusIndicator({ row, iconClassName = "size-3.5" }) {
+  if (isGranteeRecordActive(row)) return null
+
+  const remarks = granteeInactiveRemarks(row)
+  const label = remarks ? `Inactive: ${remarks}` : "Inactive record"
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex size-6 shrink-0 items-center justify-center self-center rounded-md text-amber-600 transition-colors hover:bg-amber-50 hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 dark:text-amber-400 dark:hover:bg-amber-500/10 dark:hover:text-amber-300"
+          aria-label={label}
+        >
+          <TriangleAlert className={iconClassName} strokeWidth={2.25} aria-hidden />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="center"
+        sideOffset={8}
+        className="max-w-[280px] flex-col items-start gap-0 border border-amber-200/90 bg-white px-0 py-0 text-left text-slate-800 shadow-lg dark:border-amber-500/35 dark:bg-slate-900 dark:text-slate-100 [&>svg]:fill-white dark:[&>svg]:fill-slate-900"
+      >
+        <div className="flex w-full items-start gap-2.5 px-3 py-2.5">
+          <span
+            className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200"
+            aria-hidden
+          >
+            <TriangleAlert className="size-3.5" strokeWidth={2.25} />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-semibold leading-none text-amber-800 dark:text-amber-200">Inactive record</p>
+            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+              {remarks || "No remarks on file."}
+            </p>
+          </div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 function GranteeRecordView({ row, formatStudentId, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
   const overallClaimed = row.status === "Claimed"
+  const recordIsActive = isGranteeRecordActive(row)
+  const inactiveRemarks = granteeInactiveRemarks(row)
 
   const detailItems = [
+    {
+      label: "Record status",
+      value: granteeRecordStatusLabel(row),
+      icon: CheckCircle,
+    },
     {
       label: "Batch number",
       value: row.batchNo,
@@ -445,6 +504,23 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
 
   return (
     <div className="space-y-5">
+      {!recordIsActive ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-500/12 dark:text-amber-50"
+        >
+          <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/35">
+            <TriangleAlert className="size-4" strokeWidth={2.25} aria-hidden />
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold leading-snug">This grantee record is inactive</p>
+            <p className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+              {inactiveRemarks || "No inactive remarks were recorded for this grantee."}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/85 bg-linear-to-br from-white via-slate-50/40 to-[#081F5C]/[0.07] p-4 shadow-sm ring-1 ring-slate-900/4 dark:border-white/10 dark:from-slate-950 dark:via-slate-900/50 dark:to-[#081F5C]/15 dark:ring-white/6">
         <div
           className="pointer-events-none absolute -right-16 -top-20 h-40 w-40 rounded-full bg-[#081F5C]/10 blur-3xl dark:bg-[#1447a6]/20"
@@ -486,6 +562,22 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
                   )}
                   Overall: {row.status}
                 </Badge>
+                <Badge
+                  className={cn(
+                    "h-6 gap-1.5 rounded-full px-2.5 text-[11px] font-semibold",
+                    recordIsActive
+                      ? "border-sky-200/80 bg-sky-50 text-sky-900 hover:bg-sky-50 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-50"
+                      : "border-amber-200/80 bg-amber-50 text-amber-950 hover:bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
+                  )}
+                  variant="outline"
+                >
+                  {recordIsActive ? (
+                    <CheckCircle className="size-3.5 opacity-90" aria-hidden />
+                  ) : (
+                    <TriangleAlert className="size-3.5 opacity-90" aria-hidden />
+                  )}
+                  Record: {granteeRecordStatusLabel(row)}
+                </Badge>
                 <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-medium">
                   {row.enrolledProgram}
                 </Badge>
@@ -497,6 +589,20 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
           </div>
         </div>
       </div>
+
+      {!recordIsActive && inactiveRemarks ? (
+        <div className="rounded-xl border border-amber-200/80 bg-amber-50/70 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="flex items-start gap-2.5">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-300" aria-hidden />
+            <div className="min-w-0 space-y-1">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-amber-800 dark:text-amber-200">
+                Inactive remarks
+              </p>
+              <p className="text-sm leading-relaxed text-amber-950 dark:text-amber-50">{inactiveRemarks}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Profile & grant details</p>
@@ -1237,6 +1343,7 @@ export default function ProgramWorkspace() {
   }
 
   const openRecordEdit = (row) => {
+    if (!isGranteeRecordActive(row)) return
     setRecordDialogMode("edit")
     setActiveSeqNo(row.seqNo)
     const claimsForRow = ensureSemesterClaimTimestamps(
@@ -1667,16 +1774,24 @@ export default function ProgramWorkspace() {
                   />
                 ))}
               {!isLoading &&
-                pagedRecords.map((row, index) => (
+                pagedRecords.map((row, index) => {
+                  const recordIsActive = isGranteeRecordActive(row)
+                  return (
                 <tr
                   key={row.id || row.seqNo}
                   className={cn(
                     "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60",
+                    !recordIsActive && "bg-amber-50/35 dark:bg-amber-500/8",
                     revealItemClass(contentRevealed, index, 35),
                   )}
                   style={revealItemStyle(contentRevealed, index, 35)}
                 >
-                  <td className="w-[90px] whitespace-nowrap font-medium text-slate-700">{row.batchNo}</td>
+                  <td className="w-[90px] whitespace-nowrap font-medium text-slate-700 dark:text-slate-200">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 truncate">{row.batchNo || "—"}</span>
+                      <GranteeInactiveStatusIndicator row={row} iconClassName="size-3.5" />
+                    </div>
+                  </td>
                   <td className="w-[80px] whitespace-nowrap font-medium text-pink-600">
                     {row.seqNo}
                   </td>
@@ -1710,7 +1825,12 @@ export default function ProgramWorkspace() {
                           <Eye className="size-4 opacity-70" />
                           View
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2" onSelect={() => openRecordEdit(row)}>
+                        <DropdownMenuItem
+                          className="gap-2"
+                          disabled={!recordIsActive}
+                          title={!recordIsActive ? "Inactive records cannot be edited" : undefined}
+                          onSelect={() => openRecordEdit(row)}
+                        >
                           <Pencil className="size-4 opacity-70" />
                           Edit
                         </DropdownMenuItem>
@@ -1718,7 +1838,7 @@ export default function ProgramWorkspace() {
                     </DropdownMenu>
                   </td>
                 </tr>
-              ))}
+              )})}
               {!isLoading && filteredRecords.length === 0 ? (
                 <tr>
                   <td
@@ -1822,7 +1942,12 @@ export default function ProgramWorkspace() {
               <Button type="button" variant="outline" onClick={() => handleRecordDialogOpenChange(false)}>
                 Close
               </Button>
-              <Button type="button" onClick={() => openRecordEdit(activeRow)}>
+              <Button
+                type="button"
+                disabled={!isGranteeRecordActive(activeRow)}
+                title={!isGranteeRecordActive(activeRow) ? "Inactive records cannot be edited" : undefined}
+                onClick={() => openRecordEdit(activeRow)}
+              >
                 Edit
               </Button>
             </DialogFooter>
