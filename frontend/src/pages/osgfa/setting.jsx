@@ -31,11 +31,13 @@ import {
 import { OSGFA_SETTINGS_CHANGED_EVENT, readStoredSettings, writeStoredSettings } from "@/lib/osgfaSettings"
 import { cn } from "@/lib/utils"
 import {
+  buildDefaultWorkflowStepsForProgram,
   createEmptyWorkflowStep,
-  DEFAULT_PROCESS_WORKFLOW,
   DEFAULT_WORKFLOW_STEP_COLOR,
   DEFAULT_WORKFLOW_STEP_COLOR_LIGHT,
+  getWorkflowStepsForProgram,
   normalizeProcessWorkflowSteps,
+  PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER,
   PROCESS_WORKFLOW_ICON_OPTIONS,
   loadProcessWorkflow,
   persistProcessWorkflow,
@@ -44,6 +46,7 @@ import {
   validateProcessWorkflow,
   WORKFLOW_ICON_MAP,
 } from "@/lib/processWorkflowSettings"
+import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
   LANDING_PAGE_SETTINGS_CHANGED_EVENT,
   loadLandingPageSettings,
@@ -100,6 +103,20 @@ function buildProfileForm(user) {
     email: user?.email || "",
     role: user?.role || "osgfa",
   }
+}
+
+function orderWorkflowPrograms(programs) {
+  const active = programs.filter((program) => program.active !== false)
+  const byCode = new Map(active.map((program) => [String(program.code ?? "").trim().toUpperCase(), program]))
+
+  const orderedCodes = [
+    ...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.filter((code) => byCode.has(code)),
+    ...[...byCode.keys()]
+      .filter((code) => !PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.includes(code))
+      .sort((a, b) => a.localeCompare(b)),
+  ]
+
+  return orderedCodes.map((code) => byCode.get(code)).filter(Boolean)
 }
 
 function captureWorkflowStepPositions(container) {
@@ -350,7 +367,16 @@ export default function Setting() {
   const [profileNotice, setProfileNotice] = useState({ type: "", message: "" })
   const [passwordNotice, setPasswordNotice] = useState({ type: "", message: "" })
   const [settingsNotice, setSettingsNotice] = useState({ type: "", message: "" })
-  const [workflowDraft, setWorkflowDraft] = useState(() => readStoredProcessWorkflow())
+  const { programs: osgfaPrograms } = useOsgfaPrograms()
+  const workflowPrograms = useMemo(() => orderWorkflowPrograms(osgfaPrograms), [osgfaPrograms])
+  const workflowProgramCodes = useMemo(
+    () => workflowPrograms.map((program) => String(program.code ?? "").trim().toUpperCase()).filter(Boolean),
+    [workflowPrograms],
+  )
+  const [workflowDraft, setWorkflowDraft] = useState(() => readStoredProcessWorkflow(workflowProgramCodes))
+  const [activeWorkflowProgram, setActiveWorkflowProgram] = useState(
+    () => workflowProgramCodes[0] ?? PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER[0],
+  )
   const [editingWorkflowStepId, setEditingWorkflowStepId] = useState(null)
   const workflowListRef = useRef(null)
   const workflowFlipBeforeRef = useRef(null)
@@ -440,21 +466,23 @@ export default function Setting() {
   useEffect(() => {
     let cancelled = false
 
-    loadProcessWorkflow().then((config) => {
+    loadProcessWorkflow(workflowProgramCodes).then((config) => {
       if (cancelled) return
       setWorkflowDraft(config)
       setEditingWorkflowStepId((currentId) => {
-        if (currentId && config.steps.some((step) => step.id === currentId)) return currentId
-        return config.steps[0]?.id ?? null
+        const steps = getWorkflowStepsForProgram(config, activeWorkflowProgram)
+        if (currentId && steps.some((step) => step.id === currentId)) return currentId
+        return steps[0]?.id ?? null
       })
     })
 
     const syncWorkflow = () => {
-      const draft = readStoredProcessWorkflow()
+      const draft = readStoredProcessWorkflow(workflowProgramCodes)
       setWorkflowDraft(draft)
       setEditingWorkflowStepId((currentId) => {
-        if (currentId && draft.steps.some((step) => step.id === currentId)) return currentId
-        return draft.steps[0]?.id ?? null
+        const steps = getWorkflowStepsForProgram(draft, activeWorkflowProgram)
+        if (currentId && steps.some((step) => step.id === currentId)) return currentId
+        return steps[0]?.id ?? null
       })
     }
     window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
@@ -465,88 +493,109 @@ export default function Setting() {
       window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
       window.removeEventListener("storage", syncWorkflow)
     }
-  }, [])
+  }, [activeWorkflowProgram, workflowProgramCodes])
 
   useEffect(() => {
     if (active !== SECTIONS.WORKFLOW) return
-    const draft = readStoredProcessWorkflow()
+    const draft = readStoredProcessWorkflow(workflowProgramCodes)
     setWorkflowDraft(draft)
     setEditingWorkflowStepId((currentId) => {
-      if (currentId && draft.steps.some((step) => step.id === currentId)) return currentId
-      return draft.steps[0]?.id ?? null
+      const steps = getWorkflowStepsForProgram(draft, activeWorkflowProgram)
+      if (currentId && steps.some((step) => step.id === currentId)) return currentId
+      return steps[0]?.id ?? null
     })
-  }, [active])
+  }, [active, activeWorkflowProgram, workflowProgramCodes])
 
   useLayoutEffect(() => {
     if (!workflowShouldFlipRef.current) return
     workflowShouldFlipRef.current = false
     playWorkflowStepFlip(workflowListRef.current, workflowFlipBeforeRef.current)
     workflowFlipBeforeRef.current = null
-  }, [workflowDraft.steps])
+  }, [activeWorkflowProgram, activeWorkflowSteps])
 
   const displayName = useMemo(() => getUserDisplayName(user), [user])
   const initials = useMemo(() => getUserInitial(user), [user])
   const roleLabel = useMemo(() => getUserRoleLabel(user), [user])
+  const activeWorkflowSteps = useMemo(
+    () => getWorkflowStepsForProgram(workflowDraft, activeWorkflowProgram),
+    [workflowDraft, activeWorkflowProgram],
+  )
+
+  useEffect(() => {
+    if (!workflowProgramCodes.includes(activeWorkflowProgram)) {
+      setActiveWorkflowProgram(workflowProgramCodes[0] ?? PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER[0])
+    }
+  }, [activeWorkflowProgram, workflowProgramCodes])
 
   const showWorkflowAlert = (type, title, message) => {
     setWorkflowAlert({ open: true, type, title, message })
   }
 
+  const setWorkflowStepsForProgram = (programCode, updater) => {
+    setWorkflowDraft((prev) => {
+      const currentSteps = getWorkflowStepsForProgram(prev, programCode)
+      const nextSteps = typeof updater === "function" ? updater(currentSteps) : updater
+      return {
+        byProgram: {
+          ...prev.byProgram,
+          [programCode]: { steps: normalizeProcessWorkflowSteps(nextSteps) },
+        },
+      }
+    })
+  }
+
   const updateWorkflowStep = (index, patch) => {
-    setWorkflowDraft((prev) => ({
-      ...prev,
-      steps: prev.steps.map((step, stepIndex) => (stepIndex === index ? { ...step, ...patch } : step)),
-    }))
+    setWorkflowStepsForProgram(activeWorkflowProgram, (steps) =>
+      steps.map((step, stepIndex) => (stepIndex === index ? { ...step, ...patch } : step)),
+    )
   }
 
   const moveWorkflowStep = (index, direction) => {
     workflowFlipBeforeRef.current = captureWorkflowStepPositions(workflowListRef.current)
     workflowShouldFlipRef.current = true
-    setWorkflowDraft((prev) => {
+    setWorkflowStepsForProgram(activeWorkflowProgram, (steps) => {
       const nextIndex = index + direction
-      if (nextIndex < 0 || nextIndex >= prev.steps.length) return prev
-      const steps = [...prev.steps]
-      const [moved] = steps.splice(index, 1)
-      steps.splice(nextIndex, 0, moved)
-      return { steps: normalizeProcessWorkflowSteps(steps) }
+      if (nextIndex < 0 || nextIndex >= steps.length) return steps
+      const nextSteps = [...steps]
+      const [moved] = nextSteps.splice(index, 1)
+      nextSteps.splice(nextIndex, 0, moved)
+      return nextSteps
     })
   }
 
   const removeWorkflowStep = (index) => {
-    setWorkflowDraft((prev) => {
-      const removedId = prev.steps[index]?.id
-      const steps = normalizeProcessWorkflowSteps(prev.steps.filter((_, stepIndex) => stepIndex !== index))
+    setWorkflowStepsForProgram(activeWorkflowProgram, (steps) => {
+      const removedId = steps[index]?.id
+      const nextSteps = steps.filter((_, stepIndex) => stepIndex !== index)
       setEditingWorkflowStepId((currentId) => {
         if (currentId !== removedId) return currentId
-        const nextIndex = Math.min(index, Math.max(0, steps.length - 1))
-        return steps[nextIndex]?.id ?? null
+        const nextIndex = Math.min(index, Math.max(0, nextSteps.length - 1))
+        return nextSteps[nextIndex]?.id ?? null
       })
-      return { steps }
+      return nextSteps
     })
   }
 
   const addWorkflowStep = () => {
-    const newStep = createEmptyWorkflowStep(workflowDraft.steps.length)
-    setWorkflowDraft((prev) => ({
-      steps: normalizeProcessWorkflowSteps([...prev.steps, newStep]),
-    }))
+    const newStep = createEmptyWorkflowStep(activeWorkflowSteps.length)
+    setWorkflowStepsForProgram(activeWorkflowProgram, (steps) => [...steps, newStep])
     setEditingWorkflowStepId(newStep.id)
   }
 
   const handleResetWorkflow = () => {
-    const steps = DEFAULT_PROCESS_WORKFLOW.steps.map((step) => ({ ...step }))
-    setWorkflowDraft({ steps })
+    const steps = buildDefaultWorkflowStepsForProgram(activeWorkflowProgram)
+    setWorkflowStepsForProgram(activeWorkflowProgram, steps)
     setEditingWorkflowStepId(steps[0]?.id ?? null)
     showWorkflowAlert(
       "info",
       "Defaults loaded",
-      "The default timeline steps are loaded in the editor. Click Save changes to publish them on the landing page.",
+      `The default ${activeWorkflowProgram} timeline steps are loaded in the editor. Click Save changes to publish them on the landing page.`,
     )
   }
 
   const handleSaveWorkflow = async (event) => {
     event.preventDefault()
-    const { valid, errors, normalized } = validateProcessWorkflow(workflowDraft)
+    const { valid, errors, normalized } = validateProcessWorkflow(workflowDraft, workflowProgramCodes)
     if (!valid) {
       showWorkflowAlert("error", "Could not save", errors.join(" "))
       return
@@ -554,7 +603,7 @@ export default function Setting() {
 
     setWorkflowSaving(true)
     try {
-      const saved = await persistProcessWorkflow(normalized)
+      const saved = await persistProcessWorkflow(normalized, workflowProgramCodes)
       setWorkflowDraft(saved)
       showWorkflowAlert(
         "success",
@@ -1124,15 +1173,49 @@ export default function Setting() {
               </div>
               <p className="text-sm text-gray-600">
                 Manage the timeline steps students see under <span className="font-medium">Process / Workflow</span> on
-                the public landing page. The section heading and intro text are fixed; only the steps below can be
-                changed.
+                the public landing page. Each scholarship program has its own workflow. The section heading and intro
+                text are fixed; only the steps below can be changed.
               </p>
 
               <form className="space-y-4" onSubmit={handleSaveWorkflow}>
+                {workflowPrograms.length > 1 ? (
+                  <div className="flex flex-wrap gap-2" role="tablist" aria-label="Scholarship program workflow editor">
+                    {workflowPrograms.map((program) => {
+                      const code = String(program.code ?? "").trim().toUpperCase()
+                      const isActive = activeWorkflowProgram === code
+                      return (
+                        <button
+                          key={code}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          onClick={() => {
+                            setActiveWorkflowProgram(code)
+                            const steps = getWorkflowStepsForProgram(workflowDraft, code)
+                            setEditingWorkflowStepId((currentId) => {
+                              if (currentId && steps.some((step) => step.id === currentId)) return currentId
+                              return steps[0]?.id ?? null
+                            })
+                          }}
+                          className={cn(
+                            "rounded-full border px-4 py-2 text-sm font-semibold transition",
+                            isActive
+                              ? "border-transparent bg-[#081F5C] text-white shadow-sm"
+                              : "border-[#081F5C]/15 bg-white text-gray-800 hover:bg-gray-50",
+                          )}
+                        >
+                          {program.name || code}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
+
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#081F5C]/10 bg-[#081F5C]/5 px-4 py-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-900">
-                      {workflowDraft.steps.length} timeline step{workflowDraft.steps.length === 1 ? "" : "s"}
+                      {activeWorkflowProgram}: {activeWorkflowSteps.length} timeline step
+                      {activeWorkflowSteps.length === 1 ? "" : "s"}
                     </p>
                     <p className="text-xs text-gray-500">Click a step to edit it. Use the arrows to reorder.</p>
                   </div>
@@ -1147,15 +1230,15 @@ export default function Setting() {
                 </div>
 
                 <div ref={workflowListRef} className="workflow-step-list space-y-3">
-                  {workflowDraft.steps.map((step, index) => (
+                  {activeWorkflowSteps.map((step, index) => (
                     <WorkflowStepEditor
                       key={step.id}
                       step={step}
                       index={index}
-                      total={workflowDraft.steps.length}
+                      total={activeWorkflowSteps.length}
                       isEditing={editingWorkflowStepId === step.id}
                       onStartEdit={() => setEditingWorkflowStepId((currentId) => (currentId === step.id ? null : step.id))}
-                      canRemove={workflowDraft.steps.length > 1}
+                      canRemove={activeWorkflowSteps.length > 1}
                       onChange={(patch) => updateWorkflowStep(index, patch)}
                       onMoveUp={() => moveWorkflowStep(index, -1)}
                       onMoveDown={() => moveWorkflowStep(index, 1)}

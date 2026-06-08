@@ -42,8 +42,12 @@ import {
   SidebarMenuSubItem,
   SidebarProvider,
   SidebarSeparator,
-  useSidebar,
 } from "@/components/ui/sidebar"
+import {
+  AdminSidebarMobileClose,
+  AdminSidebarMobileToggle,
+  CloseAdminSidebarOnNavigate,
+} from "@/components/AdminSidebarMobile"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import {
   AlertDialog,
@@ -190,20 +194,6 @@ const ADMIN_PAGE_META = {
     title: "Notifications",
     description: "View latest admin alerts, reminders, and system updates.",
   },
-}
-
-function AdminMobileNav() {
-  const { isMobile, setOpenMobile } = useSidebar()
-  if (!isMobile) return null
-  return (
-    <button
-      type="button"
-      className="-ml-1 mr-2 shrink-0 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-accent"
-      onClick={() => setOpenMobile(true)}
-    >
-      Menu
-    </button>
-  )
 }
 
 export default function Osgfa() {
@@ -636,6 +626,7 @@ export default function Osgfa() {
             "--sidebar-width-icon": "3.75rem",
           }}
         >
+          <CloseAdminSidebarOnNavigate />
           <Sidebar
             collapsible="icon"
             variant="inset"
@@ -645,7 +636,8 @@ export default function Osgfa() {
               if (!sidebarPinned) setSidebarOpen(false)
             }}
           >
-            <SidebarHeader className="shrink-0 gap-2 border-b border-white/15 px-2 py-2">
+            <SidebarHeader className="relative shrink-0 gap-2 border-b border-white/15 px-2 py-2 pr-12">
+              <AdminSidebarMobileClose />
               <div className="flex items-center gap-2">
                 <div className="size-14 min-h-14 min-w-14 max-h-14 max-w-14 shrink-0 [&_img]:pointer-events-none">
                   <img
@@ -916,7 +908,7 @@ export default function Osgfa() {
 
           <SidebarInset className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-linear-to-br from-blue-50 via-violet-100 to-indigo-100 dark:from-slate-900 dark:via-violet-950/40 dark:to-indigo-950/50">
             <header className="relative z-30 flex h-14 shrink-0 flex-none items-center gap-3 border-b border-border/60 bg-white/90 px-4 shadow-sm backdrop-blur-md dark:bg-background/95 md:px-6">
-              <AdminMobileNav />
+              <AdminSidebarMobileToggle />
               <div className="min-w-0 flex-1">
                 <h1 className="truncate text-lg font-semibold tracking-tight text-foreground md:text-xl">
                   {showAddGranteesBreadcrumb ? (

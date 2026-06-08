@@ -650,28 +650,28 @@ export default function LandingPageBatch() {
           backgroundImage: "linear-gradient(135deg, #04133d 0%, #081F5C 35%, #0b2b73 62%, #1447a6 100%)",
         }}
       >
-        <div className="mx-auto flex w-full max-w-7xl items-center gap-3 px-4 py-3 sm:gap-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-7xl min-w-0 items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3 md:gap-4 md:px-6 lg:px-8">
           <Link
             to="/#batch-list"
-            className="inline-flex shrink-0 items-center justify-center p-1 text-white transition hover:text-white/80"
+            className="inline-flex shrink-0 items-center justify-center p-0.5 text-white transition hover:text-white/80 sm:p-1"
             aria-label="Back to batch list section"
           >
-            <ArrowLeft className="size-6" aria-hidden />
+            <ArrowLeft className="size-5 sm:size-6" aria-hidden />
           </Link>
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-white/90 bg-white text-[#081F5C]">
-            <Layers className="size-5" aria-hidden />
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-full border-2 border-white/90 bg-white text-[#081F5C] sm:size-10">
+            <Layers className="size-4 sm:size-5" aria-hidden />
           </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-bold sm:text-xl">{batchTitle}</h1>
-            <p className="truncate text-xs text-sky-100/90">{batchSubtitle}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-base font-bold leading-tight sm:text-lg md:text-xl">{batchTitle}</h1>
+            <p className="truncate text-[10px] leading-snug text-sky-100/90 sm:text-xs">{batchSubtitle}</p>
           </div>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <section className="space-y-4">
-          <div className="mb-3 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
-            <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 md:col-span-7 lg:col-span-8">
+          <div className="mb-3 grid min-w-0 w-full max-w-full gap-3 max-md:grid-cols-1 md:grid-cols-12 md:items-center">
+            <div className="grid min-w-0 w-full max-w-full grid-cols-4 gap-1.5 max-md:[&_select]:px-1.5 max-md:[&_select]:pr-6 max-md:[&_select]:text-[10px] md:col-span-7 md:grid-cols-2 md:gap-3 lg:col-span-8 xl:grid-cols-4">
               <div className="relative min-w-0 w-full">
                 <select
                   id="landing-batch-status-filter"
@@ -686,7 +686,7 @@ export default function LandingPageBatch() {
                   <option value="Claimed">Claimed</option>
                   <option value="Unclaimed">Unclaimed</option>
                 </select>
-                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-neutral-400 md:right-2 md:size-4" />
               </div>
 
               <div className="relative min-w-0 w-full">
@@ -706,7 +706,7 @@ export default function LandingPageBatch() {
                     </option>
                   ))}
                 </select>
-                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-neutral-400 md:right-2 md:size-4" />
               </div>
 
               <div className="relative min-w-0 w-full">
@@ -726,7 +726,7 @@ export default function LandingPageBatch() {
                     </option>
                   ))}
                 </select>
-                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-neutral-400 md:right-2 md:size-4" />
               </div>
 
               <div className="relative min-w-0 w-full">
@@ -746,11 +746,11 @@ export default function LandingPageBatch() {
                     </option>
                   ))}
                 </select>
-                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
+                <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-neutral-400 md:right-2 md:size-4" />
               </div>
             </div>
 
-            <div className="relative min-w-0 w-full max-w-full md:col-span-5 lg:col-span-4">
+            <div className="relative min-w-0 w-full max-w-full max-md:order-last md:col-span-5 lg:col-span-4">
               <div className="relative w-full min-w-0 max-w-full">
                 <input
                   id="landing-batch-search"

@@ -26,9 +26,11 @@ import {
 import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import { useLandingPageSettings, maskBatchNumber } from "@/lib/landingPageSettings"
 import {
+  getWorkflowStepsForProgram,
   hydrateProcessWorkflowSteps,
   LANDING_PROCESS_SECTION,
-  useProcessWorkflowSteps,
+  PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER,
+  useProcessWorkflowByProgram,
 } from "@/lib/processWorkflowSettings"
 import { AnnouncementImageGallery } from "@/components/AnnouncementImageGallery"
 import { LandingPublicHeader } from "@/components/LandingPublicHeader"
@@ -769,16 +771,6 @@ function AboutImageSlideshow({ slides }) {
         style={{ perspective: "1200px" }}
         aria-live="polite"
       >
-        <div
-          className="pointer-events-none absolute left-0 -top-10 size-32 rounded-full opacity-60 blur-3xl sm:-top-12 sm:size-36"
-          style={{ background: "radial-gradient(circle, rgba(20,71,166,0.35) 0%, transparent 72%)" }}
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute -bottom-12 right-0 size-36 rounded-full opacity-55 blur-3xl sm:-bottom-16 sm:size-44"
-          style={{ background: "radial-gradient(circle, rgba(165,180,252,0.42) 0%, transparent 74%)" }}
-          aria-hidden
-        />
         {slides.map((slide, index) => {
           const offset = getCoverflowOffset(index, activeIndex, slides.length)
           if (Math.abs(offset) > 1) return null
@@ -796,7 +788,7 @@ function AboutImageSlideshow({ slides }) {
           return (
             <article
               key={slide.alt}
-              className={`absolute left-1/2 top-1/2 aspect-4/3 w-[min(68vw,248px)] overflow-hidden rounded-[1.25rem] border border-white/50 transition-[transform,opacity,box-shadow,filter] duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] will-change-transform min-[400px]:w-[min(66vw,272px)] min-[400px]:rounded-[1.35rem] sm:w-[min(72%,320px)] sm:rounded-[1.4rem] lg:w-[min(82%,385px)] xl:w-[min(84%,405px)] ${
+              className={`absolute left-1/2 top-1/2 aspect-4/3 w-[min(68vw,248px)] overflow-hidden rounded-[1.25rem] transition-[transform,opacity,filter] duration-700 ease-[cubic-bezier(0.25,0.8,0.25,1)] will-change-transform min-[400px]:w-[min(66vw,272px)] min-[400px]:rounded-[1.35rem] sm:w-[min(72%,320px)] sm:rounded-[1.4rem] lg:w-[min(82%,385px)] xl:w-[min(84%,405px)] ${
                 !isCenter ? "cursor-pointer" : "cursor-default"
               }`}
               style={{
@@ -804,9 +796,6 @@ function AboutImageSlideshow({ slides }) {
                 transformOrigin: "center center",
                 zIndex,
                 opacity: isCenter || isHovered ? 1 : 0.84,
-                boxShadow: isCenter
-                  ? "0 22px 50px -25px rgba(8,31,92,0.45)"
-                  : "0 16px 35px -24px rgba(8,31,92,0.34)",
                 filter: isCenter ? "saturate(1.06)" : "saturate(0.95)",
               }}
               aria-hidden={!isCenter && !isHovered}
@@ -832,12 +821,6 @@ function AboutImageSlideshow({ slides }) {
                 <div
                   className="pointer-events-none absolute inset-0 transition-opacity duration-500"
                   style={{ backgroundColor: "rgba(8, 31, 92, 0.12)" }}
-                  aria-hidden
-                />
-              ) : null}
-              {isCenter ? (
-                <div
-                  className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-linear-to-t from-[#04133d]/45 to-transparent"
                   aria-hidden
                 />
               ) : null}
@@ -978,7 +961,7 @@ function ProcessWorkflowTimelineStepCard({
       className={`relative w-full ${useFade ? "" : "will-change-transform"} ${motionClass}`}
     >
       <div
-        className="timeline-card-container rounded-[1.35rem] p-[1.5px] shadow-[0_20px_50px_-24px_rgba(8,31,92,0.35)] transition-shadow duration-500"
+        className="timeline-card-container rounded-[1.15rem] p-px shadow-[0_10px_28px_-18px_rgba(8,31,92,0.22)] transition-shadow duration-500 sm:rounded-[1.35rem] sm:p-[1.5px] sm:shadow-[0_20px_50px_-24px_rgba(8,31,92,0.35)]"
         style={{
           backgroundImage: isActive
             ? `linear-gradient(135deg, ${item.color} 0%, ${item.colorLight} 45%, ${bvViolet} 100%)`
@@ -986,14 +969,16 @@ function ProcessWorkflowTimelineStepCard({
         }}
       >
         <article
-          className={`group relative min-w-0 overflow-hidden rounded-[1.2rem] bg-white/95 p-4 backdrop-blur-md transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:p-5 lg:p-6 ${
-            isActive ? "-translate-y-0.5 shadow-[0_24px_48px_-20px_rgba(8,31,92,0.35)]" : "shadow-[0_12px_32px_-18px_rgba(8,31,92,0.2)]"
+          className={`group relative min-w-0 overflow-hidden rounded-[1.05rem] bg-white/95 p-3.5 backdrop-blur-md transition-[transform,box-shadow] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:rounded-[1.2rem] sm:p-5 lg:p-6 ${
+            isActive
+              ? "-translate-y-0.5 shadow-[0_16px_36px_-18px_rgba(8,31,92,0.28)] sm:shadow-[0_24px_48px_-20px_rgba(8,31,92,0.35)]"
+              : "shadow-[0_8px_24px_-16px_rgba(8,31,92,0.18)] sm:shadow-[0_12px_32px_-18px_rgba(8,31,92,0.2)]"
           } hover:-translate-y-1`}
           style={{ backgroundImage: `linear-gradient(160deg, #ffffff 0%, ${bvIce} 85%, ${bvPeriwinkle}33 100%)` }}
         >
           <span
-            className="pointer-events-none absolute -right-2 -top-4 select-none font-black tabular-nums leading-none opacity-[0.06] sm:-right-3 sm:-top-6"
-            style={{ fontSize: "clamp(3.5rem, 12vw, 6.5rem)", color: item.color }}
+            className="pointer-events-none absolute right-0 top-0 select-none font-black tabular-nums leading-none opacity-[0.06] sm:-right-3 sm:-top-6"
+            style={{ fontSize: "clamp(2.5rem, 9vw, 6.5rem)", color: item.color }}
             aria-hidden
           >
             {item.step}
@@ -1020,11 +1005,11 @@ function ProcessWorkflowTimelineStepCard({
             </span>
           </div>
 
-          <h3 className="relative mt-4 text-base font-bold leading-snug sm:text-lg lg:text-xl" style={{ color: navy }}>
+          <h3 className="relative mt-3 text-[0.95rem] font-bold leading-snug sm:mt-4 sm:text-lg lg:text-xl" style={{ color: navy }}>
             {item.title}
           </h3>
           <p
-            className="relative mt-2.5 text-justify text-xs leading-relaxed sm:text-sm lg:text-[0.95rem] lg:leading-relaxed"
+            className="relative mt-2 text-justify text-xs leading-relaxed sm:mt-2.5 sm:text-sm lg:text-[0.95rem] lg:leading-relaxed"
             style={{ color: "#000" }}
           >
             {item.description}
@@ -1066,7 +1051,7 @@ function ProcessWorkflowTimelineNode({
         aria-hidden
       />
       <div
-        className={`relative flex size-14 items-center justify-center rounded-2xl shadow-[0_16px_36px_-12px_rgba(8,31,92,0.5)] ring-4 transition-[transform,box-shadow,ring-color] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:size-16 ${
+        className={`relative flex size-12 items-center justify-center rounded-2xl shadow-[0_12px_28px_-12px_rgba(8,31,92,0.45)] ring-[3px] transition-[transform,box-shadow,ring-color] duration-700 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none sm:size-16 sm:shadow-[0_16px_36px_-12px_rgba(8,31,92,0.5)] sm:ring-4 ${
           isActive ? "scale-110 ring-white" : "scale-100 ring-white/90"
         }`}
         style={{
@@ -1074,7 +1059,7 @@ function ProcessWorkflowTimelineNode({
           boxShadow: isActive ? `0 0 0 6px ${item.colorLight}33, 0 16px 36px -12px rgba(8,31,92,0.5)` : undefined,
         }}
       >
-        <Icon className="size-6 text-white sm:size-7" strokeWidth={1.6} aria-hidden />
+        <Icon className="size-5 text-white sm:size-7" strokeWidth={1.6} aria-hidden />
       </div>
       <span
         className={`mt-2.5 text-[10px] font-bold tabular-nums tracking-[0.2em] sm:text-xs ${isRevealed ? "opacity-100" : "opacity-0"}`}
@@ -1086,39 +1071,88 @@ function ProcessWorkflowTimelineNode({
   )
 }
 
+function orderWorkflowPrograms(programs) {
+  const active = programs.filter((program) => program.active !== false)
+  const byCode = new Map(active.map((program) => [String(program.code ?? "").trim().toUpperCase(), program]))
+
+  const orderedCodes = [
+    ...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.filter((code) => byCode.has(code)),
+    ...[...byCode.keys()]
+      .filter((code) => !PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.includes(code))
+      .sort((a, b) => a.localeCompare(b)),
+  ]
+
+  return orderedCodes.map((code) => byCode.get(code)).filter(Boolean)
+}
+
+function ProcessWorkflowProgramTabs({ programs, activeCode, onChange }) {
+  if (programs.length <= 1) return null
+
+  return (
+    <div
+      className="mb-5 flex flex-wrap gap-2 sm:mb-6"
+      role="tablist"
+      aria-label="Scholarship program workflow"
+    >
+      {programs.map((program) => {
+        const code = String(program.code ?? "").trim().toUpperCase()
+        const isActive = activeCode === code
+
+        return (
+          <button
+            key={code}
+            type="button"
+            role="tab"
+            id={`workflow-tab-${code}`}
+            aria-selected={isActive}
+            aria-controls={`workflow-panel-${code}`}
+            onClick={() => onChange(code)}
+            className={cn(
+              "rounded-full border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+              isActive
+                ? "border-transparent text-white shadow-[0_10px_24px_-10px_rgba(8,31,92,0.45)] focus-visible:ring-[#1447a6]"
+                : "bg-white/85 hover:bg-white focus-visible:ring-[#a5b4fc]",
+            )}
+            style={
+              isActive
+                ? { backgroundImage: gradientNavyButton }
+                : { borderColor: borderBvSoft, color: navy }
+            }
+          >
+            {program.name || code}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function ProcessWorkflowTimeline({ steps }) {
   const { inFocus, activeIndex, registerStepRef, progress, animationMode } = useTimelineScrollReveal(steps.length)
 
   return (
-    <div className="relative mt-8 overflow-x-hidden lg:mt-12">
+    <div
+      className="relative mt-6 w-full sm:mt-8 lg:mt-12"
+      role="list"
+      aria-label="Scholarship application process steps"
+    >
       <div
-        className="pointer-events-none absolute inset-x-0 -top-8 bottom-0 rounded-[2rem] opacity-70"
-        style={{ backgroundImage: gradientLightBlueViolet }}
+        className="pointer-events-none absolute bottom-4 left-[1.55rem] top-4 w-1 overflow-hidden rounded-full sm:left-[1.65rem] lg:inset-y-4 lg:left-1/2 lg:w-1.5 lg:-translate-x-1/2"
         aria-hidden
-      />
-
-      <div
-        className="relative mx-auto w-full max-w-3xl overflow-x-hidden lg:max-w-5xl xl:max-w-6xl"
-        role="list"
-        aria-label="Scholarship application process steps"
       >
+        <div className="absolute inset-0 rounded-full bg-slate-200/80" />
         <div
-          className="pointer-events-none absolute bottom-4 left-[1.55rem] top-4 w-1 overflow-hidden rounded-full sm:left-[1.65rem] lg:inset-y-4 lg:left-1/2 lg:w-1.5 lg:-translate-x-1/2"
-          aria-hidden
-        >
-          <div className="absolute inset-0 rounded-full bg-slate-200/80" />
-          <div
-            className="absolute inset-x-0 top-0 origin-top rounded-full transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
-            style={{
-              height: "100%",
-              transform: `scaleY(${progress / 100})`,
-              backgroundImage: `linear-gradient(180deg, ${navyDeep} 0%, ${navyBright} 42%, ${bvViolet} 88%, #c4b5fd 100%)`,
-              boxShadow: `0 0 24px ${navyGlow}66`,
-            }}
-          />
-        </div>
+          className="absolute inset-x-0 top-0 origin-top rounded-full transition-transform duration-[1.2s] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+          style={{
+            height: "100%",
+            transform: `scaleY(${progress / 100})`,
+            backgroundImage: `linear-gradient(180deg, ${navyDeep} 0%, ${navyBright} 42%, ${bvViolet} 88%, #c4b5fd 100%)`,
+            boxShadow: `0 0 24px ${navyGlow}66`,
+          }}
+        />
+      </div>
 
-        <ol className="relative space-y-0 overflow-x-hidden">
+      <ol className="relative space-y-0">
           {steps.map((item, index) => {
             const isLast = index === steps.length - 1
             const isEven = index % 2 === 0
@@ -1130,7 +1164,7 @@ function ProcessWorkflowTimeline({ steps }) {
                 key={item.id ?? item.step}
                 ref={registerStepRef(index)}
                 data-step-index={index}
-                className={`group relative scroll-mt-20 grid grid-cols-[auto_1fr] content-center items-center gap-x-4 overflow-x-hidden py-3 sm:gap-x-5 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
+                className={`group relative scroll-mt-20 grid grid-cols-[auto_minmax(0,1fr)] content-center items-center gap-x-3 py-3 sm:gap-x-4 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
                   isLast ? "pb-1" : "pb-2 sm:pb-3"
                 }`}
               >
@@ -1144,7 +1178,7 @@ function ProcessWorkflowTimeline({ steps }) {
                 />
 
                 <div
-                  className={`col-start-2 row-start-1 w-full min-w-0 overflow-x-hidden lg:max-w-lg xl:max-w-xl ${
+                  className={`col-start-2 row-start-1 w-full min-w-0 lg:max-w-lg xl:max-w-xl ${
                     isEven
                       ? "lg:col-start-1 lg:justify-self-end lg:pr-4"
                       : "lg:col-start-3 lg:justify-self-start lg:pl-4"
@@ -1163,8 +1197,7 @@ function ProcessWorkflowTimeline({ steps }) {
               </li>
             )
           })}
-        </ol>
-      </div>
+      </ol>
     </div>
   )
 }
@@ -1391,7 +1424,8 @@ function BillboardAnnouncementSlide({ item, compact = false, variant = "text-onl
                 ref={messageRef}
                 className={cn(
                   "leading-snug",
-                  isTruncated ? "text-justify" : "text-center",
+                  "text-justify",
+                  !isTruncated && "lg:text-center",
                   !expanded && messageLineClamp,
                   messageTextClass,
                   isTextOnly && !expanded && "mt-2",
@@ -1587,7 +1621,7 @@ function BillboardCard({
                   {emptyMessage}
                 </h3>
                 <p
-                  className={`mt-3 leading-relaxed ${compact ? "text-xs sm:text-sm" : "text-sm sm:text-base"}`}
+                  className={`mt-3 text-justify leading-relaxed lg:text-center ${compact ? "text-xs sm:text-sm" : "text-sm sm:text-base"}`}
                   style={{ color: textBodyOnLight }}
                 >
                   Please check back later for official scholarship updates and notices.
@@ -1672,16 +1706,34 @@ function BillboardCard({
 export default function LandingPage() {
   const location = useLocation()
   const [announcements, setAnnouncements] = useState([])
-  const workflowSteps = useProcessWorkflowSteps()
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
   const { programs } = useOsgfaPrograms()
   const landingPageSettings = useLandingPageSettings()
   const landingPrivacy = landingPageSettings.privacy
   const landingContactInfo = landingPageSettings.contactInfo
 
+  const workflowPrograms = useMemo(() => orderWorkflowPrograms(programs), [programs])
+  const workflowProgramCodes = useMemo(
+    () => workflowPrograms.map((program) => String(program.code ?? "").trim().toUpperCase()).filter(Boolean),
+    [workflowPrograms],
+  )
+  const workflowByProgram = useProcessWorkflowByProgram(workflowProgramCodes)
+  const [activeWorkflowProgram, setActiveWorkflowProgram] = useState(
+    () => workflowProgramCodes[0] ?? PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER[0],
+  )
+
+  useEffect(() => {
+    if (!workflowProgramCodes.includes(activeWorkflowProgram)) {
+      setActiveWorkflowProgram(workflowProgramCodes[0] ?? PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER[0])
+    }
+  }, [activeWorkflowProgram, workflowProgramCodes])
+
   const scholarshipProcessSteps = useMemo(
-    () => hydrateProcessWorkflowSteps(workflowSteps),
-    [workflowSteps],
+    () =>
+      hydrateProcessWorkflowSteps(
+        getWorkflowStepsForProgram({ byProgram: workflowByProgram }, activeWorkflowProgram),
+      ),
+    [workflowByProgram, activeWorkflowProgram],
   )
 
   useLayoutEffect(() => {
@@ -1762,7 +1814,7 @@ export default function LandingPage() {
 
         <HeroTypewriterTitle />
 
-        <p className="text-pretty text-justify text-sm leading-relaxed text-white/80 sm:text-base lg:max-w-xl">
+        <p className="text-pretty text-justify text-sm leading-relaxed text-white/80 sm:text-base lg:max-w-xl lg:text-left">
           Access scholarship announcements, application guidelines, batch information, and important updates
           from the MARSU – Office of the Scholarship Grants and Financial Assistance in one centralized
           platform.
@@ -1824,7 +1876,7 @@ export default function LandingPage() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-white sm:text-base">Accessible</p>
-              <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
+              <p className="mt-1 text-justify text-xs leading-relaxed text-white/72 sm:text-sm">
                 Quick access to scholarship information, announcements, and application updates.
               </p>
             </div>
@@ -1835,7 +1887,7 @@ export default function LandingPage() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-white sm:text-base">Organized</p>
-              <p className="mt-1 text-xs leading-relaxed text-white/72 sm:text-sm">
+              <p className="mt-1 text-justify text-xs leading-relaxed text-white/72 sm:text-sm">
                 Centralized records and batch listings for easier student monitoring and reference.
               </p>
             </div>
@@ -1893,13 +1945,6 @@ export default function LandingPage() {
             backgroundImage: `linear-gradient(180deg, ${bvIce} 0%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
           }}
         >
-          <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-0 h-10 sm:h-12 lg:hidden"
-            style={{
-              background: `linear-gradient(180deg, ${navyDeep} 0%, ${bvIce} 100%)`,
-            }}
-            aria-hidden
-          />
           <div className="relative z-10 mx-auto w-full max-w-7xl overflow-x-hidden px-4 pb-10 pt-3 sm:px-6 sm:pb-12 sm:pt-4 lg:px-8 lg:py-12">
             <div className="grid min-w-0 items-center gap-5 overflow-x-hidden lg:grid-cols-2 lg:gap-3 xl:gap-4">
               <div className="order-1 min-w-0 overflow-hidden lg:mx-0 lg:w-full">
@@ -1996,7 +2041,7 @@ export default function LandingPage() {
                   />
                 </span>
               </h2>
-              <p className="mt-2 max-w-none text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
+              <p className="mt-2 max-w-none text-justify text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
                 Access the latest scholarship announcements, application updates, schedules, and important notices posted by the MARSU - Office of the Scholarship Grants and Financial Assistance.
               </p>
             </div>
@@ -2052,7 +2097,7 @@ export default function LandingPage() {
                     </Link>
                   ) : null}
                 </div>
-                <p className="mt-2 max-w-none text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
+                <p className="mt-2 max-w-none text-justify text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
                   View the list of scholarship batches and registered beneficiary records maintained within the Scholarship Records Management System for monitoring and reference purposes.
                 </p>
               </div>
@@ -2118,12 +2163,17 @@ export default function LandingPage() {
                   Process / Workflow
                 </span>
               </h2>
-              <p className="mt-2 max-w-none text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
+              <p className="mt-2 max-w-none text-justify text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
                 {LANDING_PROCESS_SECTION.description}
               </p>
             </div>
 
-            <ProcessWorkflowTimeline steps={scholarshipProcessSteps} />
+            <ProcessWorkflowProgramTabs
+              programs={workflowPrograms}
+              activeCode={activeWorkflowProgram}
+              onChange={setActiveWorkflowProgram}
+            />
+            <ProcessWorkflowTimeline key={activeWorkflowProgram} steps={scholarshipProcessSteps} />
           </div>
         </section>
       </main>
@@ -2156,7 +2206,7 @@ export default function LandingPage() {
               />
             </div>
             <p className="text-sm font-semibold sm:text-base">Scholarship Records Management System</p>
-            <p className="mx-auto max-w-3xl text-xs leading-snug text-white/80 sm:mx-0 sm:text-sm">
+            <p className="mx-auto max-w-3xl text-justify text-xs leading-snug text-white/80 sm:mx-0 sm:text-left sm:text-sm">
               Digitizing scholarship record management through an organized and centralized platform.
             </p>
           </div>
@@ -2231,7 +2281,7 @@ export default function LandingPage() {
 
             <div className="sm:col-span-2 lg:col-span-1">
               <p className="text-xs font-semibold tracking-wide text-white sm:text-sm">Admin Login</p>
-              <p className="mt-2 text-sm leading-relaxed text-white/85">
+              <p className="mt-2 text-justify text-sm leading-relaxed text-white/85 sm:text-left">
                 Authorized scholarship office personnel can sign in to manage batches, grantees, and reports in SRMS.
               </p>
               <div className="mt-4">
@@ -2247,7 +2297,7 @@ export default function LandingPage() {
 
           <div className="h-px w-full bg-white/20" aria-hidden />
 
-          <p className="pt-5 text-center text-xs text-white/70">
+          <p className="pt-5 text-justify text-xs text-white/70 sm:text-center">
             © 2026 Scholarship Records Management System. All Rights Reserved.
           </p>
         </div>

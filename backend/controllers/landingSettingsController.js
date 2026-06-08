@@ -152,14 +152,76 @@ function sanitizeWorkflowStep(raw, index) {
     };
 }
 
+const PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER = ['TES', 'TDP'];
+
+function buildDefaultWorkflowStepsForProgram(programCode) {
+    const code = String(programCode ?? '').trim().toUpperCase() || 'TES';
+    return DEFAULT_PROCESS_WORKFLOW_STEPS.map((step, index) =>
+        sanitizeWorkflowStep(
+            {
+                ...step,
+                id: `workflow-${code.toLowerCase()}-${index + 1}`,
+                description:
+                    index === 0
+                        ? `Check the officially announced final list for the ${code} program to confirm if you are included as a beneficiary.`
+                        : step.description,
+            },
+            index,
+        ),
+    );
+}
+
+function buildDefaultProcessWorkflowByProgram(programCodes = PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER) {
+    const codes = [...new Set((Array.isArray(programCodes) ? programCodes : []).map((code) => String(code ?? '').trim().toUpperCase()).filter(Boolean))];
+    const list = codes.length ? codes : [...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER];
+    return Object.fromEntries(list.map((code) => [code, { steps: buildDefaultWorkflowStepsForProgram(code) }]));
+}
+
+function buildLegacyByProgramFromSteps(steps) {
+    const normalized = steps.map((step, index) => sanitizeWorkflowStep(step, index));
+    return Object.fromEntries(
+        PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.map((code) => [code, { steps: normalized }]),
+    );
+}
+
+function normalizeProcessWorkflowByProgram(rawByProgram, programCodes = PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER) {
+    const defaults = buildDefaultProcessWorkflowByProgram(programCodes);
+    const source = rawByProgram && typeof rawByProgram === 'object' ? rawByProgram : {};
+
+    return Object.fromEntries(
+        Object.keys(defaults).map((code) => {
+            const entry = source[code];
+            const stepsInput = Array.isArray(entry?.steps) ? entry.steps : Array.isArray(entry) ? entry : [];
+            return [
+                code,
+                {
+                    steps:
+                        stepsInput.length > 0
+                            ? stepsInput.map((step, index) => sanitizeWorkflowStep(step, index))
+                            : defaults[code].steps,
+                },
+            ];
+        }),
+    );
+}
+
 function normalizeProcessWorkflow(raw) {
     const source = raw && typeof raw === 'object' ? raw : {};
+
+    if (source.byProgram && typeof source.byProgram === 'object') {
+        const byProgram = normalizeProcessWorkflowByProgram(source.byProgram);
+        if (Object.keys(byProgram).length > 0) {
+            return { byProgram };
+        }
+    }
+
     const stepsInput = Array.isArray(source.steps) ? source.steps : [];
     const steps =
         stepsInput.length > 0
             ? stepsInput.map((step, index) => sanitizeWorkflowStep(step, index))
             : DEFAULT_PROCESS_WORKFLOW_STEPS.map((step, index) => sanitizeWorkflowStep(step, index));
-    return { steps };
+
+    return { byProgram: buildLegacyByProgramFromSteps(steps) };
 }
 
 function normalizeBatchKeys(raw) {
@@ -191,18 +253,24 @@ exports.getPublishedBatchKeys = async (req, res) => {
 };
 
 function hasCustomProcessWorkflow(doc) {
-    return Array.isArray(doc?.processWorkflow?.steps) && doc.processWorkflow.steps.length > 0;
+    const workflow = doc?.processWorkflow;
+    if (workflow?.byProgram && typeof workflow.byProgram === 'object') {
+        return Object.values(workflow.byProgram).some(
+            (entry) => Array.isArray(entry?.steps) && entry.steps.length > 0,
+        );
+    }
+    return Array.isArray(workflow?.steps) && workflow.steps.length > 0;
 }
 
 exports.getProcessWorkflow = async (req, res) => {
     try {
         const doc = await getOrCreateSettings();
         if (!hasCustomProcessWorkflow(doc)) {
-            return res.status(200).json({ customized: false, steps: [] });
+            return res.status(200).json({ customized: false, byProgram: {} });
         }
         return res.status(200).json({
             customized: true,
-            steps: normalizeProcessWorkflow(doc.processWorkflow).steps,
+            byProgram: normalizeProcessWorkflow(doc.processWorkflow).byProgram,
         });
     } catch (error) {
         return res.status(500).json({
@@ -213,7 +281,9 @@ exports.getProcessWorkflow = async (req, res) => {
 
 exports.updateProcessWorkflow = async (req, res) => {
     try {
-        const processWorkflow = normalizeProcessWorkflow({ steps: req.body?.steps });
+        const processWorkflow = normalizeProcessWorkflow(
+            req.body?.byProgram ? { byProgram: req.body.byProgram } : { steps: req.body?.steps },
+        );
         const doc = await LandingSettings.findOneAndUpdate(
             { key: SETTINGS_KEY },
             { $set: { processWorkflow } },
@@ -221,7 +291,7 @@ exports.updateProcessWorkflow = async (req, res) => {
         );
         return res.status(200).json({
             customized: true,
-            steps: normalizeProcessWorkflow(doc.processWorkflow).steps,
+            byProgram: normalizeProcessWorkflow(doc.processWorkflow).byProgram,
         });
     } catch (error) {
         return res.status(500).json({

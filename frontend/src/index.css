@@ -257,14 +257,27 @@
   }
 }
 
-/* Mobile: cards sit right of spine — all slide in from the right */
+@keyframes timeline-card-from-right-compact {
+  from {
+    opacity: 0;
+    transform: translate3d(0.75rem, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Mobile: icon stays left — cards slide in from the right with tighter offset */
 @media (max-width: 1023px) {
-  .timeline-card-hidden-left {
-    transform: translate3d(1.75rem, 0, 0);
+  .timeline-card-hidden-left,
+  .timeline-card-hidden-right {
+    transform: translate3d(0.75rem, 0, 0);
   }
 
-  .timeline-card-enter-left {
-    animation-name: timeline-card-from-right;
+  .timeline-card-enter-left,
+  .timeline-card-enter-right {
+    animation-name: timeline-card-from-right-compact;
   }
 }
 
@@ -323,11 +336,15 @@
 
 @media (max-width: 1023px) {
   .timeline-card-fade-hidden[data-side="left"] {
-    transform: translate3d(22%, 0, 0);
+    transform: translate3d(0.75rem, 0, 0);
+  }
+
+  .timeline-card-fade-hidden[data-side="right"] {
+    transform: translate3d(0.75rem, 0, 0);
   }
 
   .timeline-node-fade-hidden[data-side="left"] {
-    transform: translate3d(1.25rem, 0, 0);
+    transform: translate3d(0.75rem, 0, 0);
   }
 }
 

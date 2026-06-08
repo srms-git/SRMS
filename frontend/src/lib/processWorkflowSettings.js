@@ -34,13 +34,27 @@ export const PROCESS_WORKFLOW_CHANGED_EVENT = "srms-process-workflow-changed"
 
 const PROCESS_WORKFLOW_API_PATH = "/landing-batches/process-workflow"
 
+export const PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER = ["TES", "TDP"]
+
 function parseProcessWorkflowResponse(data) {
   if (!data || typeof data !== "object") return null
-  if (!Array.isArray(data.steps)) return null
-  return {
-    customized: Boolean(data.customized),
-    steps: normalizeProcessWorkflowSteps(data.steps),
+
+  if (data.byProgram && typeof data.byProgram === "object") {
+    return {
+      customized: Boolean(data.customized),
+      byProgram: normalizeProcessWorkflowByProgram(data.byProgram),
+    }
   }
+
+  if (Array.isArray(data.steps)) {
+    const steps = normalizeProcessWorkflowSteps(data.steps)
+    return {
+      customized: Boolean(data.customized),
+      byProgram: buildLegacyByProgramFromSteps(steps),
+    }
+  }
+
+  return null
 }
 
 export const PROCESS_WORKFLOW_ICON_OPTIONS = [
@@ -196,57 +210,127 @@ export function normalizeProcessWorkflowSteps(steps) {
   }))
 }
 
-function extractStepsFromStoragePayload(parsed) {
-  if (Array.isArray(parsed)) return parsed
-  if (parsed && typeof parsed === "object" && Array.isArray(parsed.steps)) return parsed.steps
-  return DEFAULT_PROCESS_WORKFLOW.steps
+export function resolveProcessWorkflowProgramCodes(programCodes) {
+  const codes = [...new Set((Array.isArray(programCodes) ? programCodes : []).map((code) => String(code ?? "").trim().toUpperCase()).filter(Boolean))]
+  return codes.length ? codes : [...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER]
 }
 
-export function readStoredProcessWorkflow() {
+export function buildDefaultWorkflowStepsForProgram(programCode) {
+  const code = String(programCode ?? "").trim().toUpperCase() || "TES"
+  return normalizeProcessWorkflowSteps(
+    DEFAULT_PROCESS_WORKFLOW.steps.map((step, index) => ({
+      ...step,
+      id: `workflow-${code.toLowerCase()}-${index + 1}`,
+      description:
+        index === 0
+          ? `Check the officially announced final list for the ${code} program to confirm if you are included as a beneficiary.`
+          : step.description,
+    })),
+  )
+}
+
+export function buildDefaultProcessWorkflowByProgram(programCodes) {
+  const codes = resolveProcessWorkflowProgramCodes(programCodes)
+  return Object.fromEntries(codes.map((code) => [code, { steps: buildDefaultWorkflowStepsForProgram(code) }]))
+}
+
+function buildLegacyByProgramFromSteps(steps) {
+  const normalized = normalizeProcessWorkflowSteps(steps)
+  return Object.fromEntries(
+    PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.map((code) => [code, { steps: normalized }]),
+  )
+}
+
+export function normalizeProcessWorkflowByProgram(rawByProgram, programCodes) {
+  const codes = resolveProcessWorkflowProgramCodes(programCodes)
+  const defaults = buildDefaultProcessWorkflowByProgram(codes)
+  const source = rawByProgram && typeof rawByProgram === "object" ? rawByProgram : {}
+
+  return Object.fromEntries(
+    codes.map((code) => {
+      const entry = source[code]
+      const stepsInput = Array.isArray(entry?.steps) ? entry.steps : Array.isArray(entry) ? entry : []
+      return [
+        code,
+        {
+          steps:
+            stepsInput.length > 0
+              ? normalizeProcessWorkflowSteps(stepsInput)
+              : defaults[code]?.steps ?? buildDefaultWorkflowStepsForProgram(code),
+        },
+      ]
+    }),
+  )
+}
+
+function migrateStoredWorkflowPayload(parsed, programCodes) {
+  if (parsed?.byProgram && typeof parsed.byProgram === "object") {
+    return { byProgram: normalizeProcessWorkflowByProgram(parsed.byProgram, programCodes) }
+  }
+
+  if (Array.isArray(parsed)) {
+    return { byProgram: buildLegacyByProgramFromSteps(parsed) }
+  }
+
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.steps)) {
+    return { byProgram: buildLegacyByProgramFromSteps(parsed.steps) }
+  }
+
+  return { byProgram: buildDefaultProcessWorkflowByProgram(programCodes) }
+}
+
+export function readStoredProcessWorkflow(programCodes) {
   const raw = localStorage.getItem(PROCESS_WORKFLOW_STORAGE_KEY)
   if (!raw) {
-    return { steps: normalizeProcessWorkflowSteps(DEFAULT_PROCESS_WORKFLOW.steps) }
+    return { byProgram: buildDefaultProcessWorkflowByProgram(programCodes) }
   }
   try {
-    return { steps: normalizeProcessWorkflowSteps(extractStepsFromStoragePayload(JSON.parse(raw))) }
+    return migrateStoredWorkflowPayload(JSON.parse(raw), programCodes)
   } catch {
-    return { steps: normalizeProcessWorkflowSteps(DEFAULT_PROCESS_WORKFLOW.steps) }
+    return { byProgram: buildDefaultProcessWorkflowByProgram(programCodes) }
   }
 }
 
-export function writeStoredProcessWorkflow(config) {
-  const steps = normalizeProcessWorkflowSteps(config?.steps ?? [])
-  localStorage.setItem(PROCESS_WORKFLOW_STORAGE_KEY, JSON.stringify({ steps }))
+export function writeStoredProcessWorkflow(config, programCodes) {
+  const byProgram = config?.byProgram
+    ? normalizeProcessWorkflowByProgram(config.byProgram, programCodes)
+    : migrateStoredWorkflowPayload(config, programCodes).byProgram
+  localStorage.setItem(PROCESS_WORKFLOW_STORAGE_KEY, JSON.stringify({ byProgram }))
   window.dispatchEvent(new CustomEvent(PROCESS_WORKFLOW_CHANGED_EVENT))
-  return { steps }
+  return { byProgram }
 }
 
-export async function loadProcessWorkflow() {
-  const cached = readStoredProcessWorkflow()
+export function getWorkflowStepsForProgram(config, programCode) {
+  const code = String(programCode ?? "").trim().toUpperCase()
+  return config?.byProgram?.[code]?.steps ?? buildDefaultWorkflowStepsForProgram(code)
+}
+
+export async function loadProcessWorkflow(programCodes) {
+  const cached = readStoredProcessWorkflow(programCodes)
   try {
     const response = await apiClient.get(PROCESS_WORKFLOW_API_PATH)
     const parsed = parseProcessWorkflowResponse(response.data)
     if (!parsed) return cached
     if (!parsed.customized) return cached
-    return writeStoredProcessWorkflow({ steps: parsed.steps })
+    return writeStoredProcessWorkflow({ byProgram: parsed.byProgram }, programCodes)
   } catch (error) {
     console.error("Failed to load process workflow from server:", error)
     return cached
   }
 }
 
-export async function persistProcessWorkflow(config) {
-  const { valid, errors, normalized } = validateProcessWorkflow(config)
+export async function persistProcessWorkflow(config, programCodes) {
+  const { valid, errors, normalized } = validateProcessWorkflow(config, programCodes)
   if (!valid) {
     const validationError = new Error(errors.join(" "))
     validationError.errors = errors
     throw validationError
   }
 
-  const sentCount = normalized.steps.length
+  const sentPrograms = Object.keys(normalized.byProgram)
   let response
   try {
-    response = await apiClient.put(PROCESS_WORKFLOW_API_PATH, { steps: normalized.steps })
+    response = await apiClient.put(PROCESS_WORKFLOW_API_PATH, { byProgram: normalized.byProgram })
   } catch (error) {
     const status = error?.response?.status
     if (status === 404) {
@@ -258,26 +342,29 @@ export async function persistProcessWorkflow(config) {
   }
 
   const parsed = parseProcessWorkflowResponse(response.data)
-  if (!parsed?.customized || parsed.steps.length !== sentCount) {
+  const savedPrograms = parsed?.byProgram ? Object.keys(parsed.byProgram) : []
+  if (!parsed?.customized || savedPrograms.length !== sentPrograms.length) {
     throw new Error(
       "The server did not confirm your workflow steps. Restart the backend (npm run dev in the backend folder) and try again.",
     )
   }
 
-  return writeStoredProcessWorkflow({ steps: parsed.steps })
+  return writeStoredProcessWorkflow({ byProgram: parsed.byProgram }, programCodes)
 }
 
-export function useProcessWorkflowSteps() {
-  const [steps, setSteps] = useState(() => readStoredProcessWorkflow().steps)
+export function useProcessWorkflowByProgram(programCodes) {
+  const codes = resolveProcessWorkflowProgramCodes(programCodes)
+  const codesKey = codes.join(",")
+  const [byProgram, setByProgram] = useState(() => readStoredProcessWorkflow(codes).byProgram)
 
   useEffect(() => {
     let cancelled = false
 
-    loadProcessWorkflow().then((config) => {
-      if (!cancelled) setSteps(config.steps)
+    loadProcessWorkflow(codes).then((config) => {
+      if (!cancelled) setByProgram(config.byProgram)
     })
 
-    const sync = () => setSteps(readStoredProcessWorkflow().steps)
+    const sync = () => setByProgram(readStoredProcessWorkflow(codes).byProgram)
     window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, sync)
     window.addEventListener("storage", sync)
 
@@ -286,9 +373,15 @@ export function useProcessWorkflowSteps() {
       window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, sync)
       window.removeEventListener("storage", sync)
     }
-  }, [])
+  }, [codesKey])
 
-  return steps
+  return byProgram
+}
+
+/** @deprecated Use useProcessWorkflowByProgram instead. */
+export function useProcessWorkflowSteps(programCode = PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER[0]) {
+  const byProgram = useProcessWorkflowByProgram()
+  return getWorkflowStepsForProgram({ byProgram }, programCode)
 }
 
 export function hydrateProcessWorkflowSteps(steps) {
@@ -298,19 +391,24 @@ export function hydrateProcessWorkflowSteps(steps) {
   }))
 }
 
-export function validateProcessWorkflow(config) {
-  const steps = normalizeProcessWorkflowSteps(config?.steps ?? [])
+export function validateProcessWorkflow(config, programCodes) {
+  const byProgram = config?.byProgram
+    ? normalizeProcessWorkflowByProgram(config.byProgram, programCodes)
+    : migrateStoredWorkflowPayload(config, programCodes).byProgram
   const errors = []
 
-  if (!steps.length) {
-    errors.push("Add at least one timeline step before saving.")
+  for (const [programCode, { steps }] of Object.entries(byProgram)) {
+    if (!steps.length) {
+      errors.push(`${programCode}: add at least one timeline step before saving.`)
+      continue
+    }
+
+    steps.forEach((step, index) => {
+      const label = `${programCode} — Step ${index + 1}`
+      if (!step.title) errors.push(`${label}: add a heading.`)
+      if (!step.description) errors.push(`${label}: add instructions for students.`)
+    })
   }
 
-  steps.forEach((step, index) => {
-    const label = `Step ${index + 1}`
-    if (!step.title) errors.push(`${label}: add a heading.`)
-    if (!step.description) errors.push(`${label}: add instructions for students.`)
-  })
-
-  return { valid: errors.length === 0, errors, normalized: { steps } }
+  return { valid: errors.length === 0, errors, normalized: { byProgram } }
 }

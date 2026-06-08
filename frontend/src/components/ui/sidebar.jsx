@@ -125,11 +125,15 @@ function SidebarProvider({
   );
 }
 
+const ADMIN_MOBILE_SIDEBAR_GRADIENT =
+  "linear-gradient(145deg, #04133d 0%, #081F5C 35%, #0b2b73 65%, #1447a6 100%)"
+
 function Sidebar({
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
   className,
+  style,
   children,
   dir,
   ...props
@@ -158,18 +162,25 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
-          style={
-            {
-              "--sidebar-width": SIDEBAR_WIDTH_MOBILE
-            }
-          }
-          side={side}>
+          side={side}
+          showCloseButton={false}
+          overlayClassName="bg-[#04133d]/55 backdrop-blur-none supports-backdrop-filter:backdrop-blur-none"
+          className={cn(
+            "w-(--sidebar-width) max-w-[min(100vw-1rem,20rem)] gap-0 overflow-hidden border-0 p-0 text-white shadow-[0_24px_80px_rgba(4,19,61,0.32)]",
+            "data-[side=left]:sm:max-w-none",
+            className,
+          )}
+          style={{
+            "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
+            backgroundColor: "#081F5C",
+            backgroundImage: ADMIN_MOBILE_SIDEBAR_GRADIENT,
+            ...style,
+          }}>
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
-            <SheetDescription>Displays the mobile sidebar.</SheetDescription>
+            <SheetTitle>Navigation menu</SheetTitle>
+            <SheetDescription>Main navigation links.</SheetDescription>
           </SheetHeader>
-          <div className="flex h-full w-full flex-col">{children}</div>
+          <div className="flex h-full w-full flex-col overflow-y-auto overscroll-contain">{children}</div>
         </SheetContent>
       </Sheet>
     );

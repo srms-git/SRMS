@@ -53,6 +53,10 @@ const LandingSettingsSchema = new mongoose.Schema(
                 type: [WorkflowStepSchema],
                 default: [],
             },
+            byProgram: {
+                type: mongoose.Schema.Types.Mixed,
+                default: {},
+            },
         },
     },
     { timestamps: true },
