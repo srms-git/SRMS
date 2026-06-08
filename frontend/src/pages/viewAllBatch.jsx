@@ -4,7 +4,8 @@ import { ArrowLeft, Layers, Search, SlidersHorizontal } from "lucide-react"
 
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import { usePublishedLandingBatches } from "@/lib/landingFeaturedBatches"
-import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
+import { useLandingPageSettings, maskBatchNumber } from "@/lib/landingPageSettings"
+import { isActiveProgramCode } from "@/lib/osgfaPrograms"
 import {
   PublicBatchCardSkeleton,
   revealItemClass,
@@ -35,19 +36,25 @@ const gradientLightBlueViolet = `linear-gradient(155deg, #ffffff 0%, ${bvIce} 28
 const gradientNavyHeader = `linear-gradient(135deg, ${navyDeep} 0%, ${navy} 35%, ${navyMuted} 62%, ${navyBright} 100%)`
 
 function getBatchCardAccent(program) {
-  if (program === "TDP") {
+  const code = String(program ?? "").trim().toUpperCase()
+  if (code === "TDP") {
     return { color: navyMuted, colorLight: navyGlow, label: "TDP" }
   }
-  return { color: navyDeep, colorLight: navyBright, label: "TES" }
+  if (code === "TES") {
+    return { color: navyDeep, colorLight: navyBright, label: "TES" }
+  }
+  return { color: navyBright, colorLight: bvViolet, label: code || "Program" }
 }
 
 function getBatchCardKey(batch) {
   return `${batch.batchNo}-${batch.program}-${batch.schoolYear}`
 }
 
-function BatchCard({ batch }) {
+function BatchCard({ batch, privacy }) {
   const accent = getBatchCardAccent(batch.program)
-  const batchLabel = String(batch.batchNo ?? "?")
+  const rawBatchLabel = String(batch.batchNo ?? "?")
+  const batchLabel = privacy.maskBatchNumberInPublicList ? maskBatchNumber(rawBatchLabel) : rawBatchLabel
+  const granteeLabel = privacy.hideGranteeCountInPublicList ? "Hidden" : `${batch.grantees} grantees`
 
   return (
     <div
@@ -100,12 +107,14 @@ function BatchCard({ batch }) {
 
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span
-                className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
-                style={{ backgroundImage: gradientNavyButton }}
-              >
-                {accent.label}
-              </span>
+              {privacy.showProgramTag ? (
+                <span
+                  className="inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white"
+                  style={{ backgroundImage: gradientNavyButton }}
+                >
+                  {accent.label}
+                </span>
+              ) : null}
               <span
                 className="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]"
                 style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
@@ -117,23 +126,27 @@ function BatchCard({ batch }) {
             <h2 className="mt-2 text-base font-bold leading-snug sm:text-lg" style={{ color: navy }}>
               Batch {batchLabel}
             </h2>
-            <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: textBodyOnLight }}>
-              {batch.createdAt}
-            </p>
+            {privacy.showDateAdded ? (
+              <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.12em]" style={{ color: textBodyOnLight }}>
+                {batch.createdAt}
+              </p>
+            ) : null}
 
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              <span
-                className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]"
-                style={{ borderColor: borderBvSoft, color: navy }}
-              >
-                AY {batch.schoolYear || "—"}
-              </span>
+              {privacy.showAcademicYear ? (
+                <span
+                  className="inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold sm:text-[11px]"
+                  style={{ borderColor: borderBvSoft, color: navy }}
+                >
+                  AY {batch.schoolYear || "—"}
+                </span>
+              ) : null}
               <span
                 className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white sm:text-[11px]"
                 style={{ backgroundImage: `linear-gradient(135deg, ${accent.colorLight} 0%, #34d399 100%)` }}
               >
                 <span className="size-1.5 rounded-full bg-white/90" aria-hidden />
-                {batch.grantees} grantees
+                {granteeLabel}
               </span>
             </div>
           </div>
@@ -150,16 +163,16 @@ export default function ViewAllBatch() {
   const [batchSeriesFilter, setBatchSeriesFilter] = useState("__")
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
   const { programs } = useOsgfaPrograms()
+  const landingPageSettings = useLandingPageSettings()
+  const landingPrivacy = landingPageSettings.privacy
   const { contentRevealed, skeletonLeaving } = useContentReveal(landingBatchesLoading)
-
-  const activeProgramCodes = useMemo(() => buildActiveProgramCodeSet(programs), [programs])
 
   const landingBatches = useMemo(
     () =>
       publishedLandingBatches.filter((batch) =>
-        activeProgramCodes.has(String(batch.program ?? "").trim().toUpperCase()),
+        isActiveProgramCode(batch.program, programs),
       ),
-    [activeProgramCodes, publishedLandingBatches],
+    [programs, publishedLandingBatches],
   )
 
   useLayoutEffect(() => {
@@ -347,7 +360,7 @@ export default function ViewAllBatch() {
                 className={revealItemClass(contentRevealed, index, 45)}
                 style={revealItemStyle(contentRevealed, index, 45)}
               >
-                <BatchCard batch={batch} />
+                <BatchCard batch={batch} privacy={landingPrivacy} />
               </div>
             ))}
           </div>

@@ -177,19 +177,33 @@ function buildDefaultProcessWorkflowByProgram(programCodes = PROCESS_WORKFLOW_DE
     return Object.fromEntries(list.map((code) => [code, { steps: buildDefaultWorkflowStepsForProgram(code) }]));
 }
 
-function buildLegacyByProgramFromSteps(steps) {
-    const normalized = steps.map((step, index) => sanitizeWorkflowStep(step, index));
-    return Object.fromEntries(
-        PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.map((code) => [code, { steps: normalized }]),
-    );
+function resolveProcessWorkflowProgramCodes(programCodes, rawByProgram) {
+    const fromArg = (Array.isArray(programCodes) ? programCodes : [])
+        .map((code) => String(code ?? '').trim().toUpperCase())
+        .filter(Boolean);
+    const fromSource =
+        rawByProgram && typeof rawByProgram === 'object'
+            ? Object.keys(rawByProgram)
+                  .map((code) => String(code).trim().toUpperCase())
+                  .filter(Boolean)
+            : [];
+    const merged = [...new Set([...fromArg, ...fromSource])];
+    return merged.length ? merged : [...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER];
 }
 
-function normalizeProcessWorkflowByProgram(rawByProgram, programCodes = PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER) {
-    const defaults = buildDefaultProcessWorkflowByProgram(programCodes);
+function buildLegacyByProgramFromSteps(steps, programCodes) {
+    const codes = resolveProcessWorkflowProgramCodes(programCodes);
+    const normalized = steps.map((step, index) => sanitizeWorkflowStep(step, index));
+    return Object.fromEntries(codes.map((code) => [code, { steps: normalized }]));
+}
+
+function normalizeProcessWorkflowByProgram(rawByProgram, programCodes) {
+    const codes = resolveProcessWorkflowProgramCodes(programCodes, rawByProgram);
+    const defaults = buildDefaultProcessWorkflowByProgram(codes);
     const source = rawByProgram && typeof rawByProgram === 'object' ? rawByProgram : {};
 
     return Object.fromEntries(
-        Object.keys(defaults).map((code) => {
+        codes.map((code) => {
             const entry = source[code];
             const stepsInput = Array.isArray(entry?.steps) ? entry.steps : Array.isArray(entry) ? entry : [];
             return [
@@ -205,11 +219,12 @@ function normalizeProcessWorkflowByProgram(rawByProgram, programCodes = PROCESS_
     );
 }
 
-function normalizeProcessWorkflow(raw) {
+function normalizeProcessWorkflow(raw, programCodes) {
     const source = raw && typeof raw === 'object' ? raw : {};
 
     if (source.byProgram && typeof source.byProgram === 'object') {
-        const byProgram = normalizeProcessWorkflowByProgram(source.byProgram);
+        const codes = resolveProcessWorkflowProgramCodes(programCodes, source.byProgram);
+        const byProgram = normalizeProcessWorkflowByProgram(source.byProgram, codes);
         if (Object.keys(byProgram).length > 0) {
             return { byProgram };
         }
@@ -221,7 +236,7 @@ function normalizeProcessWorkflow(raw) {
             ? stepsInput.map((step, index) => sanitizeWorkflowStep(step, index))
             : DEFAULT_PROCESS_WORKFLOW_STEPS.map((step, index) => sanitizeWorkflowStep(step, index));
 
-    return { byProgram: buildLegacyByProgramFromSteps(steps) };
+    return { byProgram: buildLegacyByProgramFromSteps(steps, programCodes) };
 }
 
 function normalizeBatchKeys(raw) {
@@ -281,9 +296,9 @@ exports.getProcessWorkflow = async (req, res) => {
 
 exports.updateProcessWorkflow = async (req, res) => {
     try {
-        const processWorkflow = normalizeProcessWorkflow(
-            req.body?.byProgram ? { byProgram: req.body.byProgram } : { steps: req.body?.steps },
-        );
+        const source = req.body?.byProgram ? { byProgram: req.body.byProgram } : { steps: req.body?.steps };
+        const programCodes = req.body?.byProgram ? Object.keys(req.body.byProgram) : undefined;
+        const processWorkflow = normalizeProcessWorkflow(source, programCodes);
         const doc = await LandingSettings.findOneAndUpdate(
             { key: SETTINGS_KEY },
             { $set: { processWorkflow } },

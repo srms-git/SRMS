@@ -23,7 +23,7 @@ import {
   getBatchLandingKey,
   usePublishedLandingBatches,
 } from "@/lib/landingFeaturedBatches"
-import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
+import { isActiveProgramCode } from "@/lib/osgfaPrograms"
 import { useLandingPageSettings, maskBatchNumber } from "@/lib/landingPageSettings"
 import {
   getWorkflowStepsForProgram,
@@ -32,6 +32,9 @@ import {
   PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER,
   useProcessWorkflowByProgram,
 } from "@/lib/processWorkflowSettings"
+import ProcessWorkflowProgramTabs, {
+  orderWorkflowPrograms,
+} from "@/components/settings/ProcessWorkflowProgramTabs"
 import { AnnouncementImageGallery } from "@/components/AnnouncementImageGallery"
 import { LandingPublicHeader } from "@/components/LandingPublicHeader"
 import { Button } from "@/components/ui/button"
@@ -1071,62 +1074,6 @@ function ProcessWorkflowTimelineNode({
   )
 }
 
-function orderWorkflowPrograms(programs) {
-  const active = programs.filter((program) => program.active !== false)
-  const byCode = new Map(active.map((program) => [String(program.code ?? "").trim().toUpperCase(), program]))
-
-  const orderedCodes = [
-    ...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.filter((code) => byCode.has(code)),
-    ...[...byCode.keys()]
-      .filter((code) => !PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.includes(code))
-      .sort((a, b) => a.localeCompare(b)),
-  ]
-
-  return orderedCodes.map((code) => byCode.get(code)).filter(Boolean)
-}
-
-function ProcessWorkflowProgramTabs({ programs, activeCode, onChange }) {
-  if (programs.length <= 1) return null
-
-  return (
-    <div
-      className="mb-5 flex flex-wrap gap-2 sm:mb-6"
-      role="tablist"
-      aria-label="Scholarship program workflow"
-    >
-      {programs.map((program) => {
-        const code = String(program.code ?? "").trim().toUpperCase()
-        const isActive = activeCode === code
-
-        return (
-          <button
-            key={code}
-            type="button"
-            role="tab"
-            id={`workflow-tab-${code}`}
-            aria-selected={isActive}
-            aria-controls={`workflow-panel-${code}`}
-            onClick={() => onChange(code)}
-            className={cn(
-              "rounded-full border px-4 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-              isActive
-                ? "border-transparent text-white shadow-[0_10px_24px_-10px_rgba(8,31,92,0.45)] focus-visible:ring-[#1447a6]"
-                : "bg-white/85 hover:bg-white focus-visible:ring-[#a5b4fc]",
-            )}
-            style={
-              isActive
-                ? { backgroundImage: gradientNavyButton }
-                : { borderColor: borderBvSoft, color: navy }
-            }
-          >
-            {program.name || code}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 function ProcessWorkflowTimeline({ steps }) {
   const { inFocus, activeIndex, registerStepRef, progress, animationMode } = useTimelineScrollReveal(steps.length)
 
@@ -1712,7 +1659,10 @@ export default function LandingPage() {
   const landingPrivacy = landingPageSettings.privacy
   const landingContactInfo = landingPageSettings.contactInfo
 
-  const workflowPrograms = useMemo(() => orderWorkflowPrograms(programs), [programs])
+  const workflowPrograms = useMemo(
+    () => orderWorkflowPrograms(programs, PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER),
+    [programs],
+  )
   const workflowProgramCodes = useMemo(
     () => workflowPrograms.map((program) => String(program.code ?? "").trim().toUpperCase()).filter(Boolean),
     [workflowPrograms],
@@ -1790,14 +1740,12 @@ export default function LandingPage() {
     }
   }
 
-  const activeProgramCodes = useMemo(() => buildActiveProgramCodeSet(programs), [programs])
-
   const publicLandingBatches = useMemo(
     () =>
       publishedLandingBatches.filter((batch) =>
-        activeProgramCodes.has(String(batch.program ?? "").trim().toUpperCase()),
+        isActiveProgramCode(batch.program, programs),
       ),
-    [activeProgramCodes, publishedLandingBatches],
+    [programs, publishedLandingBatches],
   )
 
   const featuredBatchesByProgram = useMemo(
@@ -2173,7 +2121,13 @@ export default function LandingPage() {
               activeCode={activeWorkflowProgram}
               onChange={setActiveWorkflowProgram}
             />
-            <ProcessWorkflowTimeline key={activeWorkflowProgram} steps={scholarshipProcessSteps} />
+            <div
+              id={`workflow-panel-${activeWorkflowProgram}`}
+              role="tabpanel"
+              aria-labelledby={`workflow-tab-${activeWorkflowProgram}`}
+            >
+              <ProcessWorkflowTimeline key={activeWorkflowProgram} steps={scholarshipProcessSteps} />
+            </div>
           </div>
         </section>
       </main>

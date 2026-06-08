@@ -328,9 +328,10 @@ export default function Batches() {
     granteesRawData.forEach((item) => {
       const bNo = String(item.batchNo ?? "").trim()
       const prog = String(item.program ?? "").trim().toUpperCase()
+      const ay = String(item.academicYear ?? "").trim()
       if (!bNo || !prog) return
 
-      const key = `${bNo}|${prog}`
+      const key = ay ? `${bNo}|${prog}|${ay}` : `${bNo}|${prog}`
       map.set(key, (map.get(key) ?? 0) + 1)
     })
     return map
@@ -387,7 +388,12 @@ export default function Batches() {
   const sortedBatches = useMemo(() => {
     const getGrantees = (row) => {
       const programKey = String(row?.program ?? "").trim().toUpperCase()
-      return granteeCountsByBatchProgram.get(`${row?.batchNo}|${programKey}`) ?? 0
+      const academicYear = String(row?.schoolYear ?? row?.academicYear ?? "").trim()
+      return (
+        granteeCountsByBatchProgram.get(`${row?.batchNo}|${programKey}|${academicYear}`)
+        ?? granteeCountsByBatchProgram.get(`${row?.batchNo}|${programKey}`)
+        ?? 0
+      )
     }
 
     const parseBatch = (row) => {
@@ -554,7 +560,10 @@ export default function Batches() {
   const handleToggleLandingVisibility = async (row) => {
     const batch = normalizeBatchRow(row)
     const currentlyVisible = isBatchVisibleOnLanding(batch, landingVisibility)
-    const granteeCount = granteeCountsByBatchProgram.get(`${batch.batchNo}|${batch.program}`) ?? 0
+    const granteeCount =
+      granteeCountsByBatchProgram.get(`${batch.batchNo}|${batch.program}|${batch.academicYear}`)
+      ?? granteeCountsByBatchProgram.get(`${batch.batchNo}|${batch.program}`)
+      ?? 0
 
     if (!batch.batchNo || !batch.program || !batch.academicYear) {
       showFeedback(
@@ -795,7 +804,11 @@ export default function Batches() {
             <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sortedBatches.map((row, index) => {
             const programKey = String(row.program ?? "").trim().toUpperCase()
-            const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
+            const academicYear = String(row.schoolYear ?? row.academicYear ?? "").trim()
+            const grantees =
+              granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}|${academicYear}`)
+              ?? granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`)
+              ?? 0
             const visibleOnLanding = isBatchVisibleOnLanding(row, landingVisibility)
 
             return (

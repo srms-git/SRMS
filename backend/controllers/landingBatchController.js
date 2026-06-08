@@ -84,7 +84,18 @@ exports.listLandingBatches = async (req, res) => {
             .sort({ publishedAt: -1, updatedAt: -1 })
             .lean();
 
-        return res.status(200).json(rows.map((row) => serializeLandingBatch(row)));
+        const payload = await Promise.all(
+            rows.map(async (row) => {
+                const granteeCount = await countGranteesForBatch({
+                    batchNo: row.batchNo,
+                    program: row.program,
+                    academicYear: row.academicYear,
+                });
+                return serializeLandingBatch({ ...row, granteeCount });
+            }),
+        );
+
+        return res.status(200).json(payload);
     } catch (error) {
         return res.status(500).json({
             message: error.message || 'Failed to load landing batches.',

@@ -36,13 +36,13 @@ const PROCESS_WORKFLOW_API_PATH = "/landing-batches/process-workflow"
 
 export const PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER = ["TES", "TDP"]
 
-function parseProcessWorkflowResponse(data) {
+function parseProcessWorkflowResponse(data, programCodes) {
   if (!data || typeof data !== "object") return null
 
   if (data.byProgram && typeof data.byProgram === "object") {
     return {
       customized: Boolean(data.customized),
-      byProgram: normalizeProcessWorkflowByProgram(data.byProgram),
+      byProgram: normalizeProcessWorkflowByProgram(data.byProgram, programCodes),
     }
   }
 
@@ -50,7 +50,7 @@ function parseProcessWorkflowResponse(data) {
     const steps = normalizeProcessWorkflowSteps(data.steps)
     return {
       customized: Boolean(data.customized),
-      byProgram: buildLegacyByProgramFromSteps(steps),
+      byProgram: buildLegacyByProgramFromSteps(steps, programCodes),
     }
   }
 
@@ -234,11 +234,10 @@ export function buildDefaultProcessWorkflowByProgram(programCodes) {
   return Object.fromEntries(codes.map((code) => [code, { steps: buildDefaultWorkflowStepsForProgram(code) }]))
 }
 
-function buildLegacyByProgramFromSteps(steps) {
+function buildLegacyByProgramFromSteps(steps, programCodes) {
+  const codes = resolveProcessWorkflowProgramCodes(programCodes)
   const normalized = normalizeProcessWorkflowSteps(steps)
-  return Object.fromEntries(
-    PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.map((code) => [code, { steps: normalized }]),
-  )
+  return Object.fromEntries(codes.map((code) => [code, { steps: normalized }]))
 }
 
 export function normalizeProcessWorkflowByProgram(rawByProgram, programCodes) {
@@ -269,11 +268,11 @@ function migrateStoredWorkflowPayload(parsed, programCodes) {
   }
 
   if (Array.isArray(parsed)) {
-    return { byProgram: buildLegacyByProgramFromSteps(parsed) }
+    return { byProgram: buildLegacyByProgramFromSteps(parsed, programCodes) }
   }
 
   if (parsed && typeof parsed === "object" && Array.isArray(parsed.steps)) {
-    return { byProgram: buildLegacyByProgramFromSteps(parsed.steps) }
+    return { byProgram: buildLegacyByProgramFromSteps(parsed.steps, programCodes) }
   }
 
   return { byProgram: buildDefaultProcessWorkflowByProgram(programCodes) }
@@ -309,7 +308,7 @@ export async function loadProcessWorkflow(programCodes) {
   const cached = readStoredProcessWorkflow(programCodes)
   try {
     const response = await apiClient.get(PROCESS_WORKFLOW_API_PATH)
-    const parsed = parseProcessWorkflowResponse(response.data)
+    const parsed = parseProcessWorkflowResponse(response.data, programCodes)
     if (!parsed) return cached
     if (!parsed.customized) return cached
     return writeStoredProcessWorkflow({ byProgram: parsed.byProgram }, programCodes)
@@ -341,7 +340,7 @@ export async function persistProcessWorkflow(config, programCodes) {
     throw error
   }
 
-  const parsed = parseProcessWorkflowResponse(response.data)
+  const parsed = parseProcessWorkflowResponse(response.data, programCodes)
   const savedPrograms = parsed?.byProgram ? Object.keys(parsed.byProgram) : []
   if (!parsed?.customized || savedPrograms.length !== sentPrograms.length) {
     throw new Error(

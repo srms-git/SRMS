@@ -28,6 +28,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import ProcessWorkflowProgramTabs, {
+  orderWorkflowPrograms,
+} from "@/components/settings/ProcessWorkflowProgramTabs"
 import { OSGFA_SETTINGS_CHANGED_EVENT, readStoredSettings, writeStoredSettings } from "@/lib/osgfaSettings"
 import { cn } from "@/lib/utils"
 import {
@@ -103,20 +106,6 @@ function buildProfileForm(user) {
     email: user?.email || "",
     role: user?.role || "osgfa",
   }
-}
-
-function orderWorkflowPrograms(programs) {
-  const active = programs.filter((program) => program.active !== false)
-  const byCode = new Map(active.map((program) => [String(program.code ?? "").trim().toUpperCase(), program]))
-
-  const orderedCodes = [
-    ...PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.filter((code) => byCode.has(code)),
-    ...[...byCode.keys()]
-      .filter((code) => !PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER.includes(code))
-      .sort((a, b) => a.localeCompare(b)),
-  ]
-
-  return orderedCodes.map((code) => byCode.get(code)).filter(Boolean)
 }
 
 function captureWorkflowStepPositions(container) {
@@ -368,7 +357,10 @@ export default function Setting() {
   const [passwordNotice, setPasswordNotice] = useState({ type: "", message: "" })
   const [settingsNotice, setSettingsNotice] = useState({ type: "", message: "" })
   const { programs: osgfaPrograms } = useOsgfaPrograms()
-  const workflowPrograms = useMemo(() => orderWorkflowPrograms(osgfaPrograms), [osgfaPrograms])
+  const workflowPrograms = useMemo(
+    () => orderWorkflowPrograms(osgfaPrograms, PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER),
+    [osgfaPrograms],
+  )
   const workflowProgramCodes = useMemo(
     () => workflowPrograms.map((program) => String(program.code ?? "").trim().toUpperCase()).filter(Boolean),
     [workflowPrograms],
@@ -469,21 +461,11 @@ export default function Setting() {
     loadProcessWorkflow(workflowProgramCodes).then((config) => {
       if (cancelled) return
       setWorkflowDraft(config)
-      setEditingWorkflowStepId((currentId) => {
-        const steps = getWorkflowStepsForProgram(config, activeWorkflowProgram)
-        if (currentId && steps.some((step) => step.id === currentId)) return currentId
-        return steps[0]?.id ?? null
-      })
     })
 
     const syncWorkflow = () => {
-      const draft = readStoredProcessWorkflow(workflowProgramCodes)
-      setWorkflowDraft(draft)
-      setEditingWorkflowStepId((currentId) => {
-        const steps = getWorkflowStepsForProgram(draft, activeWorkflowProgram)
-        if (currentId && steps.some((step) => step.id === currentId)) return currentId
-        return steps[0]?.id ?? null
-      })
+      if (cancelled) return
+      setWorkflowDraft(readStoredProcessWorkflow(workflowProgramCodes))
     }
     window.addEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
     window.addEventListener("storage", syncWorkflow)
@@ -493,18 +475,25 @@ export default function Setting() {
       window.removeEventListener(PROCESS_WORKFLOW_CHANGED_EVENT, syncWorkflow)
       window.removeEventListener("storage", syncWorkflow)
     }
-  }, [activeWorkflowProgram, workflowProgramCodes])
+  }, [workflowProgramCodes])
 
   useEffect(() => {
     if (active !== SECTIONS.WORKFLOW) return
-    const draft = readStoredProcessWorkflow(workflowProgramCodes)
-    setWorkflowDraft(draft)
+    setWorkflowDraft(readStoredProcessWorkflow(workflowProgramCodes))
+  }, [active, workflowProgramCodes])
+
+  const activeWorkflowSteps = useMemo(
+    () => getWorkflowStepsForProgram(workflowDraft, activeWorkflowProgram),
+    [workflowDraft, activeWorkflowProgram],
+  )
+
+  useEffect(() => {
     setEditingWorkflowStepId((currentId) => {
-      const steps = getWorkflowStepsForProgram(draft, activeWorkflowProgram)
+      const steps = getWorkflowStepsForProgram(workflowDraft, activeWorkflowProgram)
       if (currentId && steps.some((step) => step.id === currentId)) return currentId
       return steps[0]?.id ?? null
     })
-  }, [active, activeWorkflowProgram, workflowProgramCodes])
+  }, [activeWorkflowProgram, workflowDraft])
 
   useLayoutEffect(() => {
     if (!workflowShouldFlipRef.current) return
@@ -516,10 +505,6 @@ export default function Setting() {
   const displayName = useMemo(() => getUserDisplayName(user), [user])
   const initials = useMemo(() => getUserInitial(user), [user])
   const roleLabel = useMemo(() => getUserRoleLabel(user), [user])
-  const activeWorkflowSteps = useMemo(
-    () => getWorkflowStepsForProgram(workflowDraft, activeWorkflowProgram),
-    [workflowDraft, activeWorkflowProgram],
-  )
 
   useEffect(() => {
     if (!workflowProgramCodes.includes(activeWorkflowProgram)) {
@@ -1178,40 +1163,20 @@ export default function Setting() {
               </p>
 
               <form className="space-y-4" onSubmit={handleSaveWorkflow}>
-                {workflowPrograms.length > 1 ? (
-                  <div className="flex flex-wrap gap-2" role="tablist" aria-label="Scholarship program workflow editor">
-                    {workflowPrograms.map((program) => {
-                      const code = String(program.code ?? "").trim().toUpperCase()
-                      const isActive = activeWorkflowProgram === code
-                      return (
-                        <button
-                          key={code}
-                          type="button"
-                          role="tab"
-                          aria-selected={isActive}
-                          onClick={() => {
-                            setActiveWorkflowProgram(code)
-                            const steps = getWorkflowStepsForProgram(workflowDraft, code)
-                            setEditingWorkflowStepId((currentId) => {
-                              if (currentId && steps.some((step) => step.id === currentId)) return currentId
-                              return steps[0]?.id ?? null
-                            })
-                          }}
-                          className={cn(
-                            "rounded-full border px-4 py-2 text-sm font-semibold transition",
-                            isActive
-                              ? "border-transparent bg-[#081F5C] text-white shadow-sm"
-                              : "border-[#081F5C]/15 bg-white text-gray-800 hover:bg-gray-50",
-                          )}
-                        >
-                          {program.name || code}
-                        </button>
-                      )
-                    })}
-                  </div>
-                ) : null}
+                <ProcessWorkflowProgramTabs
+                  programs={workflowPrograms}
+                  activeCode={activeWorkflowProgram}
+                  onChange={setActiveWorkflowProgram}
+                  className="mt-2 gap-3"
+                  tabIdPrefix="workflow-editor"
+                />
 
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#081F5C]/10 bg-[#081F5C]/5 px-4 py-3">
+                <div
+                  id={`workflow-editor-panel-${activeWorkflowProgram}`}
+                  role="tabpanel"
+                  aria-labelledby={`workflow-editor-tab-${activeWorkflowProgram}`}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#081F5C]/10 bg-[#081F5C]/5 px-4 py-3"
+                >
                   <div>
                     <p className="text-sm font-semibold text-gray-900">
                       {activeWorkflowProgram}: {activeWorkflowSteps.length} timeline step
@@ -1229,7 +1194,12 @@ export default function Setting() {
                   </button>
                 </div>
 
-                <div ref={workflowListRef} className="workflow-step-list space-y-3">
+                <div
+                  ref={workflowListRef}
+                  className="workflow-step-list space-y-3"
+                  role="tabpanel"
+                  aria-labelledby={`workflow-editor-tab-${activeWorkflowProgram}`}
+                >
                   {activeWorkflowSteps.map((step, index) => (
                     <WorkflowStepEditor
                       key={step.id}

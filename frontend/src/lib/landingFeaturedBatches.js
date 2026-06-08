@@ -284,8 +284,9 @@ export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandi
   for (const item of grantees ?? []) {
     const batchNo = String(item.batchNo ?? "").trim()
     const program = String(item.program ?? "").trim().toUpperCase()
+    const schoolYear = String(item.academicYear ?? "").trim()
     if (!batchNo || !program) continue
-    const key = `${batchNo}|${program}`
+    const key = schoolYear ? `${batchNo}|${program}|${schoolYear}` : `${batchNo}|${program}`
     granteeCounts.set(key, (granteeCounts.get(key) ?? 0) + 1)
   }
 
@@ -298,7 +299,11 @@ export function buildLandingBatchCards(grantees, visibilitySet = readStoredLandi
     seen.add(landingKey)
 
     const program = String(batch.program ?? "").trim().toUpperCase()
-    const granteesCount = granteeCounts.get(`${batch.batchNo}|${program}`) ?? 0
+    const schoolYear = String(batch.schoolYear ?? "").trim()
+    const granteesCount =
+      granteeCounts.get(`${batch.batchNo}|${program}|${schoolYear}`)
+      ?? granteeCounts.get(`${batch.batchNo}|${program}`)
+      ?? 0
     cards.push({
       batchNo: batch.batchNo,
       schoolYear: batch.schoolYear,
