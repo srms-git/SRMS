@@ -366,9 +366,6 @@ function EnrolledProgramArchiveSections({
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        Previous enrolled program{archives.length === 1 ? "" : "s"}
-      </p>
       {archives.map((archive, idx) => {
         const sectionKey = `${archive.enrolledProgram}-${archive.archivedAt || idx}`
         const isExpanded = expandedKeys.has(sectionKey)
@@ -395,16 +392,13 @@ function EnrolledProgramArchiveSections({
               aria-expanded={isExpanded}
             >
               <div className="min-w-0 space-y-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Previous enrolled program</p>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-semibold">
-                    {archive.enrolledProgram}
-                  </Badge>
-                  {archive.yearLevelAtArchive ? (
-                    <span className="text-xs text-muted-foreground">Last year level: {archive.yearLevelAtArchive}</span>
-                  ) : null}
-                  {archive.archivedAt ? (
-                    <span className="text-xs text-muted-foreground">Archived {formatDisplayDate(archive.archivedAt)}</span>
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">{archive.enrolledProgram || "Unknown program"}</p>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                  {archive.yearLevelAtArchive ? <span>Last year level: {archive.yearLevelAtArchive}</span> : null}
+                  {archive.yearLevelAtArchive && archive.archivedAt ? <span aria-hidden>·</span> : null}
+                  {archive.archivedAt ? <span>Archived {formatDisplayDate(archive.archivedAt)}</span> : null}
+                  {!isExpanded ? (
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">Tap to view requirements and claim status</span>
                   ) : null}
                 </div>
               </div>
@@ -415,29 +409,32 @@ function EnrolledProgramArchiveSections({
             </button>
 
             {isExpanded ? (
-              <div className="space-y-3 border-t border-dashed border-slate-300/90 px-3 pb-3 pt-3 dark:border-white/15">
-                <GranteeRequirementsBlock
-                  mode={mode}
-                  definitions={requirementDefs}
-                  dataRow={archiveRow}
-                  yearLevels={claims.map((c) => c.yearLevel)}
-                  currentYearLevel={archive.yearLevelAtArchive}
-                  onRequirementCheckChange={
-                    mode === "edit" && onArchiveRequirementCheckChange
-                      ? (yearLevel, semKey, reqId, checked) =>
-                          onArchiveRequirementCheckChange(idx, yearLevel, semKey, reqId, checked)
-                      : undefined
-                  }
-                  onRequirementSubmittedByChange={
-                    mode === "edit" && onArchiveRequirementSubmittedByChange
-                      ? (yearLevel, semKey, field, value) =>
-                          onArchiveRequirementSubmittedByChange(idx, yearLevel, semKey, field, value)
-                      : undefined
-                  }
-                />
-
+              <div className="space-y-4 border-t border-dashed border-slate-300/90 px-3 pb-3 pt-3 dark:border-white/15">
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">Semestral claim status (archived)</p>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">Requirements</p>
+                  <GranteeRequirementsBlock
+                    mode={mode}
+                    definitions={requirementDefs}
+                    dataRow={archiveRow}
+                    yearLevels={claims.map((c) => c.yearLevel)}
+                    currentYearLevel={archive.yearLevelAtArchive}
+                    onRequirementCheckChange={
+                      mode === "edit" && onArchiveRequirementCheckChange
+                        ? (yearLevel, semKey, reqId, checked) =>
+                            onArchiveRequirementCheckChange(idx, yearLevel, semKey, reqId, checked)
+                        : undefined
+                    }
+                    onRequirementSubmittedByChange={
+                      mode === "edit" && onArchiveRequirementSubmittedByChange
+                        ? (yearLevel, semKey, field, value) =>
+                            onArchiveRequirementSubmittedByChange(idx, yearLevel, semKey, field, value)
+                        : undefined
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2 border-t border-slate-200/80 pt-4 dark:border-white/10">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">Semestral claim status</p>
                   <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
                     <div className="max-h-[min(260px,40vh)] overflow-auto [scrollbar-gutter:stable]">
                       <table className="w-full min-w-[440px] border-collapse text-sm">
@@ -979,93 +976,106 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
           currentYearLevel={row.yearLevel}
         />
 
-        {enrolledProgramArchives.length > 0 ? (
-          <>
-            <Separator className="bg-slate-200/80 dark:bg-white/10" />
-            <EnrolledProgramArchiveSections archives={enrolledProgramArchives} requirementDefs={requirements} />
-          </>
-        ) : null}
-      </div>
-
-      <Separator className="bg-slate-200/80 dark:bg-white/10" />
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
+        <div className="space-y-3 border-t border-slate-200/80 pt-4 dark:border-white/10">
+          <div className="flex flex-wrap items-end justify-between gap-2">
             <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h4>
+              <h5 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h5>
               <p className="text-[11px] text-muted-foreground">Current enrolled program: {row.enrolledProgram || "—"}</p>
             </div>
+            <p className="text-[11px] font-medium text-muted-foreground">{claims.length} year level{claims.length === 1 ? "" : "s"} on record</p>
           </div>
-          <p className="text-[11px] font-medium text-muted-foreground">{claims.length} year level{claims.length === 1 ? "" : "s"} on record</p>
-        </div>
 
-        <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
-          <div className="max-h-[min(240px,40vh)] overflow-auto [scrollbar-gutter:stable]">
-            <table className="w-full min-w-[320px] border-collapse text-sm">
-              <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
-                <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
-                  <th scope="col" className="whitespace-nowrap">
-                    Year level
-                  </th>
-                  <th scope="col" className="whitespace-nowrap">
-                    1st semester
-                  </th>
-                  <th scope="col" className="whitespace-nowrap">
-                    2nd semester
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
-                {claims.map((c) => {
-                  const currentRow = c.yearLevel === row.yearLevel
-                  return (
-                    <tr
-                      key={c.yearLevel}
-                      className={cn(
-                        "border-t border-slate-100 transition-colors first:border-t-0 dark:border-white/8",
-                        currentRow && "bg-[#081F5C]/6 dark:bg-[#081F5C]/15",
-                      )}
-                    >
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
-                          {currentRow ? (
-                            <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px] font-semibold text-[#081F5C] dark:text-[#9ec5ff]">
-                              Current
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 align-middle">
-                        <SemesterClaimCell
-                          semStatus={c.firstSem}
-                          claimerType={c.firstSemClaimer}
-                          otherName={c.firstSemOtherName}
-                          otherRelation={c.firstSemOtherRelation}
-                          otherContact={c.firstSemOtherContact}
-                          claimedAt={c.firstSemClaimedAt}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 align-middle">
-                        <SemesterClaimCell
-                          semStatus={c.secondSem}
-                          claimerType={c.secondSemClaimer}
-                          otherName={c.secondSemOtherName}
-                          otherRelation={c.secondSemOtherRelation}
-                          otherContact={c.secondSemOtherContact}
-                          claimedAt={c.secondSemClaimedAt}
-                        />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+          <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
+            <div className="max-h-[min(240px,40vh)] overflow-auto [scrollbar-gutter:stable]">
+              <table className="w-full min-w-[320px] border-collapse text-sm">
+                <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
+                  <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
+                    <th scope="col" className="whitespace-nowrap">
+                      Year level
+                    </th>
+                    <th scope="col" className="whitespace-nowrap">
+                      1st semester
+                    </th>
+                    <th scope="col" className="whitespace-nowrap">
+                      2nd semester
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
+                  {claims.map((c) => {
+                    const currentRow = c.yearLevel === row.yearLevel
+                    return (
+                      <tr
+                        key={c.yearLevel}
+                        className={cn(
+                          "border-t border-slate-100 transition-colors first:border-t-0 dark:border-white/8",
+                          currentRow && "bg-[#081F5C]/6 dark:bg-[#081F5C]/15",
+                        )}
+                      >
+                        <td className="px-3 py-2.5 align-middle">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
+                            {currentRow ? (
+                              <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px] font-semibold text-[#081F5C] dark:text-[#9ec5ff]">
+                                Current
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 align-middle">
+                          <SemesterClaimCell
+                            semStatus={c.firstSem}
+                            claimerType={c.firstSemClaimer}
+                            otherName={c.firstSemOtherName}
+                            otherRelation={c.firstSemOtherRelation}
+                            otherContact={c.firstSemOtherContact}
+                            claimedAt={c.firstSemClaimedAt}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 align-middle">
+                          <SemesterClaimCell
+                            semStatus={c.secondSem}
+                            claimerType={c.secondSemClaimer}
+                            otherName={c.secondSemOtherName}
+                            otherRelation={c.secondSemOtherRelation}
+                            otherContact={c.secondSemOtherContact}
+                            claimedAt={c.secondSemClaimedAt}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>
+
+      {enrolledProgramArchives.length > 0 ? (
+        <>
+          <Separator className="bg-slate-200/80 dark:bg-white/10" />
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Previous enrolled program{enrolledProgramArchives.length === 1 ? "" : "s"}
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground">
+                    Claim and requirement history from before the current program ({row.enrolledProgram || "—"}).
+                  </p>
+                </div>
+              </div>
+              <p className="text-[11px] font-medium text-muted-foreground">
+                {enrolledProgramArchives.length} archived program{enrolledProgramArchives.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <EnrolledProgramArchiveSections archives={enrolledProgramArchives} requirementDefs={requirements} />
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -1434,9 +1444,114 @@ function GranteeRecordEdit({
           onRequirementSubmittedByChange={onRequirementSubmittedByChange}
         />
 
-        {enrolledProgramArchives.length > 0 ? (
-          <>
-            <Separator className="bg-slate-200/80 dark:bg-white/10" />
+        <div className="space-y-3 border-t border-slate-200/80 pt-4 dark:border-white/10">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div className="min-w-0">
+              <h5 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h5>
+              <p className="text-[11px] text-muted-foreground">Current enrolled program: {draft.enrolledProgram || "—"}</p>
+            </div>
+            <p className="text-[11px] font-medium text-muted-foreground">{claimsCountLabel} on record</p>
+          </div>
+
+          <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
+            <div className="max-h-[min(240px,40vh)] overflow-auto [scrollbar-gutter:stable]">
+              <table className="w-full min-w-[360px] border-collapse text-sm">
+                <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
+                  <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
+                    <th scope="col">Year level</th>
+                    <th scope="col">1st semester</th>
+                    <th scope="col">2nd semester</th>
+                  </tr>
+                </thead>
+                <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
+                  {claims.map((c, idx) => {
+                    const currentRow = c.yearLevel === draft.yearLevel
+                    const firstProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "first", requirements)
+                    const secondProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "second", requirements)
+                    return (
+                      <tr
+                        key={c.yearLevel}
+                        className={cn(
+                          "border-t border-slate-100 transition-colors first:border-t-0 dark:border-white/8",
+                          currentRow && "bg-[#081F5C]/6 dark:bg-[#081F5C]/15",
+                        )}
+                      >
+                        <td className="px-3 py-2.5 align-middle">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
+                            {currentRow ? (
+                              <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px] font-semibold text-[#081F5C] dark:text-[#9ec5ff]">
+                                Current
+                              </Badge>
+                            ) : null}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 align-top">
+                          <SemesterClaimEditSlot
+                            yearLevel={c.yearLevel}
+                            semKey="first"
+                            progress={firstProgress}
+                            semStatus={c.firstSem}
+                            claimer={c.firstSemClaimer}
+                            otherName={c.firstSemOtherName}
+                            otherRelation={c.firstSemOtherRelation}
+                            otherContact={c.firstSemOtherContact}
+                            claimedAt={c.firstSemClaimedAt}
+                            onStatusChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
+                            onClaimerChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
+                            onOtherNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
+                            onOtherRelationChange={(e) => onSemesterChange(idx, "firstSemOtherRelation", e.target.value)}
+                            onOtherContactChange={(e) => onSemesterChange(idx, "firstSemOtherContact", e.target.value)}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5 align-top">
+                          <SemesterClaimEditSlot
+                            yearLevel={c.yearLevel}
+                            semKey="second"
+                            progress={secondProgress}
+                            semStatus={c.secondSem}
+                            claimer={c.secondSemClaimer}
+                            otherName={c.secondSemOtherName}
+                            otherRelation={c.secondSemOtherRelation}
+                            otherContact={c.secondSemOtherContact}
+                            claimedAt={c.secondSemClaimedAt}
+                            onStatusChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
+                            onClaimerChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
+                            onOtherNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
+                            onOtherRelationChange={(e) => onSemesterChange(idx, "secondSemOtherRelation", e.target.value)}
+                            onOtherContactChange={(e) => onSemesterChange(idx, "secondSemOtherContact", e.target.value)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {enrolledProgramArchives.length > 0 ? (
+        <>
+          <Separator className="bg-slate-200/80 dark:bg-white/10" />
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Previous enrolled program{enrolledProgramArchives.length === 1 ? "" : "s"}
+                  </h4>
+                  <p className="text-[11px] text-muted-foreground">
+                    Claim and requirement history from before the current program ({draft.enrolledProgram || "—"}).
+                  </p>
+                </div>
+              </div>
+              <p className="text-[11px] font-medium text-muted-foreground">
+                {enrolledProgramArchives.length} archived program{enrolledProgramArchives.length === 1 ? "" : "s"}
+              </p>
+            </div>
             <EnrolledProgramArchiveSections
               archives={enrolledProgramArchives}
               requirementDefs={requirements}
@@ -1445,101 +1560,9 @@ function GranteeRecordEdit({
               onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
               onArchiveSemesterChange={onArchiveSemesterChange}
             />
-          </>
-        ) : null}
-      </div>
-
-      <Separator className="bg-slate-200/80 dark:bg-white/10" />
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
-            <div className="min-w-0">
-              <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h4>
-              <p className="text-[11px] text-muted-foreground">Current enrolled program: {draft.enrolledProgram || "—"}</p>
-            </div>
           </div>
-          <p className="text-[11px] font-medium text-muted-foreground">{claimsCountLabel} on record</p>
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
-          <div className="max-h-[min(240px,40vh)] overflow-auto [scrollbar-gutter:stable]">
-            <table className="w-full min-w-[360px] border-collapse text-sm">
-              <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
-                <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
-                  <th scope="col">Year level</th>
-                  <th scope="col">1st semester</th>
-                  <th scope="col">2nd semester</th>
-                </tr>
-              </thead>
-              <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
-                {claims.map((c, idx) => {
-                  const currentRow = c.yearLevel === draft.yearLevel
-                  const firstProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "first", requirements)
-                  const secondProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "second", requirements)
-                  return (
-                    <tr
-                      key={c.yearLevel}
-                      className={cn(
-                        "border-t border-slate-100 transition-colors first:border-t-0 dark:border-white/8",
-                        currentRow && "bg-[#081F5C]/6 dark:bg-[#081F5C]/15",
-                      )}
-                    >
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
-                          {currentRow ? (
-                            <Badge variant="outline" className="h-5 rounded-md px-1.5 text-[10px] font-semibold text-[#081F5C] dark:text-[#9ec5ff]">
-                              Current
-                            </Badge>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5 align-top">
-                        <SemesterClaimEditSlot
-                          yearLevel={c.yearLevel}
-                          semKey="first"
-                          progress={firstProgress}
-                          semStatus={c.firstSem}
-                          claimer={c.firstSemClaimer}
-                          otherName={c.firstSemOtherName}
-                          otherRelation={c.firstSemOtherRelation}
-                          otherContact={c.firstSemOtherContact}
-                          claimedAt={c.firstSemClaimedAt}
-                          onStatusChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
-                          onClaimerChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
-                          onOtherNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
-                          onOtherRelationChange={(e) => onSemesterChange(idx, "firstSemOtherRelation", e.target.value)}
-                          onOtherContactChange={(e) => onSemesterChange(idx, "firstSemOtherContact", e.target.value)}
-                        />
-                      </td>
-                      <td className="px-3 py-2.5 align-top">
-                        <SemesterClaimEditSlot
-                          yearLevel={c.yearLevel}
-                          semKey="second"
-                          progress={secondProgress}
-                          semStatus={c.secondSem}
-                          claimer={c.secondSemClaimer}
-                          otherName={c.secondSemOtherName}
-                          otherRelation={c.secondSemOtherRelation}
-                          otherContact={c.secondSemOtherContact}
-                          claimedAt={c.secondSemClaimedAt}
-                          onStatusChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
-                          onClaimerChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
-                          onOtherNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
-                          onOtherRelationChange={(e) => onSemesterChange(idx, "secondSemOtherRelation", e.target.value)}
-                          onOtherContactChange={(e) => onSemesterChange(idx, "secondSemOtherContact", e.target.value)}
-                        />
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+        </>
+      ) : null}
     </form>
   )
 }
