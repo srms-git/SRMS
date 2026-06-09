@@ -46,7 +46,7 @@ app.config["OUTPUT_FOLDER"] = OUTPUT_FOLDER
 # Extract rows from PDF (text + regex — MSU-style lines)
 # --------------------------------------------------
 
-YEAR_PATTERNS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+YEAR_PATTERNS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 LINE_RE = re.compile(
     r"^(\d{5})\s+(\d+)\s+([A-Z0-9]+)\s+((?:TDP|TES)-[\d\-]+)\s+(.*)$",

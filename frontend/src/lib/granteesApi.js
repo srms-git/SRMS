@@ -323,7 +323,7 @@ const YEAR_LEVEL_DONUT_PALETTE = [
   { color: "#10b981", colorFrom: "#047857", colorTo: "#34d399" },
   { color: "#0891b2", colorFrom: "#0e7490", colorTo: "#22d3ee" },
 ]
-const YEAR_LEVEL_ORDER = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+const YEAR_LEVEL_ORDER = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 function rowClaimDate(row) {

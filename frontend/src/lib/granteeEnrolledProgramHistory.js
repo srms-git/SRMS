@@ -10,7 +10,7 @@ import {
   sanitizeRequirementChecklistForSave,
 } from "@/lib/granteeRequirementsChecklist"
 
-const DEFAULT_YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+const DEFAULT_YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 export const MAX_LIFETIME_CLAIMED_YEARS = 5
 /** @deprecated Use MAX_LIFETIME_CLAIMED_YEARS */

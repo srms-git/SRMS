@@ -123,8 +123,12 @@ const UNCLAIM_STROKE = "#dc2626"
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
-const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
-const CURRENT_YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
+const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
+
+function supportedYearLevel(yearLevel) {
+  const trimmed = String(yearLevel ?? "").trim()
+  return YEAR_LEVELS.includes(trimmed) ? trimmed : ""
+}
 
 const TREND_RANGE = {
   THIS_WEEK: "this-week",
@@ -481,9 +485,6 @@ function EnrolledProgramArchiveSections({
 
   return (
     <div className="space-y-3">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-        Previous enrolled program{archives.length === 1 ? "" : "s"}
-      </p>
       {archives.map((archive, idx) => {
         const sectionKey = `${archive.enrolledProgram}-${archive.archivedAt || idx}`
         const isExpanded = expandedKeys.has(sectionKey)
@@ -1142,7 +1143,10 @@ function BatchRecordView({ row, formatStudentId }) {
   const overallClaimed = row.status === "Claimed"
   const recordIsActive = isGranteeRecordActive(row)
   const inactiveRemarks = granteeInactiveRemarks(row)
-  const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
+  const claims = ensureSemesterClaimTimestamps(
+    semesterClaimsForRow(row, YEAR_LEVELS).filter((claim) => supportedYearLevel(claim.yearLevel)),
+    row?.lastUpdated,
+  )
   const enrolledProgramArchives = normalizeEnrolledProgramArchives(row)
   const programInferred = inferProgramFromRecord(row)
   const requirementDefs = getRequirementsForProgramCode(programInferred)
@@ -1155,7 +1159,7 @@ function BatchRecordView({ row, formatStudentId }) {
     { label: "Sequence no.", value: row.seqNo, icon: Fingerprint },
     { label: "Award number", value: row.awardNumber, icon: Receipt, mono: true },
     { label: "Enrolled program", value: row.enrolledProgram, icon: BookOpen },
-    { label: "Current year level", value: row.yearLevel, icon: GraduationCap },
+    { label: "Current year level", value: supportedYearLevel(row.yearLevel), icon: GraduationCap },
     { label: "Academic year", value: row.academicYear ?? "—", icon: CalendarDays },
     { label: "Phone number", value: row.phoneNumber ?? "—", icon: Receipt },
     { label: "Email address", value: row.email ?? "—", icon: Mail, subtle: true },
@@ -1241,7 +1245,7 @@ function BatchRecordView({ row, formatStudentId }) {
                   {row.enrolledProgram || "Program"}
                 </Badge>
                 <Badge variant="outline" className="h-6 rounded-full px-2.5 text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                  {row.yearLevel || "Year level"}
+                  {supportedYearLevel(row.yearLevel) || "Year level"}
                 </Badge>
               </div>
             </div>
@@ -1393,14 +1397,26 @@ function BatchRecordView({ row, formatStudentId }) {
             </table>
           </div>
         </div>
-
-        {enrolledProgramArchives.length > 0 ? (
-          <>
-            <Separator className="bg-slate-200/80 dark:bg-white/10" />
-            <EnrolledProgramArchiveSections archives={enrolledProgramArchives} requirementDefs={requirementDefs} />
-          </>
-        ) : null}
       </div>
+
+      {enrolledProgramArchives.length > 0 ? (
+        <>
+          <Separator className="bg-slate-200/80 dark:bg-white/10" />
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Previous enrolled program{enrolledProgramArchives.length === 1 ? "" : "s"}
+                  </h4>
+                </div>
+              </div>
+            </div>
+            <EnrolledProgramArchiveSections archives={enrolledProgramArchives} requirementDefs={requirementDefs} />
+          </div>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -1422,7 +1438,10 @@ function BatchRecordEdit({
   const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
-  const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
+  const claims = ensureSemesterClaimTimestamps(
+    semesterClaimsForRow(draft, YEAR_LEVELS).filter((claim) => supportedYearLevel(claim.yearLevel)),
+    draft?.lastUpdated,
+  )
   const enrolledProgramArchives = normalizeEnrolledProgramArchives(draft)
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
   const programOptions = useMemo(() => {
@@ -1506,7 +1525,7 @@ function BatchRecordEdit({
                   {draft.enrolledProgram || "Program"}
                 </Badge>
                 <Badge variant="outline" className="h-6 rounded-full px-2.5 text-[11px] font-medium text-slate-700 dark:text-slate-200">
-                  {draft.yearLevel || "Year level"}
+                  {supportedYearLevel(draft.yearLevel) || "Year level"}
                 </Badge>
               </div>
             </div>
@@ -1536,7 +1555,7 @@ function BatchRecordEdit({
                 ) : type === "select-year-level" ? (
                   <select
                     id={id}
-                    value={CURRENT_YEAR_LEVELS.includes(value) ? value : ""}
+                    value={supportedYearLevel(value)}
                     onChange={(e) => onChange(keyName, e.target.value)}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                     required
@@ -1544,7 +1563,7 @@ function BatchRecordEdit({
                     <option value="" disabled>
                       Select year level
                     </option>
-                    {CURRENT_YEAR_LEVELS.map((yl) => (
+                    {YEAR_LEVELS.map((yl) => (
                       <option key={yl} value={yl}>
                         {yl}
                       </option>
@@ -1717,15 +1736,27 @@ function BatchRecordEdit({
       {enrolledProgramArchives.length > 0 ? (
         <>
           <Separator className="bg-slate-200/80 dark:bg-white/10" />
-          <EnrolledProgramArchiveSections
-            archives={enrolledProgramArchives}
-            requirementDefs={requirementDefs}
-            mode="edit"
-            rowForClaimLimit={draft}
-            onArchiveRequirementCheckChange={onArchiveRequirementCheckChange}
-            onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
-            onArchiveSemesterChange={onArchiveSemesterChange}
-          />
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
+                <div className="min-w-0">
+                  <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                    Previous enrolled program{enrolledProgramArchives.length === 1 ? "" : "s"}
+                  </h4>
+                </div>
+              </div>
+            </div>
+            <EnrolledProgramArchiveSections
+              archives={enrolledProgramArchives}
+              requirementDefs={requirementDefs}
+              mode="edit"
+              rowForClaimLimit={draft}
+              onArchiveRequirementCheckChange={onArchiveRequirementCheckChange}
+              onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
+              onArchiveSemesterChange={onArchiveSemesterChange}
+            />
+          </div>
         </>
       ) : null}
     </form>
@@ -1929,7 +1960,7 @@ export default function BatchInfo() {
         "Award number": row.awardNumber || "—",
         Fullname: row.fullName || "—",
         "Enrolled program": row.enrolledProgram || "—",
-        "Year level": row.yearLevel || "—",
+        "Year level": supportedYearLevel(row.yearLevel) || "—",
       })),
     [tableRows],
   )
@@ -2122,9 +2153,10 @@ export default function BatchInfo() {
   const buildEditDraftFromRow = useCallback(
     (row) => {
       const claimsForRow = ensureSemesterClaimTimestamps(
-        Array.isArray(row.semesterClaims) && row.semesterClaims.length > 0
+        (Array.isArray(row.semesterClaims) && row.semesterClaims.length > 0
           ? row.semesterClaims.map(normalizeSemesterClaim)
-          : semesterClaimsForRow(row, YEAR_LEVELS),
+          : semesterClaimsForRow(row, YEAR_LEVELS)
+        ).filter((claim) => supportedYearLevel(claim.yearLevel)),
         row.lastUpdated,
       )
       const { requirementChecklistBySem: _legacyFlat, ...rowRest } = row
@@ -2141,6 +2173,7 @@ export default function BatchInfo() {
         program: rowProgram,
         batchNo: batchNo || rowRest.batchNo,
         academicYear: academicYear || rowRest.academicYear,
+        yearLevel: supportedYearLevel(rowRest.yearLevel),
         semesterClaims: claimsForRow,
         requirementChecklistByYearSem,
         enrolledProgramArchives: normalizeEnrolledProgramArchives(row),
@@ -3082,7 +3115,7 @@ export default function BatchInfo() {
                       </td>
                       <td className="w-[240px] max-w-[240px] truncate whitespace-nowrap font-medium">{row.fullName || "—"}</td>
                       <td className="w-[140px] max-w-[140px] truncate whitespace-nowrap">{row.enrolledProgram || "—"}</td>
-                      <td className="w-[120px] whitespace-nowrap">{row.yearLevel || "—"}</td>
+                      <td className="w-[120px] whitespace-nowrap">{supportedYearLevel(row.yearLevel) || "—"}</td>
                       <td className="text-center">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

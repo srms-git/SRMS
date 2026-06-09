@@ -137,7 +137,7 @@ const MOCK_BATCH_TABLE_ROWS = [
 
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
-const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 const TES_GRANTEE_REQUIREMENTS = [
   { id: "cor", label: "Certificate of Registration (COR) for the current semester" },

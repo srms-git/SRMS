@@ -5,7 +5,7 @@ const { createInternalNotification } = require('./notificationController');
 const { logActivity } = require('../services/auditLogger');
 const { sanitizeGranteeOtherPersonFields } = require('../utils/granteeOtherPersonFields');
 
-const DEFAULT_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
+const DEFAULT_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 
 function yearLevelIndexForDefaults(yearLevel) {
     const i = DEFAULT_YEAR_LEVELS.indexOf(String(yearLevel ?? '').trim());

@@ -97,7 +97,7 @@ import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 
-const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 function yearLevelIndex(yearLevel) {
   return yearLevelIndexForLevels(yearLevel, YEAR_LEVELS)
