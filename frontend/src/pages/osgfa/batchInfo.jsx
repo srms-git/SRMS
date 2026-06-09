@@ -62,6 +62,7 @@ import {
   buildMonthlyClaimTrend,
   buildYearLevelDonut,
   bulkUpdateGranteesActive,
+  fetchAllGrantees,
   fetchGranteeById,
   fetchGranteesForBatch,
   GRANTEE_UPDATED_EVENT,
@@ -86,6 +87,7 @@ import {
   ensureSemesterClaimTimestamps,
   mapSemesterClaimsWithFieldChange,
   normalizeSemesterClaim,
+  reconcileSemesterClaimsWithRequirementChecklist,
   semesterClaimsForRow,
   yearLevelIndex as yearLevelIndexForLevels,
 } from "@/lib/granteeSemesterClaims"
@@ -102,6 +104,17 @@ import {
   updateRequirementSemOtherPersonField,
   updateRequirementSemSubmittedBy,
 } from "@/lib/granteeRequirementsChecklist"
+import {
+  applyEnrolledProgramChange,
+  applyFullyClaimedInactiveState,
+  collectEnrolledProgramOptions,
+  countLifetimeClaimedYearsFromRow,
+  isGranteeFullyClaimed,
+  lifetimeClaimLimitMessage,
+  MAX_LIFETIME_CLAIMED_YEARS,
+  normalizeEnrolledProgramArchives,
+  wouldExceedLifetimeYearClaimLimit,
+} from "@/lib/granteeEnrolledProgramHistory"
 import { getRequirementsForProgramCode } from "@/lib/osgfaPrograms"
 
 /** Area chart: claimed = brand navy, unclaimed = red */
@@ -111,6 +124,7 @@ const UNCLAIM_STROKE = "#dc2626"
 const selectShellClass =
   "h-9 w-full appearance-none rounded-lg border-none ring-0 bg-white/95 px-3 py-2 pr-8 text-xs sm:text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/20"
 const YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+const CURRENT_YEAR_LEVELS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 const TREND_RANGE = {
   THIS_WEEK: "this-week",
@@ -150,10 +164,30 @@ const SEMESTER_CLAIM_FIELD_SEM = {
   secondSemOtherContact: "second",
 }
 
+const REQUIREMENT_SEM_TO_CLAIM_FIELD = {
+  first: "firstSem",
+  second: "secondSem",
+}
+
 function requirementChecklistForDraft(draft, requirementDefs, claimLevels) {
   const levels = claimLevels ?? semesterClaimsForRow(draft, YEAR_LEVELS).map((c) => c.yearLevel)
   const base = normalizeRequirementChecklistByYearSem(draft, requirementDefs, levels)
   return ensureRequirementSemCompletionTimestamps(base, requirementDefs, levels, draft?.lastUpdated)
+}
+
+function requirementChecklistForArchive(archive, requirementDefs, claimLevels) {
+  const levels = claimLevels ?? (archive?.semesterClaims ?? []).map((c) => c.yearLevel)
+  const base = normalizeRequirementChecklistByYearSem(
+    { requirementChecklistByYearSem: archive?.requirementChecklistByYearSem },
+    requirementDefs,
+    levels,
+  )
+  return ensureRequirementSemCompletionTimestamps(base, requirementDefs, levels, archive?.archivedAt)
+}
+
+function isArchiveSemesterClaimEditBlocked(archive, yearLevel, semKey, requirementDefs) {
+  const checklist = requirementChecklistForArchive(archive, requirementDefs)
+  return !requirementYearSemProgress(checklist, yearLevel, semKey, requirementDefs).isComplete
 }
 
 function isSemesterClaimEditBlocked(draft, yearLevel, semKey, requirementDefs) {
@@ -176,13 +210,19 @@ function SemesterClaimEditSlot({
   otherRelation,
   otherContact,
   claimedAt,
+  yearLimitBlocked = false,
   onStatusChange,
   onClaimerChange,
   onOtherNameChange,
   onOtherRelationChange,
   onOtherContactChange,
 }) {
-  const blocked = !progress.isComplete
+  const requirementsIncomplete = !progress.isComplete
+  const claimLimitBlocked = yearLimitBlocked && semStatus !== "Claimed"
+  const blocked = requirementsIncomplete || claimLimitBlocked
+  const blockedMessage = claimLimitBlocked
+    ? lifetimeClaimLimitMessage()
+    : semesterClaimBlockedMessage(yearLevel, semKey)
 
   return (
     <div className="space-y-1.5">
@@ -192,21 +232,26 @@ function SemesterClaimEditSlot({
           onChange={onStatusChange}
           disabled={blocked}
           aria-disabled={blocked}
-          title={blocked ? semesterClaimBlockedMessage(yearLevel, semKey) : undefined}
+          title={blocked ? blockedMessage : undefined}
         />
         {blocked ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-amber-700 transition-colors hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
-                aria-label={`Requirements incomplete for ${yearLevel}, ${REQUIREMENT_SEM_LABEL[semKey]}`}
+                className={cn(
+                  "mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2",
+                  claimLimitBlocked
+                    ? "text-slate-600 hover:bg-slate-100 focus-visible:ring-slate-500/40 dark:text-slate-300 dark:hover:bg-white/10"
+                    : "text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10",
+                )}
+                aria-label={blockedMessage}
               >
                 <Info className="size-4" strokeWidth={2.25} aria-hidden />
               </button>
             </TooltipTrigger>
             <TooltipContent side="top" sideOffset={6} className="max-w-[260px] text-left leading-snug">
-              {semesterClaimBlockedMessage(yearLevel, semKey)}
+              {blockedMessage}
             </TooltipContent>
           </Tooltip>
         ) : null}
@@ -412,6 +457,240 @@ function RequirementSemesterEditCell({
   )
 }
 
+function EnrolledProgramArchiveSections({
+  archives,
+  requirementDefs,
+  mode = "view",
+  rowForClaimLimit = null,
+  onArchiveRequirementCheckChange,
+  onArchiveRequirementSubmittedByChange,
+  onArchiveSemesterChange,
+}) {
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set())
+
+  if (!archives?.length) return null
+
+  const toggleExpanded = (key) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        Previous enrolled program{archives.length === 1 ? "" : "s"}
+      </p>
+      {archives.map((archive, idx) => {
+        const sectionKey = `${archive.enrolledProgram}-${archive.archivedAt || idx}`
+        const isExpanded = expandedKeys.has(sectionKey)
+        const claims = ensureSemesterClaimTimestamps(
+          archive.semesterClaims?.length ? archive.semesterClaims : [],
+          archive.archivedAt,
+        )
+        const archiveRow = {
+          requirementChecklistByYearSem: archive.requirementChecklistByYearSem,
+          yearLevel: archive.yearLevelAtArchive,
+          lastUpdated: archive.archivedAt,
+        }
+        const archiveChecklist = requirementChecklistForArchive(archive, requirementDefs, claims.map((c) => c.yearLevel))
+
+        return (
+          <div
+            key={sectionKey}
+            className="overflow-hidden rounded-xl border border-dashed border-slate-300/90 bg-slate-50/50 dark:border-white/15 dark:bg-slate-900/25"
+          >
+            <button
+              type="button"
+              onClick={() => toggleExpanded(sectionKey)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-100/70 dark:hover:bg-white/5"
+              aria-expanded={isExpanded}
+            >
+              <div className="min-w-0 space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Previous enrolled program</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-semibold">
+                    {archive.enrolledProgram}
+                  </Badge>
+                  {archive.yearLevelAtArchive ? (
+                    <span className="text-xs text-muted-foreground">Last year level: {archive.yearLevelAtArchive}</span>
+                  ) : null}
+                  {archive.archivedAt ? (
+                    <span className="text-xs text-muted-foreground">Archived {formatDisplayDate(archive.archivedAt)}</span>
+                  ) : null}
+                </div>
+              </div>
+              <ChevronDown
+                className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-200", isExpanded && "rotate-180")}
+                aria-hidden
+              />
+            </button>
+
+            {isExpanded ? (
+              <div className="space-y-3 border-t border-dashed border-slate-300/90 px-3 pb-3 pt-3 dark:border-white/15">
+                <GranteeRequirementsBlock
+                  mode={mode}
+                  definitions={requirementDefs}
+                  dataRow={archiveRow}
+                  yearLevels={claims.map((c) => c.yearLevel)}
+                  currentYearLevel={archive.yearLevelAtArchive}
+                  onRequirementCheckChange={
+                    mode === "edit" && onArchiveRequirementCheckChange
+                      ? (yearLevel, semKey, reqId, checked) =>
+                          onArchiveRequirementCheckChange(idx, yearLevel, semKey, reqId, checked)
+                      : undefined
+                  }
+                  onRequirementSubmittedByChange={
+                    mode === "edit" && onArchiveRequirementSubmittedByChange
+                      ? (yearLevel, semKey, field, value) =>
+                          onArchiveRequirementSubmittedByChange(idx, yearLevel, semKey, field, value)
+                      : undefined
+                  }
+                />
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">Semestral claim status (archived)</p>
+                  <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
+                    <div className="max-h-[min(260px,40vh)] overflow-auto [scrollbar-gutter:stable]">
+                      <table className="w-full min-w-[440px] border-collapse text-sm">
+                        <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
+                          <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
+                            <th scope="col" className="w-[108px] whitespace-nowrap">
+                              Year level
+                            </th>
+                            <th scope="col" className="min-w-[200px] whitespace-nowrap">
+                              1st semester
+                            </th>
+                            <th scope="col" className="min-w-[200px] whitespace-nowrap">
+                              2nd semester
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
+                          {claims.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} className="px-3 py-5 text-center text-xs text-muted-foreground">
+                                No semester claims archived for this program.
+                              </td>
+                            </tr>
+                          ) : mode === "edit" && onArchiveSemesterChange ? (
+                            claims.map((c, claimIdx) => {
+                              const firstProgress = requirementYearSemProgress(archiveChecklist, c.yearLevel, "first", requirementDefs)
+                              const secondProgress = requirementYearSemProgress(archiveChecklist, c.yearLevel, "second", requirementDefs)
+                              return (
+                                <tr key={c.yearLevel} className="border-t border-slate-100 first:border-t-0 dark:border-white/8">
+                                  <td className="px-3 py-2.5 align-middle">
+                                    <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 align-top">
+                                    <SemesterClaimEditSlot
+                                      yearLevel={c.yearLevel}
+                                      semKey="first"
+                                      progress={firstProgress}
+                                      semStatus={c.firstSem}
+                                      claimer={c.firstSemClaimer}
+                                      otherName={c.firstSemOtherName}
+                                      otherRelation={c.firstSemOtherRelation}
+                                      otherContact={c.firstSemOtherContact}
+                                      claimedAt={c.firstSemClaimedAt}
+                                      yearLimitBlocked={
+                                        rowForClaimLimit
+                                          ? wouldExceedLifetimeYearClaimLimit(
+                                              rowForClaimLimit,
+                                              claims,
+                                              claimIdx,
+                                              "firstSem",
+                                              "Claimed",
+                                              YEAR_LEVELS,
+                                            )
+                                          : false
+                                      }
+                                      onStatusChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSem", e.target.value)}
+                                      onClaimerChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemClaimer", e.target.value)}
+                                      onOtherNameChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemOtherName", e.target.value)}
+                                      onOtherRelationChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemOtherRelation", e.target.value)}
+                                      onOtherContactChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemOtherContact", e.target.value)}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2.5 align-top">
+                                    <SemesterClaimEditSlot
+                                      yearLevel={c.yearLevel}
+                                      semKey="second"
+                                      progress={secondProgress}
+                                      semStatus={c.secondSem}
+                                      claimer={c.secondSemClaimer}
+                                      otherName={c.secondSemOtherName}
+                                      otherRelation={c.secondSemOtherRelation}
+                                      otherContact={c.secondSemOtherContact}
+                                      claimedAt={c.secondSemClaimedAt}
+                                      yearLimitBlocked={
+                                        rowForClaimLimit
+                                          ? wouldExceedLifetimeYearClaimLimit(
+                                              rowForClaimLimit,
+                                              claims,
+                                              claimIdx,
+                                              "secondSem",
+                                              "Claimed",
+                                              YEAR_LEVELS,
+                                            )
+                                          : false
+                                      }
+                                      onStatusChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSem", e.target.value)}
+                                      onClaimerChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemClaimer", e.target.value)}
+                                      onOtherNameChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemOtherName", e.target.value)}
+                                      onOtherRelationChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemOtherRelation", e.target.value)}
+                                      onOtherContactChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemOtherContact", e.target.value)}
+                                    />
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          ) : (
+                            claims.map((c) => (
+                              <tr key={c.yearLevel} className="border-t border-slate-100 first:border-t-0 dark:border-white/8">
+                                <td className="px-3 py-2.5 align-middle">
+                                  <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
+                                </td>
+                                <td className="px-3 py-2.5 align-top">
+                                  <SemesterClaimCell
+                                    semStatus={c.firstSem}
+                                    claimerType={c.firstSemClaimer}
+                                    otherName={c.firstSemOtherName}
+                                    otherRelation={c.firstSemOtherRelation}
+                                    otherContact={c.firstSemOtherContact}
+                                    claimedAt={c.firstSemClaimedAt}
+                                  />
+                                </td>
+                                <td className="px-3 py-2.5 align-top">
+                                  <SemesterClaimCell
+                                    semStatus={c.secondSem}
+                                    claimerType={c.secondSemClaimer}
+                                    otherName={c.secondSemOtherName}
+                                    otherRelation={c.secondSemOtherRelation}
+                                    otherContact={c.secondSemOtherContact}
+                                    claimedAt={c.secondSemClaimedAt}
+                                  />
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function GranteeRequirementsBlock({ definitions, dataRow, yearLevels, currentYearLevel, mode, onRequirementCheckChange, onRequirementSubmittedByChange }) {
   const levels = useMemo(() => [...new Set((yearLevels ?? []).map((s) => String(s ?? "").trim()).filter(Boolean))], [yearLevels])
 
@@ -578,17 +857,11 @@ function buildBatchEditChangeSummary(originalRow, draftRow, requirementDefs) {
 
   const changes = []
   const fieldLabels = [
-    ["fullName", "Full name"],
-    ["studentId", "Student ID"],
-    ["batchNo", "Batch number"],
-    ["awardNumber", "Award number"],
     ["enrolledProgram", "Enrolled program"],
     ["yearLevel", "Current year level"],
-    ["academicYear", "Academic year"],
     ["phoneNumber", "Phone number"],
     ["email", "Email address"],
     ["bankAccount", "Bank account"],
-    ["lastUpdated", "Record last updated"],
   ]
 
   for (const [field, label] of fieldLabels) {
@@ -596,6 +869,76 @@ function buildBatchEditChangeSummary(originalRow, draftRow, requirementDefs) {
     const after = String(draftRow[field] ?? "").trim()
     if (before !== after) {
       changes.push(`${label}: ${before || "—"} -> ${after || "—"}`)
+      if (field === "enrolledProgram" && before && after && before !== after) {
+        changes.push(
+          `Prior requirements and semestral claims for ${before} will be archived. Year level resets to 1st Year under ${after}.`,
+        )
+      }
+    }
+  }
+
+  const beforeArchives = normalizeEnrolledProgramArchives(originalRow)
+  const afterArchives = normalizeEnrolledProgramArchives(draftRow)
+  if (afterArchives.length > beforeArchives.length) {
+    const newest = afterArchives[afterArchives.length - 1]
+    if (newest?.enrolledProgram) {
+      changes.push(`Archived prior progress under enrolled program ${newest.enrolledProgram}.`)
+    }
+  }
+
+  const archiveCount = Math.max(beforeArchives.length, afterArchives.length)
+  for (let ai = 0; ai < archiveCount; ai++) {
+    const beforeArchive = beforeArchives[ai]
+    const afterArchive = afterArchives[ai]
+    if (!afterArchive) continue
+    const archiveLabel = afterArchive.enrolledProgram || `Archive ${ai + 1}`
+
+    const beforeArchiveClaims = beforeArchive?.semesterClaims ?? []
+    const afterArchiveClaims = afterArchive.semesterClaims ?? []
+    const archiveClaimCount = Math.max(beforeArchiveClaims.length, afterArchiveClaims.length)
+    for (let ci = 0; ci < archiveClaimCount; ci++) {
+      const before = beforeArchiveClaims[ci]
+      const after = afterArchiveClaims[ci]
+      if (!after) continue
+      const year = after.yearLevel ?? before?.yearLevel ?? `Year row ${ci + 1}`
+
+      const bFirst = before?.firstSem ?? "Unclaimed"
+      const aFirst = after.firstSem ?? "Unclaimed"
+      if (bFirst !== aFirst) {
+        changes.push(`Archived ${archiveLabel} · ${year} · 1st semester status: ${bFirst} -> ${aFirst}`)
+      }
+
+      const bSecond = before?.secondSem ?? "Unclaimed"
+      const aSecond = after.secondSem ?? "Unclaimed"
+      if (bSecond !== aSecond) {
+        changes.push(`Archived ${archiveLabel} · ${year} · 2nd semester status: ${bSecond} -> ${aSecond}`)
+      }
+    }
+
+    const archiveLevels = [...new Set(afterArchiveClaims.map((c) => c.yearLevel))]
+    const beforeArchiveReq = normalizeRequirementChecklistByYearSem(
+      { requirementChecklistByYearSem: beforeArchive?.requirementChecklistByYearSem },
+      requirementDefs,
+      archiveLevels,
+    )
+    const afterArchiveReq = normalizeRequirementChecklistByYearSem(
+      { requirementChecklistByYearSem: afterArchive.requirementChecklistByYearSem },
+      requirementDefs,
+      archiveLevels,
+    )
+    for (const yl of archiveLevels) {
+      for (const sem of ["first", "second"]) {
+        const semLabel = REQUIREMENT_SEM_LABEL[sem]
+        for (const d of requirementDefs) {
+          const bi = beforeArchiveReq[yl]?.[sem]?.[d.id] === true
+          const afterChecked = afterArchiveReq[yl]?.[sem]?.[d.id] === true
+          if (bi !== afterChecked) {
+            changes.push(
+              `Archived ${archiveLabel} · Requirements (${yl}, ${semLabel}) · ${d.label}: ${bi ? "Submitted" : "Not submitted"} -> ${afterChecked ? "Submitted" : "Not submitted"}`,
+            )
+          }
+        }
+      }
     }
   }
 
@@ -717,7 +1060,46 @@ function buildBatchEditChangeSummary(originalRow, draftRow, requirementDefs) {
 function GranteeInactiveStatusIndicator({ row, iconClassName = "size-3.5" }) {
   if (isGranteeRecordActive(row)) return null
 
+  const fullyClaimed = isGranteeFullyClaimed(row, YEAR_LEVELS)
   const remarks = granteeInactiveRemarks(row)
+
+  if (fullyClaimed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex size-6 shrink-0 items-center justify-center self-center rounded-md text-emerald-600 transition-colors hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 dark:text-emerald-400 dark:hover:bg-emerald-500/10 dark:hover:text-emerald-300"
+            aria-label="Student is fully claimed"
+          >
+            <CircleCheck className={iconClassName} strokeWidth={2.25} aria-hidden />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="center"
+          sideOffset={8}
+          className="max-w-[280px] flex-col items-start gap-0 border border-emerald-200/90 bg-white px-0 py-0 text-left text-slate-800 shadow-lg dark:border-emerald-500/35 dark:bg-slate-900 dark:text-slate-100 [&>svg]:fill-white dark:[&>svg]:fill-slate-900"
+        >
+          <div className="flex w-full items-start gap-2.5 px-3 py-2.5">
+            <span
+              className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200"
+              aria-hidden
+            >
+              <CircleCheck className="size-3.5" strokeWidth={2.25} />
+            </span>
+            <div className="min-w-0 space-y-1">
+              <p className="text-xs font-semibold leading-none text-emerald-800 dark:text-emerald-200">Fully claimed</p>
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                This student has received grants for all {MAX_LIFETIME_CLAIMED_YEARS} year levels across enrolled programs.
+              </p>
+            </div>
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    )
+  }
+
   const label = remarks ? `Inactive: ${remarks}` : "Inactive record"
 
   return (
@@ -761,6 +1143,7 @@ function BatchRecordView({ row, formatStudentId }) {
   const recordIsActive = isGranteeRecordActive(row)
   const inactiveRemarks = granteeInactiveRemarks(row)
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
+  const enrolledProgramArchives = normalizeEnrolledProgramArchives(row)
   const programInferred = inferProgramFromRecord(row)
   const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
@@ -938,6 +1321,7 @@ function BatchRecordView({ row, formatStudentId }) {
             <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
             <div className="min-w-0">
               <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h4>
+              <p className="text-[11px] text-muted-foreground">Current enrolled program: {row.enrolledProgram || "—"}</p>
             </div>
           </div>
           <p className="text-[11px] font-medium text-muted-foreground">
@@ -1009,36 +1393,75 @@ function BatchRecordView({ row, formatStudentId }) {
             </table>
           </div>
         </div>
+
+        {enrolledProgramArchives.length > 0 ? (
+          <>
+            <Separator className="bg-slate-200/80 dark:bg-white/10" />
+            <EnrolledProgramArchiveSections archives={enrolledProgramArchives} requirementDefs={requirementDefs} />
+          </>
+        ) : null}
       </div>
     </div>
   )
 }
 
-function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onRequirementSubmittedByChange, onSubmit }) {
+function BatchRecordEdit({
+  draft,
+  enrolledProgramOptions,
+  onChange,
+  onSemesterChange,
+  onRequirementCheckChange,
+  onRequirementSubmittedByChange,
+  onArchiveRequirementCheckChange,
+  onArchiveRequirementSubmittedByChange,
+  onArchiveSemesterChange,
+  onSubmit,
+}) {
   const overallClaimed = draft.status === "Claimed"
   const programInferred = inferProgramFromRecord(draft)
   const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
+  const enrolledProgramArchives = normalizeEnrolledProgramArchives(draft)
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
+  const programOptions = useMemo(() => {
+    const current = String(draft?.enrolledProgram ?? "").trim()
+    return collectEnrolledProgramOptions([], [...enrolledProgramOptions, current].filter(Boolean))
+  }, [draft?.enrolledProgram, enrolledProgramOptions])
   const claimLevelsKey = claims.map((c) => c.yearLevel).join("|")
   const requirementChecklist = useMemo(
     () => requirementChecklistForDraft(draft, requirementDefs, claims.map((c) => c.yearLevel)),
     [draft, requirementDefs, claimLevelsKey],
   )
+  const lifetimeClaimedYears = countLifetimeClaimedYearsFromRow(draft, YEAR_LEVELS)
   const fieldItems = [
-    { id: "edit-batch", label: "Batch number", value: draft.batchNo ?? "", icon: Layers, keyName: "batchNo" },
-    { id: "edit-student", label: "Student ID", value: draft.studentId ?? "", icon: User, keyName: "studentId" },
+    { id: "edit-batch", label: "Batch number", value: draft.batchNo ?? "", icon: Layers, keyName: "batchNo", readOnly: true },
+    { id: "edit-student", label: "Student ID", value: draft.studentId ?? "", icon: User, keyName: "studentId", readOnly: true },
     { id: "edit-seq", label: "Sequence no.", value: draft.seqNo ?? "", icon: Fingerprint, keyName: "seqNo", readOnly: true },
-    { id: "edit-award", label: "Award number", value: draft.awardNumber ?? "", icon: Receipt, keyName: "awardNumber", mono: true },
-    { id: "edit-program", label: "Enrolled program", value: draft.enrolledProgram ?? "", icon: BookOpen, keyName: "enrolledProgram" },
+    { id: "edit-award", label: "Award number", value: draft.awardNumber ?? "", icon: Receipt, keyName: "awardNumber", mono: true, readOnly: true },
+    {
+      id: "edit-program",
+      label: "Enrolled program",
+      value: draft.enrolledProgram ?? "",
+      icon: BookOpen,
+      keyName: "enrolledProgram",
+      type: "select-enrolled-program",
+    },
     { id: "edit-year-level", label: "Current year level", value: draft.yearLevel ?? "", icon: GraduationCap, keyName: "yearLevel", type: "select-year-level" },
-    { id: "edit-academic-year", label: "Academic year", value: draft.academicYear ?? "", icon: CalendarDays, keyName: "academicYear" },
+    { id: "edit-academic-year", label: "Academic year", value: draft.academicYear ?? "", icon: CalendarDays, keyName: "academicYear", readOnly: true },
     { id: "edit-phone", label: "Phone number", value: draft.phoneNumber ?? "", icon: Receipt, keyName: "phoneNumber" },
     { id: "edit-email", label: "Email address", value: draft.email ?? "", icon: Mail, keyName: "email", type: "email" },
     { id: "edit-bank-account", label: "Bank account", value: draft.bankAccount ?? "", icon: Landmark, keyName: "bankAccount", mono: true },
-    { id: "edit-last-updated", label: "Record last updated", value: draft.lastUpdated ?? "", icon: CalendarDays, keyName: "lastUpdated", type: "date" },
+    {
+      id: "edit-last-updated",
+      label: "Record last updated",
+      value: formatDisplayDate(draft.lastUpdated),
+      icon: CalendarDays,
+      keyName: "lastUpdated",
+      readOnly: true,
+      type: "display",
+    },
   ]
 
   return (
@@ -1058,13 +1481,7 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
             </div>
             <div className="min-w-0 flex-1 space-y-1.5">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{granteeKindLabel}</p>
-              <Input
-                id="edit-name"
-                value={draft.fullName ?? ""}
-                onChange={(e) => onChange("fullName", e.target.value)}
-                className="h-9 border-slate-300/80 bg-white/95 text-sm font-semibold dark:border-white/15 dark:bg-slate-900/55"
-                required
-              />
+              <h3 className="text-base font-semibold leading-snug text-slate-900 dark:text-white">{draft.fullName || "—"}</h3>
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Student ID <span className="font-mono text-[13px] text-[#081F5C] dark:text-[#7eb0ff]">{draft.studentId || "—"}</span>
               </p>
@@ -1101,26 +1518,54 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Profile & grant details</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {fieldItems.map(({ id, label, value, icon: Icon, keyName, readOnly, mono, type }) => (
-            <label
+            <div
               key={id}
-              htmlFor={id}
-              className="group flex gap-3 rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-colors hover:border-[#081F5C]/20 hover:bg-white dark:border-white/10 dark:bg-slate-950/40 dark:hover:border-[#081F5C]/35"
+              className={cn(
+                "group flex gap-3 rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-colors dark:border-white/10 dark:bg-slate-950/40",
+                !readOnly && "hover:border-[#081F5C]/20 hover:bg-white dark:hover:border-[#081F5C]/35",
+                readOnly && "bg-muted/30 dark:bg-slate-900/50",
+              )}
             >
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200">
                 <Icon className="size-4" strokeWidth={2} aria-hidden />
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-                {type === "select-year-level" ? (
+                {type === "display" ? (
+                  <p className="text-sm font-medium leading-snug text-foreground">{value || "—"}</p>
+                ) : type === "select-year-level" ? (
                   <select
                     id={id}
                     value={value}
                     onChange={(e) => onChange(keyName, e.target.value)}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
-                    {YEAR_LEVELS.map((yl) => (
+                    {value && !CURRENT_YEAR_LEVELS.includes(value) ? (
+                      <option value={value}>{value}</option>
+                    ) : null}
+                    {CURRENT_YEAR_LEVELS.map((yl) => (
                       <option key={yl} value={yl}>
                         {yl}
+                      </option>
+                    ))}
+                  </select>
+                ) : type === "select-enrolled-program" ? (
+                  <select
+                    id={id}
+                    value={value}
+                    onChange={(e) => onChange(keyName, e.target.value)}
+                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    required
+                  >
+                    <option value="" disabled>
+                      Select enrolled program
+                    </option>
+                    {value && !programOptions.includes(value) ? (
+                      <option value={value}>{value}</option>
+                    ) : null}
+                    {programOptions.map((prog) => (
+                      <option key={prog} value={prog}>
+                        {prog}
                       </option>
                     ))}
                   </select>
@@ -1130,14 +1575,15 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
                     type={type ?? "text"}
                     value={value}
                     readOnly={readOnly}
+                    disabled={readOnly}
                     onChange={(e) => onChange(keyName, e.target.value)}
-                    className={cn("h-9", readOnly && "bg-muted/50", mono && "font-mono text-[13px]")}
+                    className={cn("h-9", readOnly && "cursor-not-allowed bg-muted/50 opacity-90", mono && "font-mono text-[13px]")}
                     placeholder={keyName === "phoneNumber" ? "e.g. 09XXXXXXXXX" : undefined}
                     required={!readOnly}
                   />
                 )}
               </div>
-            </label>
+            </div>
           ))}
         </div>
       </div>
@@ -1173,9 +1619,12 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
             <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
             <div className="min-w-0">
               <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h4>
+              <p className="text-[11px] text-muted-foreground">Current enrolled program: {draft.enrolledProgram || "—"}</p>
             </div>
           </div>
-          <p className="text-[11px] font-medium text-muted-foreground">{claimsCountLabel} on record</p>
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {claimsCountLabel} on record · {lifetimeClaimedYears}/{MAX_LIFETIME_CLAIMED_YEARS} lifetime years claimed
+          </p>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
@@ -1228,6 +1677,7 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
                           otherRelation={c.firstSemOtherRelation}
                           otherContact={c.firstSemOtherContact}
                           claimedAt={c.firstSemClaimedAt}
+                          yearLimitBlocked={wouldExceedLifetimeYearClaimLimit(draft, claims, idx, "firstSem", "Claimed", YEAR_LEVELS)}
                           onStatusChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
                           onClaimerChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
                           onOtherNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
@@ -1246,6 +1696,7 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
                           otherRelation={c.secondSemOtherRelation}
                           otherContact={c.secondSemOtherContact}
                           claimedAt={c.secondSemClaimedAt}
+                          yearLimitBlocked={wouldExceedLifetimeYearClaimLimit(draft, claims, idx, "secondSem", "Claimed", YEAR_LEVELS)}
                           onStatusChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
                           onClaimerChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
                           onOtherNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
@@ -1260,6 +1711,21 @@ function BatchRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheck
             </table>
           </div>
         </div>
+
+        {enrolledProgramArchives.length > 0 ? (
+          <>
+            <Separator className="bg-slate-200/80 dark:bg-white/10" />
+            <EnrolledProgramArchiveSections
+              archives={enrolledProgramArchives}
+              requirementDefs={requirementDefs}
+              mode="edit"
+              rowForClaimLimit={draft}
+              onArchiveRequirementCheckChange={onArchiveRequirementCheckChange}
+              onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
+              onArchiveSemesterChange={onArchiveSemesterChange}
+            />
+          </>
+        ) : null}
       </div>
     </form>
   )
@@ -1305,6 +1771,7 @@ export default function BatchInfo() {
   }, [batchNo, program, academicYear])
 
   const [records, setRecords] = useState([])
+  const [allEnrolledPrograms, setAllEnrolledPrograms] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -1352,6 +1819,24 @@ export default function BatchInfo() {
     document.addEventListener("visibilitychange", onVisible)
     return () => document.removeEventListener("visibilitychange", onVisible)
   }, [batchNo, program, academicYear])
+
+  useEffect(() => {
+    let cancelled = false
+    const loadEnrolledPrograms = async () => {
+      try {
+        const rows = await fetchAllGrantees()
+        if (!cancelled) {
+          setAllEnrolledPrograms(collectEnrolledProgramOptions(rows))
+        }
+      } catch (err) {
+        console.error("Failed to load enrolled program options:", err)
+      }
+    }
+    void loadEnrolledPrograms()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
@@ -1657,6 +2142,7 @@ export default function BatchInfo() {
         academicYear: academicYear || rowRest.academicYear,
         semesterClaims: claimsForRow,
         requirementChecklistByYearSem,
+        enrolledProgramArchives: normalizeEnrolledProgramArchives(row),
       }
     },
     [program, batchNo, academicYear, requirementDefsForBatch],
@@ -1726,9 +2212,24 @@ export default function BatchInfo() {
     setRecordDialogOpen(true)
   }
 
+  const enrolledProgramOptions = useMemo(
+    () =>
+      collectEnrolledProgramOptions(records, [
+        ...allEnrolledPrograms,
+        ...(editDraft?.enrolledProgram ? [editDraft.enrolledProgram] : []),
+      ]),
+    [records, allEnrolledPrograms, editDraft?.enrolledProgram],
+  )
+
   const handleEditFieldChange = (field, value) => {
     setEditDraft((prev) => {
       if (!prev) return prev
+      if (field === "enrolledProgram") {
+        return applyEnrolledProgramChange(prev, value, {
+          requirementDefs: requirementDefsForBatch,
+          yearLevels: YEAR_LEVELS,
+        })
+      }
       if (field === "yearLevel") {
         const targetClaimsLength = yearLevelIndex(value) + 1
         const existingClaims = semesterClaimsForRow(prev, YEAR_LEVELS)
@@ -1767,8 +2268,17 @@ export default function BatchInfo() {
           return prev
         }
       }
+      if (wouldExceedLifetimeYearClaimLimit(prev, baseClaims, idx, semesterKey, value, YEAR_LEVELS)) {
+        window.alert(lifetimeClaimLimitMessage())
+        return prev
+      }
       const nextClaims = mapSemesterClaimsWithFieldChange(baseClaims, idx, semesterKey, value)
-      return { ...prev, semesterClaims: nextClaims, status: computeStatusFromClaims(nextClaims, prev.yearLevel, prev.status) }
+      const next = {
+        ...prev,
+        semesterClaims: nextClaims,
+        status: computeStatusFromClaims(nextClaims, prev.yearLevel, prev.status),
+      }
+      return applyFullyClaimedInactiveState(next, YEAR_LEVELS)
     })
   }
 
@@ -1777,17 +2287,33 @@ export default function BatchInfo() {
       if (!prev) return prev
       const levels = semesterClaimsForRow(prev, YEAR_LEVELS).map((c) => c.yearLevel)
       const merged = normalizeRequirementChecklistByYearSem(prev, requirementDefsForBatch, levels)
-      return {
-        ...prev,
-        requirementChecklistByYearSem: updateRequirementChecklistCheck(
-          merged,
-          yearLevel,
-          semKey,
-          reqId,
-          checked,
-          requirementDefsForBatch,
-        ),
+      const nextChecklist = updateRequirementChecklistCheck(
+        merged,
+        yearLevel,
+        semKey,
+        reqId,
+        checked,
+        requirementDefsForBatch,
+      )
+      const progress = requirementYearSemProgress(nextChecklist, yearLevel, semKey, requirementDefsForBatch)
+      let nextClaims = prev.semesterClaims
+      if (!progress.isComplete) {
+        const baseClaims =
+          Array.isArray(prev.semesterClaims) && prev.semesterClaims.length > 0
+            ? prev.semesterClaims.map((c) => ({ ...c }))
+            : semesterClaimsForRow(prev, YEAR_LEVELS)
+        const claimField = REQUIREMENT_SEM_TO_CLAIM_FIELD[semKey]
+        const claimIdx = baseClaims.findIndex((c) => c.yearLevel === yearLevel)
+        if (claimIdx >= 0 && baseClaims[claimIdx][claimField] === "Claimed") {
+          nextClaims = mapSemesterClaimsWithFieldChange(baseClaims, claimIdx, claimField, "Unclaimed")
+        }
       }
+      const next = { ...prev, requirementChecklistByYearSem: nextChecklist }
+      if (nextClaims !== prev.semesterClaims) {
+        next.semesterClaims = nextClaims
+        next.status = computeStatusFromClaims(nextClaims, prev.yearLevel, prev.status)
+      }
+      return next
     })
   }
 
@@ -1807,6 +2333,105 @@ export default function BatchInfo() {
     })
   }
 
+  const updateArchiveInDraft = useCallback((prev, archiveIdx, updater) => {
+    if (!prev) return prev
+    const archives = normalizeEnrolledProgramArchives(prev).map((archive) => ({
+      ...archive,
+      semesterClaims: archive.semesterClaims.map((claim) => ({ ...claim })),
+      requirementChecklistByYearSem: { ...archive.requirementChecklistByYearSem },
+    }))
+    const archive = archives[archiveIdx]
+    if (!archive) return prev
+    const nextArchive = updater(archive)
+    if (!nextArchive) return prev
+    archives[archiveIdx] = nextArchive
+    return { ...prev, enrolledProgramArchives: archives }
+  }, [])
+
+  const handleArchiveRequirementCheckChange = (archiveIdx, yearLevel, semKey, reqId, checked) => {
+    setEditDraft((prev) =>
+      updateArchiveInDraft(prev, archiveIdx, (archive) => {
+        const levels = archive.semesterClaims.map((c) => c.yearLevel)
+        const merged = normalizeRequirementChecklistByYearSem(
+          { requirementChecklistByYearSem: archive.requirementChecklistByYearSem },
+          requirementDefsForBatch,
+          levels,
+        )
+        const nextChecklist = updateRequirementChecklistCheck(
+          merged,
+          yearLevel,
+          semKey,
+          reqId,
+          checked,
+          requirementDefsForBatch,
+        )
+        const progress = requirementYearSemProgress(nextChecklist, yearLevel, semKey, requirementDefsForBatch)
+        let nextClaims = archive.semesterClaims
+        if (!progress.isComplete) {
+          const claimField = REQUIREMENT_SEM_TO_CLAIM_FIELD[semKey]
+          const claimIdx = archive.semesterClaims.findIndex((c) => c.yearLevel === yearLevel)
+          if (claimIdx >= 0 && archive.semesterClaims[claimIdx][claimField] === "Claimed") {
+            nextClaims = mapSemesterClaimsWithFieldChange(archive.semesterClaims, claimIdx, claimField, "Unclaimed")
+          }
+        }
+        return {
+          ...archive,
+          requirementChecklistByYearSem: nextChecklist,
+          semesterClaims: nextClaims,
+        }
+      }),
+    )
+  }
+
+  const handleArchiveRequirementSubmittedByChange = (archiveIdx, yearLevel, semKey, field, value) => {
+    setEditDraft((prev) =>
+      updateArchiveInDraft(prev, archiveIdx, (archive) => {
+        const levels = archive.semesterClaims.map((c) => c.yearLevel)
+        const merged = normalizeRequirementChecklistByYearSem(
+          { requirementChecklistByYearSem: archive.requirementChecklistByYearSem },
+          requirementDefsForBatch,
+          levels,
+        )
+        const nextChecklist =
+          field === "submittedBy"
+            ? updateRequirementSemSubmittedBy(merged, yearLevel, semKey, value)
+            : updateRequirementSemOtherPersonField(merged, yearLevel, semKey, field, value)
+        return {
+          ...archive,
+          requirementChecklistByYearSem: nextChecklist,
+        }
+      }),
+    )
+  }
+
+  const handleArchiveSemesterChange = (archiveIdx, claimIdx, semesterKey, value) => {
+    setEditDraft((prev) => {
+      if (!prev) return prev
+      const archives = normalizeEnrolledProgramArchives(prev)
+      const archive = archives[archiveIdx]
+      if (!archive) return prev
+      if (wouldExceedLifetimeYearClaimLimit(prev, archive.semesterClaims, claimIdx, semesterKey, value, YEAR_LEVELS)) {
+        window.alert(lifetimeClaimLimitMessage())
+        return prev
+      }
+      const updated = updateArchiveInDraft(prev, archiveIdx, (currentArchive) => {
+        const semKey = SEMESTER_CLAIM_FIELD_SEM[semesterKey]
+        if (semKey) {
+          const yearLevel = currentArchive.semesterClaims[claimIdx]?.yearLevel
+          if (yearLevel && isArchiveSemesterClaimEditBlocked(currentArchive, yearLevel, semKey, requirementDefsForBatch)) {
+            return null
+          }
+        }
+        return {
+          ...currentArchive,
+          semesterClaims: mapSemesterClaimsWithFieldChange(currentArchive.semesterClaims, claimIdx, semesterKey, value),
+        }
+      })
+      if (updated === prev) return prev
+      return applyFullyClaimedInactiveState(updated, YEAR_LEVELS)
+    })
+  }
+
   const requestSaveRecordEdit = () => {
     if (!editDraft || !activeRow) return
     const diffSummary = buildBatchEditChangeSummary(activeRow, editDraft, requirementDefsForBatch)
@@ -1822,12 +2447,24 @@ export default function BatchInfo() {
         (c.firstSem === "Claimed" && c.firstSemClaimer === "Other" && !String(c.firstSemOtherName ?? "").trim()) ||
         (c.secondSem === "Claimed" && c.secondSemClaimer === "Other" && !String(c.secondSemOtherName ?? "").trim()),
     )
-    if (hasMissingOtherName) {
+    const hasMissingArchiveOtherName = normalizeEnrolledProgramArchives(editDraft).some((archive) =>
+      archive.semesterClaims.some(
+        (c) =>
+          (c.firstSem === "Claimed" && c.firstSemClaimer === "Other" && !String(c.firstSemOtherName ?? "").trim()) ||
+          (c.secondSem === "Claimed" && c.secondSemClaimer === "Other" && !String(c.secondSemOtherName ?? "").trim()),
+      ),
+    )
+    if (hasMissingOtherName || hasMissingArchiveOtherName) {
       window.alert("Please enter the claimant name for every semester marked as Claimed by Other.")
       return
     }
     const levels = semesterClaimsForRow(editDraft, YEAR_LEVELS).map((c) => c.yearLevel)
-    const normalizedReqChecklist = normalizeRequirementChecklistByYearSem(editDraft, requirementDefsForBatch, levels)
+    const normalizedReqChecklist = ensureRequirementSemCompletionTimestamps(
+      normalizeRequirementChecklistByYearSem(editDraft, requirementDefsForBatch, levels),
+      requirementDefsForBatch,
+      levels,
+      editDraft.lastUpdated,
+    )
     const hasMissingReqOtherName = levels.some((yl) =>
       ["first", "second"].some((semKey) => {
         const submittedBy = requirementSemSubmittedBy(normalizedReqChecklist, yl, semKey)
@@ -1843,19 +2480,45 @@ export default function BatchInfo() {
       window.alert("This record cannot be saved because it has no database id.")
       return
     }
-    const savePayload = {
-      ...editDraft,
-      semesterClaims: ensureSemesterClaimTimestamps(
-        editDraft.semesterClaims ?? semesterClaimsForRow(editDraft, YEAR_LEVELS),
-        editDraft.lastUpdated,
-      ),
-      requirementChecklistByYearSem: ensureRequirementSemCompletionTimestamps(
-        normalizeRequirementChecklistByYearSem(editDraft, requirementDefsForBatch, levels),
+    const reconciledClaims = reconcileSemesterClaimsWithRequirementChecklist(
+      (editDraft.semesterClaims ?? semesterClaimsForRow(editDraft, YEAR_LEVELS)).map(normalizeSemesterClaim),
+      normalizedReqChecklist,
+      requirementDefsForBatch,
+    )
+    const reconciledArchives = normalizeEnrolledProgramArchives(editDraft).map((archive) => {
+      const archiveLevels = archive.semesterClaims.map((c) => c.yearLevel)
+      const archiveChecklist = normalizeRequirementChecklistByYearSem(
+        { requirementChecklistByYearSem: archive.requirementChecklistByYearSem },
         requirementDefsForBatch,
-        levels,
-        editDraft.lastUpdated,
-      ),
+        archiveLevels,
+      )
+      return {
+        ...archive,
+        semesterClaims: reconcileSemesterClaimsWithRequirementChecklist(
+          archive.semesterClaims.map(normalizeSemesterClaim),
+          archiveChecklist,
+          requirementDefsForBatch,
+        ),
+      }
+    })
+    const draftForSave = {
+      ...editDraft,
+      semesterClaims: reconciledClaims,
+      enrolledProgramArchives: reconciledArchives,
     }
+    if (countLifetimeClaimedYearsFromRow(draftForSave, YEAR_LEVELS) > MAX_LIFETIME_CLAIMED_YEARS) {
+      window.alert(lifetimeClaimLimitMessage())
+      return
+    }
+    const savePayload = applyFullyClaimedInactiveState(
+      {
+        ...draftForSave,
+        semesterClaims: ensureSemesterClaimTimestamps(reconciledClaims, editDraft.lastUpdated),
+        requirementChecklistByYearSem: normalizedReqChecklist,
+        status: computeStatusFromClaims(reconciledClaims, editDraft.yearLevel, editDraft.status),
+      },
+      YEAR_LEVELS,
+    )
     try {
       setIsSaving(true)
       const updated = await updateGrantee(editDraft.id, savePayload)
@@ -2381,12 +3044,14 @@ export default function BatchInfo() {
                       const key = rowKey(row)
                       const isSelected = selectedRowKeys.has(key)
                       const recordIsActive = isGranteeRecordActive(row)
+                      const fullyClaimed = !recordIsActive && isGranteeFullyClaimed(row, YEAR_LEVELS)
                       return (
                     <tr
                       key={row.id || String(row.seqNo ?? row.studentId ?? row.awardNumber ?? row.fullName)}
                       className={cn(
                         "border-t border-slate-200/80 transition-colors hover:bg-slate-100/60 dark:border-white/8 dark:hover:bg-white/5",
-                        !recordIsActive && "bg-amber-50/35 dark:bg-amber-500/8",
+                        fullyClaimed && "bg-emerald-50/35 dark:bg-emerald-500/8",
+                        !recordIsActive && !fullyClaimed && "bg-amber-50/35 dark:bg-amber-500/8",
                         isSelected && "bg-[#081F5C]/[0.05] dark:bg-[#081F5C]/12",
                         revealItemClass(contentRevealed, index, 35),
                       )}
@@ -2550,10 +3215,14 @@ export default function BatchInfo() {
                 {recordDialogMode === "edit" && editDraft ? (
                   <BatchRecordEdit
                     draft={editDraft}
+                    enrolledProgramOptions={enrolledProgramOptions}
                     onChange={handleEditFieldChange}
                     onSemesterChange={handleSemesterClaimChange}
                     onRequirementCheckChange={handleRequirementCheckChange}
                     onRequirementSubmittedByChange={handleRequirementSubmittedByChange}
+                    onArchiveRequirementCheckChange={handleArchiveRequirementCheckChange}
+                    onArchiveRequirementSubmittedByChange={handleArchiveRequirementSubmittedByChange}
+                    onArchiveSemesterChange={handleArchiveSemesterChange}
                     onSubmit={saveRecordEdit}
                   />
                 ) : null}

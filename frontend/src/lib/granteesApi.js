@@ -1,5 +1,6 @@
 import { getApiClientBaseUrl } from "@/lib/apiConfig";
 import { normalizeSemesterClaim } from "@/lib/granteeSemesterClaims";
+import { sanitizeEnrolledProgramArchivesForSave } from "@/lib/granteeEnrolledProgramHistory"
 import { sanitizeRequirementChecklistForSave } from "@/lib/granteeRequirementsChecklist";
 
 const API_BASE =
@@ -160,6 +161,7 @@ export function mapGranteeFromApi(doc) {
       doc.requirementChecklistByYearSem && typeof doc.requirementChecklistByYearSem === "object"
         ? doc.requirementChecklistByYearSem
         : undefined,
+    enrolledProgramArchives: Array.isArray(doc.enrolledProgramArchives) ? doc.enrolledProgramArchives : undefined,
   }
 }
 
@@ -185,6 +187,9 @@ export function mapGranteeToApi(row) {
     grantCycle: String(row?.grantCycle ?? "").trim(),
     semesterClaims: Array.isArray(row?.semesterClaims) ? row.semesterClaims.map(normalizeSemesterClaim) : [],
     requirementChecklistByYearSem: sanitizeRequirementChecklistForSave(row?.requirementChecklistByYearSem),
+    ...(Array.isArray(row?.enrolledProgramArchives)
+      ? { enrolledProgramArchives: sanitizeEnrolledProgramArchivesForSave(row.enrolledProgramArchives) }
+      : {}),
   }
 }
 

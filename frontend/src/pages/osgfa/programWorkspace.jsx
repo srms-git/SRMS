@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Navigate, useParams } from "react-router-dom"
 import {
   BookOpen,
   CalendarDays,
   CheckCircle,
+  ChevronDown,
   CircleCheck,
   CircleDashed,
   Eye,
   Fingerprint,
   GraduationCap,
+  Info,
   Landmark,
   Layers,
   Mail,
@@ -90,6 +92,7 @@ import {
   updateRequirementSemOtherPersonField,
   updateRequirementSemSubmittedBy,
 } from "@/lib/granteeRequirementsChecklist"
+import { normalizeEnrolledProgramArchives } from "@/lib/granteeEnrolledProgramHistory"
 import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
@@ -120,6 +123,119 @@ function formatDisplayDate(iso) {
   const d = new Date(`${iso}T12:00:00`)
   if (Number.isNaN(d.getTime())) return iso
   return d.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })
+}
+
+const SEMESTER_CLAIM_FIELD_SEM = {
+  firstSem: "first",
+  firstSemClaimer: "first",
+  firstSemOtherName: "first",
+  firstSemOtherRelation: "first",
+  firstSemOtherContact: "first",
+  secondSem: "second",
+  secondSemClaimer: "second",
+  secondSemOtherName: "second",
+  secondSemOtherRelation: "second",
+  secondSemOtherContact: "second",
+}
+
+function requirementChecklistForDraft(draft, requirementDefs, claimLevels) {
+  const levels = claimLevels ?? semesterClaimsForRow(draft, YEAR_LEVELS).map((c) => c.yearLevel)
+  const base = normalizeRequirementChecklistByYearSem(draft, requirementDefs, levels)
+  return ensureRequirementSemCompletionTimestamps(base, requirementDefs, levels, draft?.lastUpdated)
+}
+
+function requirementChecklistForArchive(archive, requirementDefs, claimLevels) {
+  const levels = claimLevels ?? (archive?.semesterClaims ?? []).map((c) => c.yearLevel)
+  const base = normalizeRequirementChecklistByYearSem(
+    { requirementChecklistByYearSem: archive?.requirementChecklistByYearSem },
+    requirementDefs,
+    levels,
+  )
+  return ensureRequirementSemCompletionTimestamps(base, requirementDefs, levels, archive?.archivedAt)
+}
+
+function isArchiveSemesterClaimEditBlocked(archive, yearLevel, semKey, requirementDefs) {
+  const checklist = requirementChecklistForArchive(archive, requirementDefs)
+  return !requirementYearSemProgress(checklist, yearLevel, semKey, requirementDefs).isComplete
+}
+
+function semesterClaimBlockedMessage(yearLevel, semKey) {
+  const semLabel = REQUIREMENT_SEM_LABEL[semKey] ?? semKey
+  return `This student's requirements for ${yearLevel} (${semLabel}) are incomplete. Complete all required documents in the Requirements section before updating this semester's claim status.`
+}
+
+function SemesterClaimEditSlot({
+  yearLevel,
+  semKey,
+  progress,
+  semStatus,
+  claimer,
+  otherName,
+  otherRelation,
+  otherContact,
+  claimedAt,
+  onStatusChange,
+  onClaimerChange,
+  onOtherNameChange,
+  onOtherRelationChange,
+  onOtherContactChange,
+}) {
+  const blocked = !progress.isComplete
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-start gap-1.5">
+        <SemesterClaimStatusSelect
+          value={semStatus}
+          onChange={onStatusChange}
+          disabled={blocked}
+          aria-disabled={blocked}
+          title={blocked ? semesterClaimBlockedMessage(yearLevel, semKey) : undefined}
+        />
+        {blocked ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md text-amber-700 transition-colors hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10"
+                aria-label={`Requirements incomplete for ${yearLevel}, ${REQUIREMENT_SEM_LABEL[semKey]}`}
+              >
+                <Info className="size-4" strokeWidth={2.25} aria-hidden />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={6} className="max-w-[260px] text-left leading-snug">
+              {semesterClaimBlockedMessage(yearLevel, semKey)}
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+      </div>
+      {semStatus === "Claimed" ? (
+        <div className={cn("space-y-2.5", blocked && "pointer-events-none opacity-60")}>
+          <SemesterClaimedAtLabel claimedAt={claimedAt} />
+          <div className="space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">Who claimed?</span>
+            <SemesterClaimClaimerSelect
+              value={claimer || "Grantee"}
+              onChange={onClaimerChange}
+              disabled={blocked}
+              aria-disabled={blocked}
+            />
+          </div>
+          {claimer === "Other" ? (
+            <OtherPersonFields
+              name={otherName ?? ""}
+              relation={otherRelation ?? ""}
+              contact={otherContact ?? ""}
+              onNameChange={onOtherNameChange}
+              onRelationChange={onOtherRelationChange}
+              onContactChange={onOtherContactChange}
+              required={!blocked}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function sanitizeReqIdSegment(s) {
@@ -223,6 +339,215 @@ function RequirementSemesterEditCell({
         onOtherRelationChange={(e) => onRequirementSubmittedByChange(yearLevel, semKey, "relation", e.target.value)}
         onOtherContactChange={(e) => onRequirementSubmittedByChange(yearLevel, semKey, "contact", e.target.value)}
       />
+    </div>
+  )
+}
+
+function EnrolledProgramArchiveSections({
+  archives,
+  requirementDefs,
+  mode = "view",
+  onArchiveRequirementCheckChange,
+  onArchiveRequirementSubmittedByChange,
+  onArchiveSemesterChange,
+}) {
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set())
+
+  if (!archives?.length) return null
+
+  const toggleExpanded = (key) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+        Previous enrolled program{archives.length === 1 ? "" : "s"}
+      </p>
+      {archives.map((archive, idx) => {
+        const sectionKey = `${archive.enrolledProgram}-${archive.archivedAt || idx}`
+        const isExpanded = expandedKeys.has(sectionKey)
+        const claims = ensureSemesterClaimTimestamps(
+          archive.semesterClaims?.length ? archive.semesterClaims : [],
+          archive.archivedAt,
+        )
+        const archiveRow = {
+          requirementChecklistByYearSem: archive.requirementChecklistByYearSem,
+          yearLevel: archive.yearLevelAtArchive,
+          lastUpdated: archive.archivedAt,
+        }
+        const archiveChecklist = requirementChecklistForArchive(archive, requirementDefs, claims.map((c) => c.yearLevel))
+
+        return (
+          <div
+            key={sectionKey}
+            className="overflow-hidden rounded-xl border border-dashed border-slate-300/90 bg-slate-50/50 dark:border-white/15 dark:bg-slate-900/25"
+          >
+            <button
+              type="button"
+              onClick={() => toggleExpanded(sectionKey)}
+              className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left transition-colors hover:bg-slate-100/70 dark:hover:bg-white/5"
+              aria-expanded={isExpanded}
+            >
+              <div className="min-w-0 space-y-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Previous enrolled program</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-semibold">
+                    {archive.enrolledProgram}
+                  </Badge>
+                  {archive.yearLevelAtArchive ? (
+                    <span className="text-xs text-muted-foreground">Last year level: {archive.yearLevelAtArchive}</span>
+                  ) : null}
+                  {archive.archivedAt ? (
+                    <span className="text-xs text-muted-foreground">Archived {formatDisplayDate(archive.archivedAt)}</span>
+                  ) : null}
+                </div>
+              </div>
+              <ChevronDown
+                className={cn("size-4 shrink-0 text-muted-foreground transition-transform duration-200", isExpanded && "rotate-180")}
+                aria-hidden
+              />
+            </button>
+
+            {isExpanded ? (
+              <div className="space-y-3 border-t border-dashed border-slate-300/90 px-3 pb-3 pt-3 dark:border-white/15">
+                <GranteeRequirementsBlock
+                  mode={mode}
+                  definitions={requirementDefs}
+                  dataRow={archiveRow}
+                  yearLevels={claims.map((c) => c.yearLevel)}
+                  currentYearLevel={archive.yearLevelAtArchive}
+                  onRequirementCheckChange={
+                    mode === "edit" && onArchiveRequirementCheckChange
+                      ? (yearLevel, semKey, reqId, checked) =>
+                          onArchiveRequirementCheckChange(idx, yearLevel, semKey, reqId, checked)
+                      : undefined
+                  }
+                  onRequirementSubmittedByChange={
+                    mode === "edit" && onArchiveRequirementSubmittedByChange
+                      ? (yearLevel, semKey, field, value) =>
+                          onArchiveRequirementSubmittedByChange(idx, yearLevel, semKey, field, value)
+                      : undefined
+                  }
+                />
+
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-100">Semestral claim status (archived)</p>
+                  <div className="overflow-hidden rounded-xl border border-slate-200/85 bg-white shadow-sm ring-1 ring-slate-900/3 dark:border-white/10 dark:bg-slate-950/35 dark:ring-white/5">
+                    <div className="max-h-[min(260px,40vh)] overflow-auto [scrollbar-gutter:stable]">
+                      <table className="w-full min-w-[440px] border-collapse text-sm">
+                        <thead className="sticky top-0 z-1 bg-slate-100/95 text-left text-xs font-semibold uppercase tracking-wide text-slate-600 backdrop-blur-sm dark:bg-slate-900/90 dark:text-slate-300">
+                          <tr className="[&>th]:border-b [&>th]:border-slate-200/90 [&>th]:px-3 [&>th]:py-2.5 dark:[&>th]:border-white/10">
+                            <th scope="col" className="w-[108px] whitespace-nowrap">
+                              Year level
+                            </th>
+                            <th scope="col" className="min-w-[200px] whitespace-nowrap">
+                              1st semester
+                            </th>
+                            <th scope="col" className="min-w-[200px] whitespace-nowrap">
+                              2nd semester
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
+                          {claims.length === 0 ? (
+                            <tr>
+                              <td colSpan={3} className="px-3 py-5 text-center text-xs text-muted-foreground">
+                                No semester claims archived for this program.
+                              </td>
+                            </tr>
+                          ) : mode === "edit" && onArchiveSemesterChange ? (
+                            claims.map((c, claimIdx) => {
+                              const firstProgress = requirementYearSemProgress(archiveChecklist, c.yearLevel, "first", requirementDefs)
+                              const secondProgress = requirementYearSemProgress(archiveChecklist, c.yearLevel, "second", requirementDefs)
+                              return (
+                                <tr key={c.yearLevel} className="border-t border-slate-100 first:border-t-0 dark:border-white/8">
+                                  <td className="px-3 py-2.5 align-middle">
+                                    <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
+                                  </td>
+                                  <td className="px-3 py-2.5 align-top">
+                                    <SemesterClaimEditSlot
+                                      yearLevel={c.yearLevel}
+                                      semKey="first"
+                                      progress={firstProgress}
+                                      semStatus={c.firstSem}
+                                      claimer={c.firstSemClaimer}
+                                      otherName={c.firstSemOtherName}
+                                      otherRelation={c.firstSemOtherRelation}
+                                      otherContact={c.firstSemOtherContact}
+                                      claimedAt={c.firstSemClaimedAt}
+                                      onStatusChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSem", e.target.value)}
+                                      onClaimerChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemClaimer", e.target.value)}
+                                      onOtherNameChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemOtherName", e.target.value)}
+                                      onOtherRelationChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemOtherRelation", e.target.value)}
+                                      onOtherContactChange={(e) => onArchiveSemesterChange(idx, claimIdx, "firstSemOtherContact", e.target.value)}
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2.5 align-top">
+                                    <SemesterClaimEditSlot
+                                      yearLevel={c.yearLevel}
+                                      semKey="second"
+                                      progress={secondProgress}
+                                      semStatus={c.secondSem}
+                                      claimer={c.secondSemClaimer}
+                                      otherName={c.secondSemOtherName}
+                                      otherRelation={c.secondSemOtherRelation}
+                                      otherContact={c.secondSemOtherContact}
+                                      claimedAt={c.secondSemClaimedAt}
+                                      onStatusChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSem", e.target.value)}
+                                      onClaimerChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemClaimer", e.target.value)}
+                                      onOtherNameChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemOtherName", e.target.value)}
+                                      onOtherRelationChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemOtherRelation", e.target.value)}
+                                      onOtherContactChange={(e) => onArchiveSemesterChange(idx, claimIdx, "secondSemOtherContact", e.target.value)}
+                                    />
+                                  </td>
+                                </tr>
+                              )
+                            })
+                          ) : (
+                            claims.map((c) => (
+                              <tr key={c.yearLevel} className="border-t border-slate-100 first:border-t-0 dark:border-white/8">
+                                <td className="px-3 py-2.5 align-middle">
+                                  <span className="font-semibold text-slate-900 dark:text-white">{c.yearLevel}</span>
+                                </td>
+                                <td className="px-3 py-2.5 align-top">
+                                  <SemesterClaimCell
+                                    semStatus={c.firstSem}
+                                    claimerType={c.firstSemClaimer}
+                                    otherName={c.firstSemOtherName}
+                                    otherRelation={c.firstSemOtherRelation}
+                                    otherContact={c.firstSemOtherContact}
+                                    claimedAt={c.firstSemClaimedAt}
+                                  />
+                                </td>
+                                <td className="px-3 py-2.5 align-top">
+                                  <SemesterClaimCell
+                                    semStatus={c.secondSem}
+                                    claimerType={c.secondSemClaimer}
+                                    otherName={c.secondSemOtherName}
+                                    otherRelation={c.secondSemOtherRelation}
+                                    otherContact={c.secondSemOtherContact}
+                                    claimedAt={c.secondSemClaimedAt}
+                                  />
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -432,6 +757,7 @@ function GranteeInactiveStatusIndicator({ row, iconClassName = "size-3.5" }) {
 
 function GranteeRecordView({ row, formatStudentId, programCode, requirements }) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(row, YEAR_LEVELS), row?.lastUpdated)
+  const enrolledProgramArchives = normalizeEnrolledProgramArchives(row)
   const overallClaimed = row.status === "Claimed"
   const recordIsActive = isGranteeRecordActive(row)
   const inactiveRemarks = granteeInactiveRemarks(row)
@@ -652,6 +978,13 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={row.yearLevel}
         />
+
+        {enrolledProgramArchives.length > 0 ? (
+          <>
+            <Separator className="bg-slate-200/80 dark:bg-white/10" />
+            <EnrolledProgramArchiveSections archives={enrolledProgramArchives} requirementDefs={requirements} />
+          </>
+        ) : null}
       </div>
 
       <Separator className="bg-slate-200/80 dark:bg-white/10" />
@@ -662,6 +995,7 @@ function GranteeRecordView({ row, formatStudentId, programCode, requirements }) 
             <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
             <div className="min-w-0">
               <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h4>
+              <p className="text-[11px] text-muted-foreground">Current enrolled program: {row.enrolledProgram || "—"}</p>
             </div>
           </div>
           <p className="text-[11px] font-medium text-muted-foreground">{claims.length} year level{claims.length === 1 ? "" : "s"} on record</p>
@@ -747,17 +1081,11 @@ function buildEditChangeSummary(originalRow, draftRow, requirements) {
 
   const changes = []
   const fieldLabels = [
-    ["fullName", "Full name"],
-    ["studentId", "Student ID"],
-    ["batchNo", "Batch number"],
-    ["awardNumber", "Award number"],
     ["enrolledProgram", "Enrolled program"],
     ["yearLevel", "Current year level"],
-    ["academicYear", "Academic year"],
     ["phoneNumber", "Phone number"],
     ["email", "Email address"],
     ["bankAccount", "Bank account"],
-    ["lastUpdated", "Record last updated"],
   ]
 
   for (const [field, label] of fieldLabels) {
@@ -765,6 +1093,64 @@ function buildEditChangeSummary(originalRow, draftRow, requirements) {
     const after = String(draftRow[field] ?? "").trim()
     if (before !== after) {
       changes.push(`${label}: ${before || "—"} -> ${after || "—"}`)
+    }
+  }
+
+  const beforeArchives = normalizeEnrolledProgramArchives(originalRow)
+  const afterArchives = normalizeEnrolledProgramArchives(draftRow)
+  const archiveCount = Math.max(beforeArchives.length, afterArchives.length)
+  for (let ai = 0; ai < archiveCount; ai++) {
+    const beforeArchive = beforeArchives[ai]
+    const afterArchive = afterArchives[ai]
+    if (!afterArchive) continue
+    const archiveLabel = afterArchive.enrolledProgram || `Archive ${ai + 1}`
+
+    const beforeArchiveClaims = beforeArchive?.semesterClaims ?? []
+    const afterArchiveClaims = afterArchive.semesterClaims ?? []
+    const archiveClaimCount = Math.max(beforeArchiveClaims.length, afterArchiveClaims.length)
+    for (let ci = 0; ci < archiveClaimCount; ci++) {
+      const before = beforeArchiveClaims[ci]
+      const after = afterArchiveClaims[ci]
+      if (!after) continue
+      const year = after.yearLevel ?? before?.yearLevel ?? `Year row ${ci + 1}`
+
+      const bFirst = before?.firstSem ?? "Unclaimed"
+      const aFirst = after.firstSem ?? "Unclaimed"
+      if (bFirst !== aFirst) {
+        changes.push(`Archived ${archiveLabel} · ${year} · 1st semester status: ${bFirst} -> ${aFirst}`)
+      }
+
+      const bSecond = before?.secondSem ?? "Unclaimed"
+      const aSecond = after.secondSem ?? "Unclaimed"
+      if (bSecond !== aSecond) {
+        changes.push(`Archived ${archiveLabel} · ${year} · 2nd semester status: ${bSecond} -> ${aSecond}`)
+      }
+    }
+
+    const archiveLevels = [...new Set(afterArchiveClaims.map((c) => c.yearLevel))]
+    const beforeArchiveReq = normalizeRequirementChecklistByYearSem(
+      { requirementChecklistByYearSem: beforeArchive?.requirementChecklistByYearSem },
+      requirements,
+      archiveLevels,
+    )
+    const afterArchiveReq = normalizeRequirementChecklistByYearSem(
+      { requirementChecklistByYearSem: afterArchive.requirementChecklistByYearSem },
+      requirements,
+      archiveLevels,
+    )
+    for (const yl of archiveLevels) {
+      for (const sem of ["first", "second"]) {
+        const semLabel = REQUIREMENT_SEM_LABEL[sem]
+        for (const d of requirements) {
+          const bi = beforeArchiveReq[yl]?.[sem]?.[d.id] === true
+          const afterChecked = afterArchiveReq[yl]?.[sem]?.[d.id] === true
+          if (bi !== afterChecked) {
+            changes.push(
+              `Archived ${archiveLabel} · Requirements (${yl}, ${semLabel}) · ${d.label}: ${bi ? "Submitted" : "Not submitted"} -> ${afterChecked ? "Submitted" : "Not submitted"}`,
+            )
+          }
+        }
+      }
     }
   }
 
@@ -883,23 +1269,49 @@ function buildEditChangeSummary(originalRow, draftRow, requirements) {
   return changes
 }
 
-function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementCheckChange, onRequirementSubmittedByChange, onSubmit, programCode, requirements }) {
+function GranteeRecordEdit({
+  draft,
+  onChange,
+  onSemesterChange,
+  onRequirementCheckChange,
+  onRequirementSubmittedByChange,
+  onArchiveRequirementCheckChange,
+  onArchiveRequirementSubmittedByChange,
+  onArchiveSemesterChange,
+  onSubmit,
+  programCode,
+  requirements,
+}) {
   const claims = ensureSemesterClaimTimestamps(semesterClaimsForRow(draft, YEAR_LEVELS), draft?.lastUpdated)
+  const enrolledProgramArchives = normalizeEnrolledProgramArchives(draft)
   const overallClaimed = draft.status === "Claimed"
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
+  const claimLevelsKey = claims.map((c) => c.yearLevel).join("|")
+  const requirementChecklist = useMemo(
+    () => requirementChecklistForDraft(draft, requirements, claims.map((c) => c.yearLevel)),
+    [draft, requirements, claimLevelsKey],
+  )
 
   const fieldItems = [
-    { id: "edit-batch", label: "Batch number", value: draft.batchNo, icon: Layers, keyName: "batchNo" },
-    { id: "edit-student", label: "Student ID", value: draft.studentId, icon: User, keyName: "studentId" },
+    { id: "edit-batch", label: "Batch number", value: draft.batchNo, icon: Layers, keyName: "batchNo", readOnly: true },
+    { id: "edit-student", label: "Student ID", value: draft.studentId, icon: User, keyName: "studentId", readOnly: true },
     { id: "edit-seq", label: "Sequence no.", value: draft.seqNo, icon: Fingerprint, keyName: "seqNo", readOnly: true },
-    { id: "edit-award", label: "Award number", value: draft.awardNumber, icon: Receipt, keyName: "awardNumber", mono: true },
+    { id: "edit-award", label: "Award number", value: draft.awardNumber, icon: Receipt, keyName: "awardNumber", mono: true, readOnly: true },
     { id: "edit-program", label: "Enrolled program", value: draft.enrolledProgram, icon: BookOpen, keyName: "enrolledProgram" },
     { id: "edit-year-level", label: "Current year level", value: draft.yearLevel, icon: GraduationCap, keyName: "yearLevel", type: "select-year-level" },
-    { id: "edit-academic-year", label: "Academic year", value: draft.academicYear ?? "", icon: CalendarDays, keyName: "academicYear" },
+    { id: "edit-academic-year", label: "Academic year", value: draft.academicYear ?? "", icon: CalendarDays, keyName: "academicYear", readOnly: true },
     { id: "edit-phone", label: "Phone number", value: draft.phoneNumber ?? "", icon: Receipt, keyName: "phoneNumber" },
     { id: "edit-email", label: "Email address", value: draft.email ?? "", icon: Mail, keyName: "email", type: "email" },
     { id: "edit-bank-account", label: "Bank account", value: draft.bankAccount ?? "", icon: Landmark, keyName: "bankAccount", mono: true },
-    { id: "edit-last-updated", label: "Record last updated", value: draft.lastUpdated ?? "", icon: CalendarDays, keyName: "lastUpdated", type: "date" },
+    {
+      id: "edit-last-updated",
+      label: "Record last updated",
+      value: formatDisplayDate(draft.lastUpdated),
+      icon: CalendarDays,
+      keyName: "lastUpdated",
+      readOnly: true,
+      type: "display",
+    },
   ]
 
   return (
@@ -921,13 +1333,7 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                 {programCode} grantee
               </p>
-              <Input
-                id="edit-name"
-                value={draft.fullName}
-                onChange={(e) => onChange("fullName", e.target.value)}
-                className="h-9 border-slate-300/80 bg-white/95 text-sm font-semibold dark:border-white/15 dark:bg-slate-900/55"
-                required
-              />
+              <h3 className="text-base font-semibold leading-snug text-slate-900 dark:text-white">{draft.fullName || "—"}</h3>
               <p className="text-xs text-slate-600 dark:text-slate-300">
                 Student ID <span className="font-mono text-[13px] text-[#081F5C] dark:text-[#7eb0ff]">{draft.studentId}</span>
               </p>
@@ -960,17 +1366,22 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Profile & grant details</p>
         <div className="grid gap-2 sm:grid-cols-2">
           {fieldItems.map(({ id, label, value, icon: Icon, keyName, readOnly, mono, type }) => (
-            <label
+            <div
               key={id}
-              htmlFor={id}
-              className="group flex gap-3 rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-colors hover:border-[#081F5C]/20 hover:bg-white dark:border-white/10 dark:bg-slate-950/40 dark:hover:border-[#081F5C]/35"
+              className={cn(
+                "group flex gap-3 rounded-xl border border-slate-200/80 bg-white/90 p-3 shadow-[0_1px_0_0_rgba(15,23,42,0.04)] transition-colors dark:border-white/10 dark:bg-slate-950/40",
+                !readOnly && "hover:border-[#081F5C]/20 hover:bg-white dark:hover:border-[#081F5C]/35",
+                readOnly && "bg-muted/30 dark:bg-slate-900/50",
+              )}
             >
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-200">
                 <Icon className="size-4" strokeWidth={2} aria-hidden />
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-                {type === "select-year-level" ? (
+                {type === "display" ? (
+                  <p className="text-sm font-medium leading-snug text-foreground">{value || "—"}</p>
+                ) : type === "select-year-level" ? (
                   <select
                     id={id}
                     value={value}
@@ -989,13 +1400,14 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
                     type={type ?? "text"}
                     value={value}
                     readOnly={readOnly}
+                    disabled={readOnly}
                     onChange={(e) => onChange(keyName, e.target.value)}
-                    className={cn("h-9", readOnly && "bg-muted/50", mono && "font-mono text-[13px]")}
+                    className={cn("h-9", readOnly && "cursor-not-allowed bg-muted/50 opacity-90", mono && "font-mono text-[13px]")}
                     required={!readOnly}
                   />
                 )}
               </div>
-            </label>
+            </div>
           ))}
         </div>
       </div>
@@ -1021,6 +1433,20 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
           onRequirementCheckChange={onRequirementCheckChange}
           onRequirementSubmittedByChange={onRequirementSubmittedByChange}
         />
+
+        {enrolledProgramArchives.length > 0 ? (
+          <>
+            <Separator className="bg-slate-200/80 dark:bg-white/10" />
+            <EnrolledProgramArchiveSections
+              archives={enrolledProgramArchives}
+              requirementDefs={requirements}
+              mode="edit"
+              onArchiveRequirementCheckChange={onArchiveRequirementCheckChange}
+              onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
+              onArchiveSemesterChange={onArchiveSemesterChange}
+            />
+          </>
+        ) : null}
       </div>
 
       <Separator className="bg-slate-200/80 dark:bg-white/10" />
@@ -1031,6 +1457,7 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
             <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
             <div className="min-w-0">
               <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Semestral claim status</h4>
+              <p className="text-[11px] text-muted-foreground">Current enrolled program: {draft.enrolledProgram || "—"}</p>
             </div>
           </div>
           <p className="text-[11px] font-medium text-muted-foreground">{claimsCountLabel} on record</p>
@@ -1049,6 +1476,8 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
               <tbody className="[&>tr:nth-child(even)]:bg-slate-50/80 dark:[&>tr:nth-child(even)]:bg-white/3">
                 {claims.map((c, idx) => {
                   const currentRow = c.yearLevel === draft.yearLevel
+                  const firstProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "first", requirements)
+                  const secondProgress = requirementYearSemProgress(requirementChecklist, c.yearLevel, "second", requirements)
                   return (
                     <tr
                       key={c.yearLevel}
@@ -1067,63 +1496,41 @@ function GranteeRecordEdit({ draft, onChange, onSemesterChange, onRequirementChe
                           ) : null}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="space-y-1.5">
-                          <SemesterClaimStatusSelect
-                            value={c.firstSem}
-                            onChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
-                          />
-                          {c.firstSem === "Claimed" ? (
-                            <div className="space-y-1">
-                              <SemesterClaimedAtLabel claimedAt={c.firstSemClaimedAt} />
-                              <SemesterClaimClaimerSelect
-                                value={c.firstSemClaimer || "Grantee"}
-                                onChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
-                              />
-                              {c.firstSemClaimer === "Other" ? (
-                                <OtherPersonFields
-                                  name={c.firstSemOtherName ?? ""}
-                                  relation={c.firstSemOtherRelation ?? ""}
-                                  contact={c.firstSemOtherContact ?? ""}
-                                  onNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
-                                  onRelationChange={(e) => onSemesterChange(idx, "firstSemOtherRelation", e.target.value)}
-                                  onContactChange={(e) => onSemesterChange(idx, "firstSemOtherContact", e.target.value)}
-                                  namePlaceholder="Name of claimer"
-                                  required
-                                />
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
+                      <td className="px-3 py-2.5 align-top">
+                        <SemesterClaimEditSlot
+                          yearLevel={c.yearLevel}
+                          semKey="first"
+                          progress={firstProgress}
+                          semStatus={c.firstSem}
+                          claimer={c.firstSemClaimer}
+                          otherName={c.firstSemOtherName}
+                          otherRelation={c.firstSemOtherRelation}
+                          otherContact={c.firstSemOtherContact}
+                          claimedAt={c.firstSemClaimedAt}
+                          onStatusChange={(e) => onSemesterChange(idx, "firstSem", e.target.value)}
+                          onClaimerChange={(e) => onSemesterChange(idx, "firstSemClaimer", e.target.value)}
+                          onOtherNameChange={(e) => onSemesterChange(idx, "firstSemOtherName", e.target.value)}
+                          onOtherRelationChange={(e) => onSemesterChange(idx, "firstSemOtherRelation", e.target.value)}
+                          onOtherContactChange={(e) => onSemesterChange(idx, "firstSemOtherContact", e.target.value)}
+                        />
                       </td>
-                      <td className="px-3 py-2.5 align-middle">
-                        <div className="space-y-1.5">
-                          <SemesterClaimStatusSelect
-                            value={c.secondSem}
-                            onChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
-                          />
-                          {c.secondSem === "Claimed" ? (
-                            <div className="space-y-1">
-                              <SemesterClaimedAtLabel claimedAt={c.secondSemClaimedAt} />
-                              <SemesterClaimClaimerSelect
-                                value={c.secondSemClaimer || "Grantee"}
-                                onChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
-                              />
-                              {c.secondSemClaimer === "Other" ? (
-                                <OtherPersonFields
-                                  name={c.secondSemOtherName ?? ""}
-                                  relation={c.secondSemOtherRelation ?? ""}
-                                  contact={c.secondSemOtherContact ?? ""}
-                                  onNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
-                                  onRelationChange={(e) => onSemesterChange(idx, "secondSemOtherRelation", e.target.value)}
-                                  onContactChange={(e) => onSemesterChange(idx, "secondSemOtherContact", e.target.value)}
-                                  namePlaceholder="Name of claimer"
-                                  required
-                                />
-                              ) : null}
-                            </div>
-                          ) : null}
-                        </div>
+                      <td className="px-3 py-2.5 align-top">
+                        <SemesterClaimEditSlot
+                          yearLevel={c.yearLevel}
+                          semKey="second"
+                          progress={secondProgress}
+                          semStatus={c.secondSem}
+                          claimer={c.secondSemClaimer}
+                          otherName={c.secondSemOtherName}
+                          otherRelation={c.secondSemOtherRelation}
+                          otherContact={c.secondSemOtherContact}
+                          claimedAt={c.secondSemClaimedAt}
+                          onStatusChange={(e) => onSemesterChange(idx, "secondSem", e.target.value)}
+                          onClaimerChange={(e) => onSemesterChange(idx, "secondSemClaimer", e.target.value)}
+                          onOtherNameChange={(e) => onSemesterChange(idx, "secondSemOtherName", e.target.value)}
+                          onOtherRelationChange={(e) => onSemesterChange(idx, "secondSemOtherRelation", e.target.value)}
+                          onOtherContactChange={(e) => onSemesterChange(idx, "secondSemOtherContact", e.target.value)}
+                        />
                       </td>
                     </tr>
                   )
@@ -1365,9 +1772,25 @@ export default function ProgramWorkspace() {
       program: programCode,
       semesterClaims: claimsForRow,
       requirementChecklistByYearSem,
+      enrolledProgramArchives: normalizeEnrolledProgramArchives(row),
     })
     setRecordDialogOpen(true)
   }
+
+  const updateArchiveInDraft = useCallback((prev, archiveIdx, updater) => {
+    if (!prev) return prev
+    const archives = normalizeEnrolledProgramArchives(prev).map((archive) => ({
+      ...archive,
+      semesterClaims: archive.semesterClaims.map((claim) => ({ ...claim })),
+      requirementChecklistByYearSem: { ...archive.requirementChecklistByYearSem },
+    }))
+    const archive = archives[archiveIdx]
+    if (!archive) return prev
+    const nextArchive = updater(archive)
+    if (!nextArchive) return prev
+    archives[archiveIdx] = nextArchive
+    return { ...prev, enrolledProgramArchives: archives }
+  }, [])
 
   const handleEditFieldChange = (field, value) => {
     setEditDraft((prev) => {
@@ -1403,6 +1826,16 @@ export default function ProgramWorkspace() {
         Array.isArray(prev.semesterClaims) && prev.semesterClaims.length > 0
           ? prev.semesterClaims.map((c) => ({ ...c }))
           : semesterClaimsForRow(prev, YEAR_LEVELS)
+      const semKey = SEMESTER_CLAIM_FIELD_SEM[semesterKey]
+      if (semKey) {
+        const yearLevel = baseClaims[idx]?.yearLevel
+        if (yearLevel) {
+          const checklist = requirementChecklistForDraft(prev, requirements)
+          if (!requirementYearSemProgress(checklist, yearLevel, semKey, requirements).isComplete) {
+            return prev
+          }
+        }
+      }
       const nextClaims = mapSemesterClaimsWithFieldChange(baseClaims, idx, semesterKey, value)
       return { ...prev, semesterClaims: nextClaims, status: computeStatusFromClaims(nextClaims, prev.yearLevel, prev.status) }
     })
@@ -1443,6 +1876,69 @@ export default function ProgramWorkspace() {
     })
   }
 
+  const handleArchiveRequirementCheckChange = (archiveIdx, yearLevel, semKey, reqId, checked) => {
+    setEditDraft((prev) =>
+      updateArchiveInDraft(prev, archiveIdx, (archive) => {
+        const levels = archive.semesterClaims.map((c) => c.yearLevel)
+        const merged = normalizeRequirementChecklistByYearSem(
+          { requirementChecklistByYearSem: archive.requirementChecklistByYearSem },
+          requirements,
+          levels,
+        )
+        return {
+          ...archive,
+          requirementChecklistByYearSem: updateRequirementChecklistCheck(
+            merged,
+            yearLevel,
+            semKey,
+            reqId,
+            checked,
+            requirements,
+          ),
+        }
+      }),
+    )
+  }
+
+  const handleArchiveRequirementSubmittedByChange = (archiveIdx, yearLevel, semKey, field, value) => {
+    setEditDraft((prev) =>
+      updateArchiveInDraft(prev, archiveIdx, (archive) => {
+        const levels = archive.semesterClaims.map((c) => c.yearLevel)
+        const merged = normalizeRequirementChecklistByYearSem(
+          { requirementChecklistByYearSem: archive.requirementChecklistByYearSem },
+          requirements,
+          levels,
+        )
+        const nextChecklist =
+          field === "submittedBy"
+            ? updateRequirementSemSubmittedBy(merged, yearLevel, semKey, value)
+            : updateRequirementSemOtherPersonField(merged, yearLevel, semKey, field, value)
+        return {
+          ...archive,
+          requirementChecklistByYearSem: nextChecklist,
+        }
+      }),
+    )
+  }
+
+  const handleArchiveSemesterChange = (archiveIdx, claimIdx, semesterKey, value) => {
+    setEditDraft((prev) =>
+      updateArchiveInDraft(prev, archiveIdx, (archive) => {
+        const semKey = SEMESTER_CLAIM_FIELD_SEM[semesterKey]
+        if (semKey) {
+          const yearLevel = archive.semesterClaims[claimIdx]?.yearLevel
+          if (yearLevel && isArchiveSemesterClaimEditBlocked(archive, yearLevel, semKey, requirements)) {
+            return null
+          }
+        }
+        return {
+          ...archive,
+          semesterClaims: mapSemesterClaimsWithFieldChange(archive.semesterClaims, claimIdx, semesterKey, value),
+        }
+      }),
+    )
+  }
+
   const saveRecordEdit = async (e) => {
     e?.preventDefault?.()
     if (!editDraft) return
@@ -1451,7 +1947,14 @@ export default function ProgramWorkspace() {
         (c.firstSem === "Claimed" && c.firstSemClaimer === "Other" && !String(c.firstSemOtherName ?? "").trim()) ||
         (c.secondSem === "Claimed" && c.secondSemClaimer === "Other" && !String(c.secondSemOtherName ?? "").trim()),
     )
-    if (hasMissingOtherName) {
+    const hasMissingArchiveOtherName = normalizeEnrolledProgramArchives(editDraft).some((archive) =>
+      archive.semesterClaims.some(
+        (c) =>
+          (c.firstSem === "Claimed" && c.firstSemClaimer === "Other" && !String(c.firstSemOtherName ?? "").trim()) ||
+          (c.secondSem === "Claimed" && c.secondSemClaimer === "Other" && !String(c.secondSemOtherName ?? "").trim()),
+      ),
+    )
+    if (hasMissingOtherName || hasMissingArchiveOtherName) {
       window.alert("Please enter the claimant name for every semester marked as Claimed by Other.")
       return
     }
@@ -1921,6 +2424,9 @@ export default function ProgramWorkspace() {
                 onSemesterChange={handleSemesterClaimChange}
                 onRequirementCheckChange={handleRequirementCheckChange}
                 onRequirementSubmittedByChange={handleRequirementSubmittedByChange}
+                onArchiveRequirementCheckChange={handleArchiveRequirementCheckChange}
+                onArchiveRequirementSubmittedByChange={handleArchiveRequirementSubmittedByChange}
+                onArchiveSemesterChange={handleArchiveSemesterChange}
                 onSubmit={saveRecordEdit}
               />
             ) : null}

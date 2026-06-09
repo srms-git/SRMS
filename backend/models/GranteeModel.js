@@ -100,6 +100,18 @@ const GranteeSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.Mixed,
         default: undefined,
     },
+    enrolledProgramArchives: {
+        type: [
+            {
+                enrolledProgram: { type: String, trim: true },
+                yearLevelAtArchive: { type: String, trim: true, default: '' },
+                archivedAt: { type: Date, default: Date.now },
+                semesterClaims: { type: mongoose.Schema.Types.Mixed, default: undefined },
+                requirementChecklistByYearSem: { type: mongoose.Schema.Types.Mixed, default: undefined },
+            },
+        ],
+        default: undefined,
+    },
 }, {
     timestamps: true,
 });
