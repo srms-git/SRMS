@@ -1536,13 +1536,14 @@ function BatchRecordEdit({
                 ) : type === "select-year-level" ? (
                   <select
                     id={id}
-                    value={value}
+                    value={CURRENT_YEAR_LEVELS.includes(value) ? value : ""}
                     onChange={(e) => onChange(keyName, e.target.value)}
                     className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                    required
                   >
-                    {value && !CURRENT_YEAR_LEVELS.includes(value) ? (
-                      <option value={value}>{value}</option>
-                    ) : null}
+                    <option value="" disabled>
+                      Select year level
+                    </option>
                     {CURRENT_YEAR_LEVELS.map((yl) => (
                       <option key={yl} value={yl}>
                         {yl}
@@ -1711,22 +1712,22 @@ function BatchRecordEdit({
             </table>
           </div>
         </div>
-
-        {enrolledProgramArchives.length > 0 ? (
-          <>
-            <Separator className="bg-slate-200/80 dark:bg-white/10" />
-            <EnrolledProgramArchiveSections
-              archives={enrolledProgramArchives}
-              requirementDefs={requirementDefs}
-              mode="edit"
-              rowForClaimLimit={draft}
-              onArchiveRequirementCheckChange={onArchiveRequirementCheckChange}
-              onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
-              onArchiveSemesterChange={onArchiveSemesterChange}
-            />
-          </>
-        ) : null}
       </div>
+
+      {enrolledProgramArchives.length > 0 ? (
+        <>
+          <Separator className="bg-slate-200/80 dark:bg-white/10" />
+          <EnrolledProgramArchiveSections
+            archives={enrolledProgramArchives}
+            requirementDefs={requirementDefs}
+            mode="edit"
+            rowForClaimLimit={draft}
+            onArchiveRequirementCheckChange={onArchiveRequirementCheckChange}
+            onArchiveRequirementSubmittedByChange={onArchiveRequirementSubmittedByChange}
+            onArchiveSemesterChange={onArchiveSemesterChange}
+          />
+        </>
+      ) : null}
     </form>
   )
 }
