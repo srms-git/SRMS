@@ -52,6 +52,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
@@ -92,7 +93,13 @@ import {
   updateRequirementSemOtherPersonField,
   updateRequirementSemSubmittedBy,
 } from "@/lib/granteeRequirementsChecklist"
-import { normalizeEnrolledProgramArchives } from "@/lib/granteeEnrolledProgramHistory"
+import {
+  applyEnrolledProgramChange,
+  collectEnrolledProgramOptions,
+  isScholarshipProgramCode,
+  normalizeEnrolledProgramArchives,
+} from "@/lib/granteeEnrolledProgramHistory"
+import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import { cn } from "@/lib/utils"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
@@ -1281,6 +1288,8 @@ function buildEditChangeSummary(originalRow, draftRow, requirements) {
 
 function GranteeRecordEdit({
   draft,
+  enrolledProgramOptions,
+  scholarshipProgramCodes,
   onChange,
   onSemesterChange,
   onRequirementCheckChange,
@@ -1296,6 +1305,27 @@ function GranteeRecordEdit({
   const enrolledProgramArchives = normalizeEnrolledProgramArchives(draft)
   const overallClaimed = draft.status === "Claimed"
   const claimsCountLabel = claims.length === 1 ? "1 year level" : `${claims.length} year levels`
+  const enrolledProgramValue = isScholarshipProgramCode(draft?.enrolledProgram, scholarshipProgramCodes)
+    ? ""
+    : String(draft?.enrolledProgram ?? "").trim()
+  const programOptions = useMemo(() => {
+    const current = enrolledProgramValue
+    const options = (enrolledProgramOptions ?? [])
+      .map((program) => {
+        const label = String(program ?? "").trim()
+        if (!label) return null
+        return { value: label, label }
+      })
+      .filter(Boolean)
+    if (
+      current &&
+      !isScholarshipProgramCode(current, scholarshipProgramCodes) &&
+      !options.some((item) => item.value === current)
+    ) {
+      options.unshift({ value: current, label: current })
+    }
+    return options
+  }, [enrolledProgramValue, enrolledProgramOptions, scholarshipProgramCodes])
   const claimLevelsKey = claims.map((c) => c.yearLevel).join("|")
   const requirementChecklist = useMemo(
     () => requirementChecklistForDraft(draft, requirements, claims.map((c) => c.yearLevel)),
@@ -1307,11 +1337,18 @@ function GranteeRecordEdit({
     { id: "edit-student", label: "Student ID", value: draft.studentId, icon: User, keyName: "studentId", readOnly: true },
     { id: "edit-seq", label: "Sequence no.", value: draft.seqNo, icon: Fingerprint, keyName: "seqNo", readOnly: true },
     { id: "edit-award", label: "Award number", value: draft.awardNumber, icon: Receipt, keyName: "awardNumber", mono: true, readOnly: true },
-    { id: "edit-program", label: "Enrolled program", value: draft.enrolledProgram, icon: BookOpen, keyName: "enrolledProgram" },
-    { id: "edit-year-level", label: "Current year level", value: draft.yearLevel, icon: GraduationCap, keyName: "yearLevel", type: "select-year-level" },
+    {
+      id: "edit-program",
+      label: "Enrolled program",
+      value: enrolledProgramValue,
+      icon: BookOpen,
+      keyName: "enrolledProgram",
+      fieldType: "select-enrolled-program",
+    },
+    { id: "edit-year-level", label: "Current year level", value: draft.yearLevel, icon: GraduationCap, keyName: "yearLevel", fieldType: "select-year-level" },
     { id: "edit-academic-year", label: "Academic year", value: draft.academicYear ?? "", icon: CalendarDays, keyName: "academicYear", readOnly: true },
     { id: "edit-phone", label: "Phone number", value: draft.phoneNumber ?? "", icon: Receipt, keyName: "phoneNumber" },
-    { id: "edit-email", label: "Email address", value: draft.email ?? "", icon: Mail, keyName: "email", type: "email" },
+    { id: "edit-email", label: "Email address", value: draft.email ?? "", icon: Mail, keyName: "email", fieldType: "email" },
     { id: "edit-bank-account", label: "Bank account", value: draft.bankAccount ?? "", icon: Landmark, keyName: "bankAccount", mono: true },
     {
       id: "edit-last-updated",
@@ -1320,7 +1357,7 @@ function GranteeRecordEdit({
       icon: CalendarDays,
       keyName: "lastUpdated",
       readOnly: true,
-      type: "display",
+      fieldType: "display",
     },
   ]
 
@@ -1375,7 +1412,7 @@ function GranteeRecordEdit({
       <div>
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Profile & grant details</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          {fieldItems.map(({ id, label, value, icon: Icon, keyName, readOnly, mono, type }) => (
+          {fieldItems.map(({ id, label, value, icon: Icon, keyName, readOnly, mono, fieldType }) => (
             <div
               key={id}
               className={cn(
@@ -1389,9 +1426,9 @@ function GranteeRecordEdit({
               </div>
               <div className="min-w-0 flex-1 space-y-1">
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-                {type === "display" ? (
+                {fieldType === "display" ? (
                   <p className="text-sm font-medium leading-snug text-foreground">{value || "—"}</p>
-                ) : type === "select-year-level" ? (
+                ) : fieldType === "select-year-level" ? (
                   <select
                     id={id}
                     value={value}
@@ -1404,10 +1441,27 @@ function GranteeRecordEdit({
                       </option>
                     ))}
                   </select>
+                ) : fieldType === "select-enrolled-program" ? (
+                  <Select
+                    value={String(value ?? "").trim() || undefined}
+                    onValueChange={(next) => onChange(keyName, next)}
+                    required
+                  >
+                    <SelectTrigger id={id} className="h-9 w-full">
+                      <SelectValue placeholder="Select enrolled program" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {programOptions.map((prog) => (
+                        <SelectItem key={prog.value} value={prog.value}>
+                          {prog.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <Input
                     id={id}
-                    type={type ?? "text"}
+                    type={fieldType ?? "text"}
                     value={value}
                     readOnly={readOnly}
                     disabled={readOnly}
@@ -1673,6 +1727,11 @@ export default function ProgramWorkspace() {
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
   const PAGE_SIZE = 100
   const [records, setRecords] = useState([])
+  const scholarshipProgramCodes = useMemo(() => [...buildActiveProgramCodeSet(programs)], [programs])
+  const enrolledProgramOptions = useMemo(
+    () => collectEnrolledProgramOptions(records, [], { scholarshipCodes: scholarshipProgramCodes }),
+    [records, scholarshipProgramCodes],
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
@@ -1818,6 +1877,12 @@ export default function ProgramWorkspace() {
   const handleEditFieldChange = (field, value) => {
     setEditDraft((prev) => {
       if (!prev) return prev
+      if (field === "enrolledProgram") {
+        return applyEnrolledProgramChange(prev, value, {
+          requirementDefs: requirements,
+          yearLevels: YEAR_LEVELS,
+        })
+      }
       if (field === "yearLevel") {
         const targetClaimsLength = yearLevelIndex(value) + 1
         const existingClaims = semesterClaimsForRow(prev, YEAR_LEVELS)
@@ -2441,6 +2506,8 @@ export default function ProgramWorkspace() {
             {recordDialogMode === "edit" && editDraft ? (
               <GranteeRecordEdit
                 draft={editDraft}
+                enrolledProgramOptions={enrolledProgramOptions}
+                scholarshipProgramCodes={scholarshipProgramCodes}
                 programCode={programCode}
                 requirements={requirements}
                 onChange={handleEditFieldChange}

@@ -159,23 +159,52 @@ export function applyEnrolledProgramChange(draft, newEnrolledProgram, options) {
   }
 }
 
+/** Scholarship/grant program codes — never valid enrolled degree programs. */
+export const SCHOLARSHIP_PROGRAM_CODES = new Set(["TES", "TDP"])
+
 /**
+ * @param {unknown} code
+ * @param {Iterable<string>} [additionalCodes] OSGFA program codes from settings
+ */
+export function isScholarshipProgramCode(code, additionalCodes = []) {
+  const normalized = String(code ?? "").trim().toUpperCase()
+  if (!normalized) return false
+  if (SCHOLARSHIP_PROGRAM_CODES.has(normalized)) return true
+  for (const entry of additionalCodes) {
+    if (String(entry ?? "").trim().toUpperCase() === normalized) return true
+  }
+  return false
+}
+
+/**
+ * Distinct enrolled (degree/course) programs for dropdowns.
+ * Uses current grantee enrolledProgram values only — not scholarship program codes.
+ *
  * @param {unknown[]} rows
  * @param {string[]} [extraPrograms]
+ * @param {{ scholarshipCodes?: Iterable<string>, includeArchives?: boolean }} [options]
  */
-export function collectEnrolledProgramOptions(rows, extraPrograms = []) {
+export function collectEnrolledProgramOptions(rows, extraPrograms = [], options = {}) {
+  const scholarshipCodes = options.scholarshipCodes ?? []
+  const includeArchives = options.includeArchives === true
   const set = new Set()
-  for (const program of extraPrograms) {
+
+  const addIfValid = (program) => {
     const trimmed = String(program ?? "").trim()
-    if (trimmed) set.add(trimmed)
+    if (!trimmed || isScholarshipProgramCode(trimmed, scholarshipCodes)) return
+    set.add(trimmed)
   }
+
+  for (const program of extraPrograms) addIfValid(program)
   for (const row of rows ?? []) {
-    const current = String(row?.enrolledProgram ?? "").trim()
-    if (current) set.add(current)
-    for (const archive of normalizeEnrolledProgramArchives(row)) {
-      if (archive.enrolledProgram) set.add(archive.enrolledProgram)
+    addIfValid(row?.enrolledProgram)
+    if (includeArchives) {
+      for (const archive of normalizeEnrolledProgramArchives(row)) {
+        addIfValid(archive.enrolledProgram)
+      }
     }
   }
+
   return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
 }
 
