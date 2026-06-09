@@ -47,6 +47,15 @@ const GranteeSchema = new mongoose.Schema({
         default: 'Unclaimed',
         trim: true,
     },
+    active: {
+        type: Boolean,
+        default: true,
+    },
+    inactiveRemarks: {
+        type: String,
+        trim: true,
+        default: '',
+    },
     email: {
         type: String,
         trim: true,
@@ -89,6 +98,18 @@ const GranteeSchema = new mongoose.Schema({
     },
     requirementChecklistByYearSem: {
         type: mongoose.Schema.Types.Mixed,
+        default: undefined,
+    },
+    enrolledProgramArchives: {
+        type: [
+            {
+                enrolledProgram: { type: String, trim: true },
+                yearLevelAtArchive: { type: String, trim: true, default: '' },
+                archivedAt: { type: Date, default: Date.now },
+                semesterClaims: { type: mongoose.Schema.Types.Mixed, default: undefined },
+                requirementChecklistByYearSem: { type: mongoose.Schema.Types.Mixed, default: undefined },
+            },
+        ],
         default: undefined,
     },
 }, {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { useSearchParams, useNavigate } from "react-router-dom"
+import { useSearchParams } from "react-router-dom"
 import { CheckCircle2, Eye, EyeOff, KanbanSquare, MonitorSmartphone, SquareCheckBig, Loader2 } from "lucide-react"
 
 import authService from "@/services/authService"
@@ -71,7 +71,6 @@ const loginLogos = [
 
 export default function LoginPage() {
   const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
 
   // --- Logic States ---
   const [showPassword, setShowPassword] = useState(false)
@@ -107,14 +106,13 @@ export default function LoginPage() {
       // Extract the role from response object
       const userRole = response?.user?.role || ""
 
-      // Role-Based Dynamic Redirection Route Logic
+      // Full navigation after login so dashboard API calls run on a fresh page load.
       if (userRole === "cashier") {
-        navigate("/cashier/dashboard")
+        window.location.replace("/cashier/dashboard")
       } else if (userRole === "osgfa") {
-        navigate("/osgfa/dashboard")
+        window.location.replace("/osgfa/dashboard")
       } else {
-        // Fallback default routing path if role is missing or generic
-        navigate("/osgfa/dashboard")
+        window.location.replace("/osgfa/dashboard")
       }
     } catch (err) {
       // Displays the specific error from the backend or the default message

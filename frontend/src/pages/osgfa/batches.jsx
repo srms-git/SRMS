@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input"
 import {
   batchNumberConflictsInProgram,
   fetchAllGrantees,
+  isGranteeRecordActive,
   updateBatchMetadata,
 } from "@/lib/granteesApi"
 import { fetchArchivedBatches } from "@/lib/archiveApi"
@@ -326,6 +327,7 @@ export default function Batches() {
   const granteeCountsByBatchProgram = useMemo(() => {
     const map = new Map()
     granteesRawData.forEach((item) => {
+      if (!isGranteeRecordActive(item)) return
       const bNo = String(item.batchNo ?? "").trim()
       const prog = String(item.program ?? "").trim().toUpperCase()
       const ay = String(item.academicYear ?? "").trim()

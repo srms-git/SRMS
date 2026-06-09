@@ -13,7 +13,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 app = Flask(__name__)
 
 MAX_UPLOAD_BYTES = 32 * 1024 * 1024
-YEAR_PATTERNS = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+YEAR_PATTERNS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
 LINE_RE = re.compile(r"^(\d{5})\s+(\d+)\s+([A-Z0-9]+)\s+((?:TDP|TES)-[\d\-]+)\s+(.*)$")
 

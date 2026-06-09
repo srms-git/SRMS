@@ -3,7 +3,8 @@ import { Calendar, CircleCheck, CircleDashed, Phone, User, Users } from "lucide-
 
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Input } from "@/components/ui/input"
-import { sanitizeContactNumber } from "@/lib/contactNumber"
+import { formatPhilippineContactDisplay } from "@/lib/contactNumber"
+import { PhilippineContactNumberInput } from "@/components/grantee/philippine-contact-number-input"
 import { formatSemesterClaimedAt } from "@/lib/granteeSemesterClaims"
 import { cn } from "@/lib/utils"
 
@@ -89,7 +90,7 @@ export function OtherPersonDetails({ name, relation, contact, className, title =
       <dl className="space-y-2">
         <OtherPersonDetailRow icon={User} label="Full name" value={String(name ?? "").trim()} />
         <OtherPersonDetailRow icon={Users} label="Relation to grantee" value={String(relation ?? "").trim()} />
-        <OtherPersonDetailRow icon={Phone} label="Contact number" value={String(contact ?? "").trim()} />
+        <OtherPersonDetailRow icon={Phone} label="Contact number" value={formatPhilippineContactDisplay(contact)} />
       </dl>
     </div>
   )
@@ -116,7 +117,7 @@ export function OtherPersonFields({
   onContactChange,
   namePlaceholder = "e.g. Maria Santos",
   relationPlaceholder = "e.g. Parent, Guardian, Sibling",
-  contactPlaceholder = "09XX XXX XXXX",
+  contactPlaceholder,
   required = false,
   className,
   title = "Representative details",
@@ -153,21 +154,16 @@ export function OtherPersonFields({
           />
         </OtherPersonField>
         <OtherPersonField id={`${baseId}-contact`} label="Contact number" icon={Phone}>
-          <Input
+          <PhilippineContactNumberInput
             id={`${baseId}-contact`}
-            type="tel"
-            inputMode="numeric"
-            autoComplete="tel"
-            pattern="[0-9]*"
-            value={contact ?? ""}
-            onChange={(e) =>
+            value={contact}
+            onChange={(formatted) =>
               onContactChange({
-                ...e,
-                target: { ...e.target, value: sanitizeContactNumber(e.target.value) },
+                target: { value: formatted },
               })
             }
             placeholder={contactPlaceholder}
-            className="h-8 w-full text-xs font-mono tracking-wide"
+            className="h-8 w-full text-xs"
           />
         </OtherPersonField>
       </div>

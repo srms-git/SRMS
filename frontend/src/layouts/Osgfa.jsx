@@ -752,7 +752,10 @@ export default function Osgfa() {
                                     )}
                                     title={`${program.name} is inactive — activate to open workspace`}
                                   >
-                                    <span className="text-white/70">{program.name}</span>
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <AlertTriangle className="size-3.5 text-amber-300 dark:text-amber-200" aria-hidden />
+                                      <span className="truncate text-white/70">{program.name}</span>
+                                    </span>
                                     <span className="ml-1.5 rounded bg-white/15 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-white/80">
                                       Off
                                     </span>
@@ -792,6 +795,8 @@ export default function Osgfa() {
                                   <DropdownMenuContent align="end" side="right" className="min-w-40">
                                     <DropdownMenuItem
                                       className="gap-2"
+                                      disabled={!isProgramActive}
+                                      title={!isProgramActive ? "Inactive program cannot be edited" : undefined}
                                       onSelect={() => openRenameProgramDialog(program)}
                                     >
                                       <Pencil className="size-4 opacity-70" />
@@ -799,6 +804,8 @@ export default function Osgfa() {
                                     </DropdownMenuItem>
                                     <DropdownMenuItem
                                       className="gap-2"
+                                      disabled={!isProgramActive}
+                                      title={!isProgramActive ? "Inactive program requirements cannot be edited" : undefined}
                                       onSelect={() => openRequirementsProgramDialog(program)}
                                     >
                                       <ListChecks className="size-4 opacity-70" />

@@ -1,4 +1,4 @@
-import { formatRequirementCompletedAt } from "@/lib/granteeRequirementsChecklist"
+import { formatRequirementCompletedAt, requirementYearSemProgress } from "@/lib/granteeRequirementsChecklist"
 import { sanitizeContactNumber } from "@/lib/contactNumber"
 
 export const SEMESTER_CLAIMED_AT_KEY = {
@@ -151,6 +151,51 @@ export function applySemesterClaimFieldChange(claim, semesterKey, value) {
 
 export function mapSemesterClaimsWithFieldChange(claims, idx, semesterKey, value) {
   return claims.map((c, i) => (i !== idx ? c : applySemesterClaimFieldChange(c, semesterKey, value)))
+}
+
+export function isFullyClaimedYearLevel(claim) {
+  return claim?.firstSem === "Claimed" && claim?.secondSem === "Claimed"
+}
+
+/** A claimed year is both semesters marked Claimed for the same year level. */
+export function countFullyClaimedYearLevels(claims) {
+  return (claims ?? []).filter(isFullyClaimedYearLevel).length
+}
+
+export function countClaimedSemesters(claims) {
+  return (claims ?? []).reduce((count, claim) => {
+    if (claim?.firstSem === "Claimed") count += 1
+    if (claim?.secondSem === "Claimed") count += 1
+    return count
+  }, 0)
+}
+
+export function isAddingSemesterClaim(claims, idx, semesterKey, value) {
+  return (
+    (semesterKey === "firstSem" || semesterKey === "secondSem") &&
+    value === "Claimed" &&
+    claims[idx]?.[semesterKey] !== "Claimed"
+  )
+}
+
+const REQUIREMENT_SEM_TO_CLAIM_FIELD = {
+  first: "firstSem",
+  second: "secondSem",
+}
+
+/** Resets Claimed semesters to Unclaimed when that semester's requirements are incomplete. */
+export function reconcileSemesterClaimsWithRequirementChecklist(claims, checklist, requirementDefs) {
+  return (claims ?? []).map((claim) => {
+    let row = claim
+    for (const semKey of ["first", "second"]) {
+      const field = REQUIREMENT_SEM_TO_CLAIM_FIELD[semKey]
+      const progress = requirementYearSemProgress(checklist, row.yearLevel, semKey, requirementDefs)
+      if (!progress.isComplete && row[field] === "Claimed") {
+        row = applySemesterClaimFieldChange(row, field, "Unclaimed")
+      }
+    }
+    return row
+  })
 }
 
 /**

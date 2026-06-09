@@ -1,5 +1,8 @@
+import apiClient from "@/lib/apiClient";
 import { getApiClientBaseUrl } from "@/lib/apiConfig";
+import { sanitizeContactNumber } from "@/lib/contactNumber";
 import { normalizeSemesterClaim } from "@/lib/granteeSemesterClaims";
+import { sanitizeEnrolledProgramArchivesForSave } from "@/lib/granteeEnrolledProgramHistory"
 import { sanitizeRequirementChecklistForSave } from "@/lib/granteeRequirementsChecklist";
 
 const API_BASE =
@@ -33,6 +36,22 @@ export function recordMatchesProgram(row, targetProgram) {
   if (inferred) return inferred === target
 
   return false
+}
+
+export function isGranteeRecordActive(row) {
+  return row?.active !== false
+}
+
+export function granteeRecordStatusLabel(row) {
+  return isGranteeRecordActive(row) ? "Active" : "Inactive"
+}
+
+export function granteeInactiveRemarks(row) {
+  return String(row?.inactiveRemarks ?? "").trim()
+}
+
+export function filterActiveGrantees(rows) {
+  return (rows ?? []).filter((row) => isGranteeRecordActive(row))
 }
 
 export function filterGranteesByProgram(rows, targetProgram) {
@@ -127,6 +146,8 @@ export function mapGranteeFromApi(doc) {
     fullName: String(doc.fullName ?? "").trim() || "Unknown",
     batchNo: String(doc.batchNo ?? "").trim(),
     status: String(doc.status ?? "Unclaimed").trim() || "Unclaimed",
+    active: doc.active !== false,
+    inactiveRemarks: String(doc.inactiveRemarks ?? "").trim(),
     enrolledProgram: String(doc.enrolledProgram ?? "").trim(),
     yearLevel: String(doc.yearLevel ?? "").trim(),
     email: String(doc.email ?? "").trim(),
@@ -142,6 +163,7 @@ export function mapGranteeFromApi(doc) {
       doc.requirementChecklistByYearSem && typeof doc.requirementChecklistByYearSem === "object"
         ? doc.requirementChecklistByYearSem
         : undefined,
+    enrolledProgramArchives: Array.isArray(doc.enrolledProgramArchives) ? doc.enrolledProgramArchives : undefined,
   }
 }
 
@@ -159,25 +181,50 @@ export function mapGranteeToApi(row) {
     enrolledProgram: String(row?.enrolledProgram ?? "").trim(),
     yearLevel: String(row?.yearLevel ?? "").trim(),
     status: String(row?.status ?? "Unclaimed").trim() || "Unclaimed",
+    active: row?.active !== false,
+    inactiveRemarks: String(row?.inactiveRemarks ?? "").trim(),
     email: String(row?.email ?? "").trim(),
-    phoneNumber: String(row?.phoneNumber ?? "").trim(),
+    phoneNumber: sanitizeContactNumber(row?.phoneNumber),
     bankAccount: String(row?.bankAccount ?? "").trim(),
     grantCycle: String(row?.grantCycle ?? "").trim(),
     semesterClaims: Array.isArray(row?.semesterClaims) ? row.semesterClaims.map(normalizeSemesterClaim) : [],
     requirementChecklistByYearSem: sanitizeRequirementChecklistForSave(row?.requirementChecklistByYearSem),
+    ...(Array.isArray(row?.enrolledProgramArchives)
+      ? { enrolledProgramArchives: sanitizeEnrolledProgramArchivesForSave(row.enrolledProgramArchives) }
+      : {}),
   }
+}
+
+async function fetchGranteesList(url, errorMessage = "Failed to load grantee records from the database.") {
+  let lastError = null
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await apiClient.get(url)
+      const data = response.data
+      if (!Array.isArray(data)) return []
+      return data
+    } catch (error) {
+      lastError = error
+      const status = error?.response?.status
+      const shouldRetry = attempt === 0 && (!status || status >= 500)
+      if (!shouldRetry) break
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+
+  const message =
+    lastError?.response?.data?.message ||
+    lastError?.userMessage ||
+    lastError?.message ||
+    errorMessage
+  throw new Error(message)
 }
 
 export async function fetchGranteesByProgram(program = "TDP") {
   const prog = String(program).trim().toUpperCase()
-  const url = prog ? `${API_BASE}/grantees?program=${encodeURIComponent(prog)}` : `${API_BASE}/grantees`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    throw new Error(data.message || "Failed to load grantee records from the database.")
-  }
-  const data = await response.json()
-  if (!Array.isArray(data)) return []
+  const url = prog ? `/grantees?program=${encodeURIComponent(prog)}` : "/grantees"
+  const data = await fetchGranteesList(url)
   const mapped = data.map(mapGranteeFromApi).filter(Boolean)
   return prog ? filterGranteesByProgram(mapped, prog) : mapped
 }
@@ -249,12 +296,17 @@ export async function fetchGranteeById(id) {
   if (!granteeId) {
     throw new Error("Cannot load grantee: missing database id.")
   }
-  const response = await fetch(`${API_BASE}/grantees/${encodeURIComponent(granteeId)}`)
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to load grantee record from the database.")
+  try {
+    const response = await apiClient.get(`/grantees/${encodeURIComponent(granteeId)}`)
+    return mapGranteeFromApi(response.data)
+  } catch (error) {
+    const message =
+      error?.response?.data?.message ||
+      error?.userMessage ||
+      error?.message ||
+      "Failed to load grantee record from the database."
+    throw new Error(message)
   }
-  return mapGranteeFromApi(data)
 }
 
 /** Replace one grantee in a list by database id (no-op if not present). */
@@ -265,7 +317,7 @@ export function mergeGranteeIntoRecords(records, grantee) {
   return list.map((row) => (row.id === grantee.id ? grantee : row))
 }
 
-export async function fetchGranteesForBatch({ program, batchNo, academicYear } = {}) {
+export async function fetchGranteesForBatch({ program, batchNo, academicYear, activeOnly = false } = {}) {
   const params = new URLSearchParams()
   const prog = String(program ?? "").trim().toUpperCase()
   if (prog) params.set("program", prog)
@@ -273,16 +325,11 @@ export async function fetchGranteesForBatch({ program, batchNo, academicYear } =
   if (batch) params.set("batchNo", batch)
   const year = String(academicYear ?? "").trim()
   if (year) params.set("academicYear", year)
+  if (activeOnly) params.set("activeOnly", "true")
 
   const qs = params.toString()
-  const url = `${API_BASE}/grantees${qs ? `?${qs}` : ""}`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    throw new Error(data.message || "Failed to load grantee records from the database.")
-  }
-  const data = await response.json()
-  if (!Array.isArray(data)) return []
+  const url = `/grantees${qs ? `?${qs}` : ""}`
+  const data = await fetchGranteesList(url)
   const mapped = data.map(mapGranteeFromApi).filter(Boolean)
   const byProgram = prog ? filterGranteesByProgram(mapped, prog) : mapped
   const byBatch = filterGranteesForBatch(byProgram, { batchNo: batch, program: prog, academicYear: year })
@@ -297,7 +344,7 @@ const YEAR_LEVEL_DONUT_PALETTE = [
   { color: "#10b981", colorFrom: "#047857", colorTo: "#34d399" },
   { color: "#0891b2", colorFrom: "#0e7490", colorTo: "#22d3ee" },
 ]
-const YEAR_LEVEL_ORDER = ["1st Year", "2nd Year", "3rd Year", "4th Year", "5th Year"]
+const YEAR_LEVEL_ORDER = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 function rowClaimDate(row) {
@@ -512,6 +559,48 @@ export const GRANTEE_UPDATED_EVENT = "srms:grantee-updated"
 function notifyGranteeUpdated(grantee) {
   if (typeof window === "undefined" || !grantee?.id) return
   window.dispatchEvent(new CustomEvent(GRANTEE_UPDATED_EVENT, { detail: grantee }))
+}
+
+export async function bulkUpdateGranteesActive(ids, active, remarks = "") {
+  const normalizedIds = [...new Set((ids ?? []).map((id) => String(id ?? "").trim()).filter(Boolean))]
+  if (normalizedIds.length === 0) {
+    throw new Error("Cannot update grantee status: no valid record ids.")
+  }
+  if (typeof active !== "boolean") {
+    throw new Error("Cannot update grantee status: active must be true or false.")
+  }
+
+  const normalizedRemarks = String(remarks ?? "").trim()
+  if (!active && !normalizedRemarks) {
+    throw new Error("Remarks are required when marking grantees inactive.")
+  }
+
+  const response = await fetch(`${API_BASE}/grantees/bulk-active`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ids: normalizedIds,
+      active,
+      remarks: active ? "" : normalizedRemarks,
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    let message = data.message || "Failed to update grantee record status."
+    if (response.status === 404 && !data.message) {
+      message = "Grantee status update is unavailable. Restart the backend server and try again."
+    }
+    throw new Error(message)
+  }
+
+  const updated = Array.isArray(data.grantees) ? data.grantees.map(mapGranteeFromApi).filter(Boolean) : []
+  for (const grantee of updated) {
+    notifyGranteeUpdated(grantee)
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("srms-landing-batches-changed"))
+  }
+  return { count: data.count ?? updated.length, grantees: updated }
 }
 
 export async function updateGrantee(id, row) {

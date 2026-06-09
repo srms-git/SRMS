@@ -617,6 +617,7 @@ export default function AddGrantees() {
   const [importDirty, setImportDirty] = useState(false)
   const [editorPage, setEditorPage] = useState(1)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [savingGrantees, setSavingGrantees] = useState(false)
   const [granteeRecords, setGranteeRecords] = useState([])
   const [granteesLoading, setGranteesLoading] = useState(true)
   const [granteesLoadError, setGranteesLoadError] = useState("")
@@ -831,6 +832,7 @@ export default function AddGrantees() {
   }
 
   const finalizeSubmit = async () => {
+    setSavingGrantees(true)
     setFormNotice({
       variant: "info",
       title: "Saving grantees",
@@ -887,11 +889,15 @@ export default function AddGrantees() {
 
       setFormNotice({ variant: "error", title: friendlyTitle, message: friendlyMsg })
       showAlert("error", friendlyMsg, friendlyTitle)
+    } finally {
+      setSavingGrantees(false)
     }
   }
 
   const handleSubmit = (event) => {
     event.preventDefault()
+
+    if (savingGrantees) return
 
     const hasRows = savedGranteeRows.length > 0
 
@@ -1178,9 +1184,30 @@ export default function AddGrantees() {
         </section>
       </form>
 
-      <section aria-label="Grantee preview from spreadsheet" className={osgfaCardClass}>
+      <section
+        aria-label="Grantee preview from spreadsheet"
+        aria-busy={savingGrantees}
+        className={osgfaCardClass}
+      >
         <div className={osgfaCardGlowClass} aria-hidden />
-        <div className="relative space-y-5">
+        {savingGrantees ? (
+          <div
+            className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-2xl bg-white/92 px-6 backdrop-blur-[2px] dark:bg-slate-950/90"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-10 w-10 animate-spin text-[#081F5C] dark:text-sky-300" aria-hidden />
+            <div className="max-w-sm space-y-1 text-center">
+              <p className="text-sm font-semibold text-slate-900 dark:text-white">Saving grantees…</p>
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                {savedGranteeRows.length > 0
+                  ? `Processing ${savedGranteeRows.length.toLocaleString()} row${savedGranteeRows.length === 1 ? "" : "s"}. Large batches may take a little longer.`
+                  : "Please wait while your batch is saved."}
+              </p>
+            </div>
+          </div>
+        ) : null}
+        <div className={cn("relative space-y-5", savingGrantees && "pointer-events-none select-none opacity-60")}>
           <SectionCardHeader
             eyebrow="Step 3 · Import & preview"
             title="Upload Excel & review rows"
@@ -1306,8 +1333,16 @@ export default function AddGrantees() {
                 Saves grantees using the batch details from Step 2.
               </p>
             </div>
-            <Button form="add-grantees-form" type="submit" className={`shrink-0 ${osgfaPrimaryBtnClass}`}>
-              Save Grantees
+            <Button
+              form="add-grantees-form"
+              type="submit"
+              disabled={savingGrantees || previewLoading}
+              className={`shrink-0 gap-2 ${osgfaPrimaryBtnClass}`}
+            >
+              {savingGrantees ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+              ) : null}
+              {savingGrantees ? "Saving…" : "Save Grantees"}
             </Button>
           </div>
         </div>
@@ -1352,13 +1387,17 @@ export default function AddGrantees() {
             </Button>
             <Button
               type="button"
-              className="bg-[#081F5C] hover:bg-[#0b2d83]"
+              className="gap-2 bg-[#081F5C] hover:bg-[#0b2d83]"
+              disabled={savingGrantees}
               onClick={() => {
                 setConfirmOpen(false)
                 finalizeSubmit()
               }}
             >
-              Yes, add grantees
+              {savingGrantees ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+              ) : null}
+              {savingGrantees ? "Saving…" : "Yes, add grantees"}
             </Button>
           </DialogFooter>
         </DialogContent>
