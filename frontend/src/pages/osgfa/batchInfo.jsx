@@ -3012,7 +3012,7 @@ export default function BatchInfo() {
                   <option value="__" disabled hidden>
                     Claim status
                   </option>
-                  <option value="">All claims</option>
+                  <option value="">All</option>
                   <option value="Claimed">Claimed</option>
                   <option value="Unclaimed">Unclaimed</option>
                 </select>
