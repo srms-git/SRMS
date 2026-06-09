@@ -109,6 +109,7 @@ import {
   applyFullyClaimedInactiveState,
   collectEnrolledProgramOptions,
   countLifetimeClaimedYearsFromRow,
+  FULLY_CLAIMED_INACTIVE_REMARKS,
   isGranteeFullyClaimed,
   isScholarshipProgramCode,
   lifetimeClaimLimitMessage,
@@ -1089,7 +1090,7 @@ function GranteeInactiveStatusIndicator({ row, iconClassName = "size-3.5" }) {
             <div className="min-w-0 space-y-1">
               <p className="text-xs font-semibold leading-none text-emerald-800 dark:text-emerald-200">Fully claimed</p>
               <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
-                This student has received grants for all {MAX_LIFETIME_CLAIMED_YEARS} year levels across enrolled programs.
+                This student has reached the maximum grant eligibility ({MAX_LIFETIME_CLAIMED_YEARS} lifetime year levels, or all year levels in their current program).
               </p>
             </div>
           </div>
@@ -1137,9 +1138,11 @@ function GranteeInactiveStatusIndicator({ row, iconClassName = "size-3.5" }) {
 }
 
 function BatchRecordView({ row, formatStudentId }) {
-  const overallClaimed = row.status === "Claimed"
-  const recordIsActive = isGranteeRecordActive(row)
-  const inactiveRemarks = granteeInactiveRemarks(row)
+  const displayRow = applyFullyClaimedInactiveState(row, YEAR_LEVELS)
+  const overallClaimed = displayRow.status === "Claimed"
+  const recordIsActive = isGranteeRecordActive(displayRow)
+  const fullyClaimed = isGranteeFullyClaimed(displayRow, YEAR_LEVELS)
+  const inactiveRemarks = granteeInactiveRemarks(displayRow)
   const claims = ensureSemesterClaimTimestamps(
     semesterClaimsForRow(row, YEAR_LEVELS).filter((claim) => supportedYearLevel(claim.yearLevel)),
     row?.lastUpdated,
@@ -1150,7 +1153,7 @@ function BatchRecordView({ row, formatStudentId }) {
   const granteeKindLabel =
     programInferred === "TDP" ? "TDP grantee" : programInferred === "TES" ? "TES grantee" : "Grantee"
   const detailItems = [
-    { label: "Record status", value: granteeRecordStatusLabel(row), icon: CheckCircle },
+    { label: "Record status", value: granteeRecordStatusLabel(displayRow), icon: CheckCircle },
     { label: "Batch number", value: row.batchNo, icon: Layers },
     { label: "Student ID", value: row.studentId, icon: User },
     { label: "Sequence no.", value: row.seqNo, icon: Fingerprint },
@@ -1169,15 +1172,40 @@ function BatchRecordView({ row, formatStudentId }) {
       {!recordIsActive ? (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-xl border border-amber-200/90 bg-amber-50 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-500/35 dark:bg-amber-500/12 dark:text-amber-50"
+          className={cn(
+            "flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm",
+            fullyClaimed
+              ? "border-emerald-200/90 bg-emerald-50 text-emerald-950 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-50"
+              : "border-amber-200/90 bg-amber-50 text-amber-950 dark:border-amber-500/35 dark:bg-amber-500/12 dark:text-amber-50",
+          )}
         >
-          <span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/35">
-            <TriangleAlert className="size-4" strokeWidth={2.25} aria-hidden />
+          <span
+            className={cn(
+              "mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ring-1",
+              fullyClaimed
+                ? "bg-emerald-100 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-500/20 dark:text-emerald-100 dark:ring-emerald-500/35"
+                : "bg-amber-100 text-amber-700 ring-amber-200/80 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/35",
+            )}
+          >
+            {fullyClaimed ? (
+              <CircleCheck className="size-4" strokeWidth={2.25} aria-hidden />
+            ) : (
+              <TriangleAlert className="size-4" strokeWidth={2.25} aria-hidden />
+            )}
           </span>
           <div className="min-w-0 space-y-1">
-            <p className="font-semibold leading-snug">This grantee record is inactive</p>
-            <p className="text-xs leading-relaxed text-amber-900/90 dark:text-amber-100/90">
-              {inactiveRemarks || "No inactive remarks were recorded for this grantee."}
+            <p className="font-semibold leading-snug">
+              {fullyClaimed ? "This grantee is fully claimed" : "This grantee record is inactive"}
+            </p>
+            <p
+              className={cn(
+                "text-xs leading-relaxed",
+                fullyClaimed
+                  ? "text-emerald-900/90 dark:text-emerald-100/90"
+                  : "text-amber-900/90 dark:text-amber-100/90",
+              )}
+            >
+              {inactiveRemarks || (fullyClaimed ? FULLY_CLAIMED_INACTIVE_REMARKS : "No inactive remarks were recorded for this grantee.")}
             </p>
           </div>
         </div>
@@ -1233,10 +1261,12 @@ function BatchRecordView({ row, formatStudentId }) {
                 >
                   {recordIsActive ? (
                     <CheckCircle className="size-3.5 opacity-90" aria-hidden />
+                  ) : fullyClaimed ? (
+                    <CircleCheck className="size-3.5 opacity-90" aria-hidden />
                   ) : (
                     <TriangleAlert className="size-3.5 opacity-90" aria-hidden />
                   )}
-                  Record: {granteeRecordStatusLabel(row)}
+                  Record: {granteeRecordStatusLabel(displayRow)}
                 </Badge>
                 <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-medium">
                   {row.enrolledProgram || "Program"}
@@ -1308,7 +1338,7 @@ function BatchRecordView({ row, formatStudentId }) {
         <GranteeRequirementsBlock
           mode="view"
           definitions={requirementDefs}
-          dataRow={row}
+          dataRow={displayRow}
           yearLevels={claims.map((c) => c.yearLevel)}
           currentYearLevel={row.yearLevel}
         />
@@ -1433,6 +1463,9 @@ function BatchRecordEdit({
   onSubmit,
 }) {
   const overallClaimed = draft.status === "Claimed"
+  const recordIsActive = isGranteeRecordActive(draft)
+  const fullyClaimed = isGranteeFullyClaimed(draft, YEAR_LEVELS)
+  const inactiveRemarks = granteeInactiveRemarks(draft)
   const programInferred = inferProgramFromRecord(draft)
   const requirementDefs = getRequirementsForProgramCode(programInferred)
   const granteeKindLabel =
@@ -1510,6 +1543,48 @@ function BatchRecordEdit({
 
   return (
     <form id="batch-record-edit-form" className="space-y-5" onSubmit={onSubmit}>
+      {!recordIsActive ? (
+        <div
+          role="alert"
+          className={cn(
+            "flex items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-sm",
+            fullyClaimed
+              ? "border-emerald-200/90 bg-emerald-50 text-emerald-950 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-50"
+              : "border-amber-200/90 bg-amber-50 text-amber-950 dark:border-amber-500/35 dark:bg-amber-500/12 dark:text-amber-50",
+          )}
+        >
+          <span
+            className={cn(
+              "mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-full ring-1",
+              fullyClaimed
+                ? "bg-emerald-100 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-500/20 dark:text-emerald-100 dark:ring-emerald-500/35"
+                : "bg-amber-100 text-amber-700 ring-amber-200/80 dark:bg-amber-500/20 dark:text-amber-100 dark:ring-amber-500/35",
+            )}
+          >
+            {fullyClaimed ? (
+              <CircleCheck className="size-4" strokeWidth={2.25} aria-hidden />
+            ) : (
+              <TriangleAlert className="size-4" strokeWidth={2.25} aria-hidden />
+            )}
+          </span>
+          <div className="min-w-0 space-y-1">
+            <p className="font-semibold leading-snug">
+              {fullyClaimed ? "This grantee is fully claimed" : "This grantee record is inactive"}
+            </p>
+            <p
+              className={cn(
+                "text-xs leading-relaxed",
+                fullyClaimed
+                  ? "text-emerald-900/90 dark:text-emerald-100/90"
+                  : "text-amber-900/90 dark:text-amber-100/90",
+              )}
+            >
+              {inactiveRemarks || (fullyClaimed ? FULLY_CLAIMED_INACTIVE_REMARKS : "No inactive remarks were recorded for this grantee.")}
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="relative overflow-hidden rounded-2xl border border-slate-200/85 bg-linear-to-br from-white via-slate-50/40 to-[#081F5C]/7 p-4 shadow-sm ring-1 ring-slate-900/4 dark:border-white/10 dark:from-slate-950 dark:via-slate-900/50 dark:to-[#081F5C]/15 dark:ring-white/6">
         <div
           className="pointer-events-none absolute -right-16 -top-20 h-40 w-40 rounded-full bg-[#081F5C]/10 blur-3xl dark:bg-[#1447a6]/20"
@@ -1546,6 +1621,24 @@ function BatchRecordEdit({
                   )}
                   Overall: {draft.status || "—"}
                 </Badge>
+                <Badge
+                  className={cn(
+                    "h-6 gap-1.5 rounded-full px-2.5 text-[11px] font-semibold",
+                    recordIsActive
+                      ? "border-sky-200/80 bg-sky-50 text-sky-900 hover:bg-sky-50 dark:border-sky-500/40 dark:bg-sky-500/15 dark:text-sky-50"
+                      : "border-amber-200/80 bg-amber-50 text-amber-950 hover:bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-50",
+                  )}
+                  variant="outline"
+                >
+                  {recordIsActive ? (
+                    <CheckCircle className="size-3.5 opacity-90" aria-hidden />
+                  ) : fullyClaimed ? (
+                    <CircleCheck className="size-3.5 opacity-90" aria-hidden />
+                  ) : (
+                    <TriangleAlert className="size-3.5 opacity-90" aria-hidden />
+                  )}
+                  Record: {granteeRecordStatusLabel(draft)}
+                </Badge>
                 <Badge variant="secondary" className="h-6 rounded-full px-2.5 text-[11px] font-medium">
                   {draft.enrolledProgram || "Program"}
                 </Badge>
@@ -1577,6 +1670,11 @@ function BatchRecordEdit({
                 <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
                 {fieldType === "display" ? (
                   <p className="text-sm font-medium leading-snug text-foreground">{value || "—"}</p>
+                ) : keyName === "batchNo" ? (
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-medium leading-snug text-foreground">{value || "—"}</p>
+                    <GranteeInactiveStatusIndicator row={draft} />
+                  </div>
                 ) : fieldType === "select-year-level" ? (
                   <select
                     id={id}
@@ -2094,7 +2192,10 @@ export default function BatchInfo() {
   const requestRecordStatusUpdate = useCallback((rows, active) => {
     const targets = (rows ?? []).filter((row) => {
       if (!row?.id) return false
-      return active ? !isGranteeRecordActive(row) : isGranteeRecordActive(row)
+      if (active) {
+        return !isGranteeRecordActive(row) && !isGranteeFullyClaimed(row, YEAR_LEVELS)
+      }
+      return isGranteeRecordActive(row)
     })
     if (targets.length === 0) return
     setPendingInactiveRemarks("")
@@ -2141,7 +2242,11 @@ export default function BatchInfo() {
     [selectedRows],
   )
   const selectedInactiveCount = selectedRows.length - selectedActiveCount
-  const canBulkSetActive = selectedInactiveCount > 0
+  const selectedActivatableCount = useMemo(
+    () => selectedRows.filter((row) => !isGranteeRecordActive(row) && !isGranteeFullyClaimed(row, YEAR_LEVELS)).length,
+    [selectedRows],
+  )
+  const canBulkSetActive = selectedActivatableCount > 0
   const canBulkSetInactive = selectedActiveCount > 0
   const pendingStatusRows = pendingStatusUpdate?.rows ?? []
   const pendingStatusCount = pendingStatusRows.length
@@ -2180,16 +2285,19 @@ export default function BatchInfo() {
         claimLevels,
         row.lastUpdated,
       )
-      return {
-        ...rowRest,
-        program: rowProgram,
-        batchNo: batchNo || rowRest.batchNo,
-        academicYear: academicYear || rowRest.academicYear,
-        yearLevel: supportedYearLevel(rowRest.yearLevel),
-        semesterClaims: claimsForRow,
-        requirementChecklistByYearSem,
-        enrolledProgramArchives: normalizeEnrolledProgramArchives(row),
-      }
+      return applyFullyClaimedInactiveState(
+        {
+          ...rowRest,
+          program: rowProgram,
+          batchNo: batchNo || rowRest.batchNo,
+          academicYear: academicYear || rowRest.academicYear,
+          yearLevel: supportedYearLevel(rowRest.yearLevel),
+          semesterClaims: claimsForRow,
+          requirementChecklistByYearSem,
+          enrolledProgramArchives: normalizeEnrolledProgramArchives(row),
+        },
+        YEAR_LEVELS,
+      )
     },
     [program, batchNo, academicYear, requirementDefsForBatch],
   )
@@ -2262,10 +2370,13 @@ export default function BatchInfo() {
     setEditDraft((prev) => {
       if (!prev) return prev
       if (field === "enrolledProgram") {
-        return applyEnrolledProgramChange(prev, value, {
-          requirementDefs: requirementDefsForBatch,
-          yearLevels: YEAR_LEVELS,
-        })
+        return applyFullyClaimedInactiveState(
+          applyEnrolledProgramChange(prev, value, {
+            requirementDefs: requirementDefsForBatch,
+            yearLevels: YEAR_LEVELS,
+          }),
+          YEAR_LEVELS,
+        )
       }
       if (field === "yearLevel") {
         const targetClaimsLength = yearLevelIndex(value) + 1
@@ -2281,11 +2392,14 @@ export default function BatchInfo() {
           requirementDefsForBatch,
           levels,
         )
-        return {
-          ...withYear,
-          requirementChecklistByYearSem,
-          status: computeStatusFromClaims(nextClaims, value, withYear.status),
-        }
+        return applyFullyClaimedInactiveState(
+          {
+            ...withYear,
+            requirementChecklistByYearSem,
+            status: computeStatusFromClaims(nextClaims, value, withYear.status),
+          },
+          YEAR_LEVELS,
+        )
       }
       return { ...prev, [field]: value }
     })
@@ -3013,7 +3127,13 @@ export default function BatchInfo() {
                       variant="outline"
                       className="h-8 gap-1.5"
                       disabled={isUpdatingRecordStatus || !canBulkSetActive}
-                      title={!canBulkSetActive ? "All selected records are already active" : undefined}
+                      title={
+                        !canBulkSetActive
+                          ? selectedInactiveCount > 0
+                            ? "Selected inactive records are fully claimed and cannot be reactivated"
+                            : "All selected records are already active"
+                          : undefined
+                      }
                       onClick={() => requestRecordStatusUpdate(selectedRows, true)}
                     >
                       <CheckCircle className="size-3.5" aria-hidden />
@@ -3147,7 +3267,12 @@ export default function BatchInfo() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="gap-2"
-                              disabled={!row.id}
+                              disabled={!row.id || (!recordIsActive && fullyClaimed)}
+                              title={
+                                !recordIsActive && fullyClaimed
+                                  ? "Fully claimed records cannot be reactivated"
+                                  : undefined
+                              }
                               onSelect={() => requestRecordStatusUpdate([row], !recordIsActive)}
                             >
                               {recordIsActive ? (

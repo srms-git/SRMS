@@ -17,7 +17,7 @@ export const MAX_LIFETIME_CLAIMED_YEARS = 5
 export const MAX_LIFETIME_SEMESTER_CLAIMS = MAX_LIFETIME_CLAIMED_YEARS
 
 export const FULLY_CLAIMED_INACTIVE_REMARKS =
-  "Fully claimed — this student has received grants for all 5 year levels across enrolled programs."
+  "Fully claimed — this student has received grants for all available year levels across enrolled programs."
 
 export function lifetimeClaimLimitMessage() {
   return `A grantee may only claim up to ${MAX_LIFETIME_CLAIMED_YEARS} year levels in total (both semesters claimed per year), including prior enrolled programs.`
@@ -52,8 +52,24 @@ export function wouldExceedLifetimeYearClaimLimit(row, claims, idx, semesterKey,
   return false
 }
 
+/**
+ * True when the grantee is at the highest year level in the system and every year
+ * level on record (current program) is fully claimed — e.g. 4th Year with no 5th Year.
+ */
+export function hasExhaustedProgramYearClaims(row, yearLevels = DEFAULT_YEAR_LEVELS) {
+  const maxYearLevel = yearLevels[yearLevels.length - 1] ?? ""
+  const currentYearLevel = String(row?.yearLevel ?? "").trim()
+  if (!currentYearLevel || currentYearLevel !== maxYearLevel) return false
+
+  const currentClaims = semesterClaimsForRow(row, yearLevels)
+  if (currentClaims.length === 0) return false
+
+  return currentClaims.every(isFullyClaimedYearLevel)
+}
+
 export function isGranteeFullyClaimed(row, yearLevels = DEFAULT_YEAR_LEVELS) {
-  return countLifetimeClaimedYearsFromRow(row, yearLevels) >= MAX_LIFETIME_CLAIMED_YEARS
+  if (countLifetimeClaimedYearsFromRow(row, yearLevels) >= MAX_LIFETIME_CLAIMED_YEARS) return true
+  return hasExhaustedProgramYearClaims(row, yearLevels)
 }
 
 export function applyFullyClaimedInactiveState(row, yearLevels = DEFAULT_YEAR_LEVELS) {
