@@ -1,6 +1,7 @@
 require('dotenv').config();
 
 const app = require('./app');
+const { connectDatabase } = require('./config/database');
 const { startAnnouncementMaintenanceSchedule } = require('./utils/announcementMaintenance');
 const PORT = Number(process.env.PORT) || 5000;
 
@@ -26,22 +27,34 @@ function shutdown(signal) {
     }, 5000).unref();
 }
 
-server = app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
-    console.log(`Landing batches: http://127.0.0.1:${PORT}/api/landing-batches`);
-    console.log(`Landing privacy: http://127.0.0.1:${PORT}/api/landing-batches/page-settings`);
-    startAnnouncementMaintenanceSchedule();
-});
-
-server.on('error', (err) => {
-    if (err.code === 'EADDRINUSE') {
-        console.error(
-            `Port ${PORT} is already in use. Run "pnpm free-port" in the backend folder (or stop the other Node process), then start again.`,
-        );
+async function start() {
+    try {
+        await connectDatabase();
+        console.log('Database connected');
+    } catch (err) {
+        console.error('Failed to connect to database:', err?.message || err);
         process.exit(1);
     }
-    throw err;
-});
+
+    server = app.listen(PORT, () => {
+        console.log(`Server listening on port ${PORT}`);
+        console.log(`Landing batches: http://127.0.0.1:${PORT}/api/landing-batches`);
+        console.log(`Landing privacy: http://127.0.0.1:${PORT}/api/landing-batches/page-settings`);
+        startAnnouncementMaintenanceSchedule();
+    });
+
+    server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+            console.error(
+                `Port ${PORT} is already in use. Run "pnpm free-port" in the backend folder (or stop the other Node process), then start again.`,
+            );
+            process.exit(1);
+        }
+        throw err;
+    });
+}
+
+void start();
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));

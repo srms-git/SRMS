@@ -1,4 +1,6 @@
+import apiClient from "@/lib/apiClient";
 import { getApiClientBaseUrl } from "@/lib/apiConfig";
+import { sanitizeContactNumber } from "@/lib/contactNumber";
 import { normalizeSemesterClaim } from "@/lib/granteeSemesterClaims";
 import { sanitizeEnrolledProgramArchivesForSave } from "@/lib/granteeEnrolledProgramHistory"
 import { sanitizeRequirementChecklistForSave } from "@/lib/granteeRequirementsChecklist";
@@ -182,7 +184,7 @@ export function mapGranteeToApi(row) {
     active: row?.active !== false,
     inactiveRemarks: String(row?.inactiveRemarks ?? "").trim(),
     email: String(row?.email ?? "").trim(),
-    phoneNumber: String(row?.phoneNumber ?? "").trim(),
+    phoneNumber: sanitizeContactNumber(row?.phoneNumber),
     bankAccount: String(row?.bankAccount ?? "").trim(),
     grantCycle: String(row?.grantCycle ?? "").trim(),
     semesterClaims: Array.isArray(row?.semesterClaims) ? row.semesterClaims.map(normalizeSemesterClaim) : [],
@@ -193,16 +195,36 @@ export function mapGranteeToApi(row) {
   }
 }
 
+async function fetchGranteesList(url, errorMessage = "Failed to load grantee records from the database.") {
+  let lastError = null
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await apiClient.get(url)
+      const data = response.data
+      if (!Array.isArray(data)) return []
+      return data
+    } catch (error) {
+      lastError = error
+      const status = error?.response?.status
+      const shouldRetry = attempt === 0 && (!status || status >= 500)
+      if (!shouldRetry) break
+      await new Promise((resolve) => setTimeout(resolve, 500))
+    }
+  }
+
+  const message =
+    lastError?.response?.data?.message ||
+    lastError?.userMessage ||
+    lastError?.message ||
+    errorMessage
+  throw new Error(message)
+}
+
 export async function fetchGranteesByProgram(program = "TDP") {
   const prog = String(program).trim().toUpperCase()
-  const url = prog ? `${API_BASE}/grantees?program=${encodeURIComponent(prog)}` : `${API_BASE}/grantees`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    throw new Error(data.message || "Failed to load grantee records from the database.")
-  }
-  const data = await response.json()
-  if (!Array.isArray(data)) return []
+  const url = prog ? `/grantees?program=${encodeURIComponent(prog)}` : "/grantees"
+  const data = await fetchGranteesList(url)
   const mapped = data.map(mapGranteeFromApi).filter(Boolean)
   return prog ? filterGranteesByProgram(mapped, prog) : mapped
 }
@@ -274,12 +296,17 @@ export async function fetchGranteeById(id) {
   if (!granteeId) {
     throw new Error("Cannot load grantee: missing database id.")
   }
-  const response = await fetch(`${API_BASE}/grantees/${encodeURIComponent(granteeId)}`)
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to load grantee record from the database.")
+  try {
+    const response = await apiClient.get(`/grantees/${encodeURIComponent(granteeId)}`)
+    return mapGranteeFromApi(response.data)
+  } catch (error) {
+    const message =
+      error?.response?.data?.message ||
+      error?.userMessage ||
+      error?.message ||
+      "Failed to load grantee record from the database."
+    throw new Error(message)
   }
-  return mapGranteeFromApi(data)
 }
 
 /** Replace one grantee in a list by database id (no-op if not present). */
@@ -301,14 +328,8 @@ export async function fetchGranteesForBatch({ program, batchNo, academicYear, ac
   if (activeOnly) params.set("activeOnly", "true")
 
   const qs = params.toString()
-  const url = `${API_BASE}/grantees${qs ? `?${qs}` : ""}`
-  const response = await fetch(url)
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    throw new Error(data.message || "Failed to load grantee records from the database.")
-  }
-  const data = await response.json()
-  if (!Array.isArray(data)) return []
+  const url = `/grantees${qs ? `?${qs}` : ""}`
+  const data = await fetchGranteesList(url)
   const mapped = data.map(mapGranteeFromApi).filter(Boolean)
   const byProgram = prog ? filterGranteesByProgram(mapped, prog) : mapped
   const byBatch = filterGranteesForBatch(byProgram, { batchNo: batch, program: prog, academicYear: year })

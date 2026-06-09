@@ -1,4 +1,5 @@
 const Announcement = require('../models/AnnouncementModel');
+const { connectDatabase } = require('../config/database');
 const { logActivity } = require('../services/auditLogger');
 const { todayDateString } = require('./announcementDates');
 
@@ -100,6 +101,7 @@ function startAnnouncementMaintenanceSchedule(intervalMs = 60 * 60 * 1000) {
 
     const run = async () => {
         try {
+            await connectDatabase();
             const deleted = await runAnnouncementMaintenance();
             if (deleted > 0) {
                 console.log(`Announcement maintenance: auto-deleted ${deleted} inactive record(s).`);

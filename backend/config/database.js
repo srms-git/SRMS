@@ -28,8 +28,8 @@ async function connectDatabase() {
         return mongoose.connection;
     }
 
-    if (globalCache.conn) {
-        return globalCache.conn;
+    if (globalCache.conn && !isConnected()) {
+        globalCache.conn = null;
     }
 
     const dbName = getDbName();
@@ -43,12 +43,12 @@ async function connectDatabase() {
             })
             .catch((err) => {
                 globalCache.promise = null;
+                globalCache.conn = null;
                 throw err;
             });
     }
 
-    const conn = await globalCache.promise;
-    return conn;
+    return globalCache.promise;
 }
 
 module.exports = {

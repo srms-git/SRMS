@@ -74,6 +74,8 @@ import {
   recordMatchesProgram,
   updateGrantee,
 } from "@/lib/granteesApi"
+import { PhilippineContactNumberInput } from "@/components/grantee/philippine-contact-number-input"
+import { formatPhilippineContactDisplay } from "@/lib/contactNumber"
 import {
   OtherPersonFields,
   SemesterClaimCell,
@@ -1161,7 +1163,7 @@ function BatchRecordView({ row, formatStudentId }) {
     { label: "Enrolled program", value: row.enrolledProgram, icon: BookOpen },
     { label: "Current year level", value: supportedYearLevel(row.yearLevel), icon: GraduationCap },
     { label: "Academic year", value: row.academicYear ?? "—", icon: CalendarDays },
-    { label: "Phone number", value: row.phoneNumber ?? "—", icon: Receipt },
+    { label: "Phone number", value: formatPhilippineContactDisplay(row.phoneNumber) || "—", icon: Receipt },
     { label: "Email address", value: row.email ?? "—", icon: Mail, subtle: true },
     { label: "Bank account", value: row.bankAccount ?? "—", icon: Landmark, mono: true },
     { label: "Record last updated", value: formatDisplayDate(row.lastUpdated), icon: CalendarDays },
@@ -1527,7 +1529,7 @@ function BatchRecordEdit({
     },
     { id: "edit-year-level", label: "Current year level", value: draft.yearLevel ?? "", icon: GraduationCap, keyName: "yearLevel", fieldType: "select-year-level" },
     { id: "edit-academic-year", label: "Academic year", value: draft.academicYear ?? "", icon: CalendarDays, keyName: "academicYear", readOnly: true },
-    { id: "edit-phone", label: "Phone number", value: draft.phoneNumber ?? "", icon: Receipt, keyName: "phoneNumber" },
+    { id: "edit-phone", label: "Phone number", value: draft.phoneNumber ?? "", icon: Receipt, keyName: "phoneNumber", fieldType: "phone-number" },
     { id: "edit-email", label: "Email address", value: draft.email ?? "", icon: Mail, keyName: "email", fieldType: "email" },
     { id: "edit-bank-account", label: "Bank account", value: draft.bankAccount ?? "", icon: Landmark, keyName: "bankAccount", mono: true },
     {
@@ -1709,6 +1711,16 @@ function BatchRecordEdit({
                       ))}
                     </SelectContent>
                   </Select>
+                ) : fieldType === "phone-number" ? (
+                  <PhilippineContactNumberInput
+                    id={id}
+                    value={value}
+                    readOnly={readOnly}
+                    disabled={readOnly}
+                    onChange={(next) => onChange(keyName, next)}
+                    className="h-9"
+                    required={!readOnly}
+                  />
                 ) : (
                   <Input
                     id={id}
@@ -1718,7 +1730,6 @@ function BatchRecordEdit({
                     disabled={readOnly}
                     onChange={(e) => onChange(keyName, e.target.value)}
                     className={cn("h-9", readOnly && "cursor-not-allowed bg-muted/50 opacity-90", mono && "font-mono text-[13px]")}
-                    placeholder={keyName === "phoneNumber" ? "e.g. 09XXXXXXXXX" : undefined}
                     required={!readOnly}
                   />
                 )}
