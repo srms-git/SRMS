@@ -44,7 +44,8 @@ function mapArchivedBatchSummary(doc) {
 }
 
 async function archiveGranteeGroup(filter, relatedGrantees, options = {}) {
-    const fullyClaimedAt = resolveFullyClaimedAt(relatedGrantees);
+    const fullyClaimedAt =
+        options.fullyClaimedAt !== undefined ? options.fullyClaimedAt : resolveFullyClaimedAt(relatedGrantees);
     const batchDetails = {
         batchNo: filter.batchNo,
         program: filter.program,
@@ -135,6 +136,63 @@ async function archiveBatchIfFullyClaimed({ batchNo, program, academicYear, reas
 }
 
 /**
+ * Archives a batch on demand, regardless of individual grantee claim status.
+ * Returns { isArchived, newlyArchived, archivedId?, message }.
+ */
+async function archiveBatchManually({ batchNo, program, academicYear, reason, archivedBy }) {
+    if (!batchNo || !program || !academicYear) {
+        return {
+            isArchived: false,
+            newlyArchived: false,
+            message: 'batchNo, program, and academicYear are required.',
+        };
+    }
+
+    const filter = buildBatchFilter(batchNo, program, academicYear);
+
+    const existingArchive = await Archive.findOne({
+        recordType: 'Batch',
+        batchNo: filter.batchNo,
+        grantType: filter.program,
+        schoolYear: filter.academicYear,
+    });
+    if (existingArchive) {
+        return {
+            isArchived: true,
+            newlyArchived: false,
+            archivedId: existingArchive._id,
+            message: `Batch ${filter.batchNo} is already archived.`,
+        };
+    }
+
+    const relatedGrantees = await Grantee.find(filter).sort({ seqNo: 1, createdAt: -1 });
+
+    if (relatedGrantees.length === 0) {
+        return {
+            isArchived: false,
+            newlyArchived: false,
+            message: `No active grantees found for batch ${filter.batchNo}.`,
+        };
+    }
+
+    const allGranteesClaimed = relatedGrantees.every((grantee) => isClaimedStatus(grantee.status));
+    const fullyClaimedAt = allGranteesClaimed ? resolveFullyClaimedAt(relatedGrantees) : null;
+
+    const archivedRecord = await archiveGranteeGroup(filter, relatedGrantees, {
+        reason: reason || 'Manual archive by OSGFA staff',
+        archivedBy,
+        fullyClaimedAt,
+    });
+
+    return {
+        isArchived: true,
+        newlyArchived: true,
+        archivedId: archivedRecord._id,
+        message: `Batch ${filter.batchNo} manually archived with ${relatedGrantees.length} grantees.`,
+    };
+}
+
+/**
  * Scans all active grantee batches and archives any where every student is claimed.
  */
 async function syncAllFullyClaimedBatches() {
@@ -220,6 +278,7 @@ async function getArchivedBatchDetail({ batchNo, program, academicYear }) {
 
 module.exports = {
     archiveBatchIfFullyClaimed,
+    archiveBatchManually,
     syncAllFullyClaimedBatches,
     listArchivedBatchSummaries,
     getArchivedBatchDetail,

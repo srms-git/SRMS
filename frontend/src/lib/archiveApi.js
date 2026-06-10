@@ -1,3 +1,4 @@
+import apiClient from "@/lib/apiClient";
 import { getApiClientBaseUrl } from "@/lib/apiConfig";
 
 const API_BASE =
@@ -27,6 +28,15 @@ export async function fetchArchivedBatches() {
   const data = await response.json()
   if (!Array.isArray(data)) return []
   return data.map(mapArchivedBatchFromApi).filter(Boolean)
+}
+
+export async function manualArchiveBatch({ batchNo, program, academicYear }) {
+  const response = await apiClient.post("/archive/manual", {
+    batchNo: String(batchNo ?? "").trim(),
+    program: String(program ?? "").trim().toUpperCase(),
+    academicYear: String(academicYear ?? "").trim(),
+  })
+  return response.data
 }
 
 export async function fetchArchivedBatchDetail({ batchNo, program, academicYear }) {

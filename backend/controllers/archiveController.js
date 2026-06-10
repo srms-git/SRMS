@@ -1,5 +1,6 @@
 const {
     archiveBatchIfFullyClaimed,
+    archiveBatchManually,
     syncAllFullyClaimedBatches,
     listArchivedBatchSummaries,
     getArchivedBatchDetail,
@@ -82,6 +83,60 @@ exports.archiveBatchAndGrantees = async (req, res) => {
         });
     } catch (error) {
         console.error('Error during batch archiving process:', error);
+        return res.status(500).json({
+            message: error.message || 'An internal error occurred while executing the archive operation.',
+        });
+    }
+};
+
+exports.manualArchiveBatch = async (req, res) => {
+    try {
+        const { batchNo, program, academicYear, reason } = req.body;
+
+        if (!batchNo || !program || !academicYear) {
+            return res.status(400).json({
+                message: 'batchNo, program, and academicYear are required to proceed with archiving.',
+            });
+        }
+
+        const outcome = await archiveBatchManually({
+            batchNo,
+            program,
+            academicYear,
+            reason,
+            archivedBy: req.user?.id,
+        });
+
+        if (!outcome.isArchived && outcome.message?.includes('No active grantees')) {
+            return res.status(404).json({ message: outcome.message });
+        }
+
+        if (outcome.newlyArchived) {
+            await createInternalNotification(
+                `Batch ${batchNo} manually archived`,
+                `${program} batch ${batchNo} for Academic Year ${academicYear} was manually archived by OSGFA staff.`,
+                'claim'
+            );
+
+            logActivity({
+                userId: req.user?.id || null,
+                action: 'BATCH_MANUALLY_ARCHIVED',
+                entityType: 'archives',
+                entityId: outcome.archivedId || `${program}-${batchNo}`.toLowerCase(),
+                oldValues: { batchNo, program, academicYear, status: 'Active' },
+                newValues: { archivedId: outcome.archivedId, status: 'Archived', condition: 'manual' },
+                ipAddress: req.ip || req.headers['x-forwarded-for'] || null,
+            });
+        }
+
+        return res.status(200).json({
+            message: outcome.message,
+            archivedId: outcome.archivedId,
+            isArchived: outcome.isArchived,
+            newlyArchived: outcome.newlyArchived,
+        });
+    } catch (error) {
+        console.error('manualArchiveBatch error:', error);
         return res.status(500).json({
             message: error.message || 'An internal error occurred while executing the archive operation.',
         });

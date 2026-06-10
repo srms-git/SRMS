@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import {
+  Archive,
   CalendarDays,
   ChevronDown,
   CircleAlert,
@@ -20,6 +21,16 @@ import {
 } from "lucide-react"
 
 import { FeedbackModal } from "@/components/FeedbackModal"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -31,7 +42,7 @@ import {
   isGranteeRecordActive,
   updateBatchMetadata,
 } from "@/lib/granteesApi"
-import { fetchArchivedBatches } from "@/lib/archiveApi"
+import { fetchArchivedBatches, manualArchiveBatch } from "@/lib/archiveApi"
 import {
   isBatchVisibleOnLanding,
   renameLandingBatchVisibility,
@@ -229,6 +240,10 @@ export default function Batches() {
   const [feedbackVariant, setFeedbackVariant] = useState("info")
   const [feedbackTitle, setFeedbackTitle] = useState("")
   const [feedbackMessage, setFeedbackMessage] = useState("")
+
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false)
+  const [archiveTarget, setArchiveTarget] = useState(null)
+  const [isArchiving, setIsArchiving] = useState(false)
   const landingVisibility = useLandingBatchVisibility()
   const { activePrograms, programs } = useOsgfaPrograms()
   const [archivedBatchCount, setArchivedBatchCount] = useState(0)
@@ -597,12 +612,94 @@ export default function Batches() {
     }
   }
 
+  const getBatchArchiveStats = useCallback(
+    (row) => {
+      const batchNo = String(row?.batchNo ?? "").trim()
+      const program = String(row?.program ?? "").trim().toUpperCase()
+      const academicYear = String(row?.schoolYear ?? row?.academicYear ?? "").trim()
+
+      let total = 0
+      let claimed = 0
+      for (const item of granteesRawData) {
+        if (!isGranteeRecordActive(item)) continue
+        if (String(item.batchNo ?? "").trim() !== batchNo) continue
+        if (String(item.program ?? "").trim().toUpperCase() !== program) continue
+        if (String(item.academicYear ?? "").trim() !== academicYear) continue
+        total += 1
+        if (String(item.status ?? "").trim().toLowerCase() === "claimed") claimed += 1
+      }
+
+      return { total, claimed, unclaimed: Math.max(0, total - claimed) }
+    },
+    [granteesRawData],
+  )
+
+  const openArchiveConfirm = (row) => {
+    const batch = normalizeBatchRow(row)
+    if (!batch.batchNo || !batch.program || !batch.academicYear) {
+      showFeedback(
+        "warning",
+        "Can't archive batch",
+        "This batch is missing a batch number, program, or academic year. Edit the batch or ensure grantees have complete details, then try again.",
+      )
+      return
+    }
+
+    setArchiveTarget(batch)
+    setArchiveConfirmOpen(true)
+  }
+
+  const handleConfirmArchive = async () => {
+    if (!archiveTarget) return
+
+    const target = archiveTarget
+
+    try {
+      setIsArchiving(true)
+      const result = await manualArchiveBatch({
+        batchNo: target.batchNo,
+        program: target.program,
+        academicYear: target.academicYear,
+      })
+
+      setArchiveConfirmOpen(false)
+      setArchiveTarget(null)
+      await loadGrantees()
+
+      if (result?.newlyArchived === false && result?.isArchived) {
+        showFeedback(
+          "info",
+          "Already archived",
+          result.message || `Batch ${target.batchNo} is already in the archive.`,
+        )
+        return
+      }
+
+      showFeedback(
+        "success",
+        "Batch archived",
+        result?.message ||
+          `Batch ${target.batchNo} (${target.program}, AY ${target.academicYear}) has been moved to the archive.`,
+      )
+    } catch (err) {
+      const message =
+        err?.response?.data?.message ??
+        err?.message ??
+        "Something went wrong while archiving. Wait a moment and try again."
+      showFeedback("warning", "Couldn't archive batch", message)
+    } finally {
+      setIsArchiving(false)
+    }
+  }
+
   const clearFilters = () => {
     setBatchFilter("__")
     setProgramFilter("__")
     setYearFilter("__")
     setSearchTerm("")
   }
+
+  const archiveStats = archiveTarget ? getBatchArchiveStats(archiveTarget) : null
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
@@ -854,6 +951,13 @@ export default function Batches() {
                           </>
                         )}
                       </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="gap-2 text-amber-700 focus:text-amber-700 dark:text-amber-300 dark:focus:text-amber-300"
+                        onSelect={() => openArchiveConfirm(row)}
+                      >
+                        <Archive className="size-4 opacity-70" />
+                        Archive
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
@@ -1030,6 +1134,56 @@ export default function Batches() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {archiveTarget ? (
+        <AlertDialog
+          open={archiveConfirmOpen}
+          onOpenChange={(open) => {
+            setArchiveConfirmOpen(open)
+            if (!open && !isArchiving) setArchiveTarget(null)
+          }}
+        >
+          <AlertDialogContent size="sm">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Archive batch {archiveTarget.batchNo}?</AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>
+                    Are you sure you want to archive{" "}
+                    <span className="font-semibold text-slate-900 dark:text-white">
+                      Batch {archiveTarget.batchNo}
+                    </span>{" "}
+                    ({archiveTarget.program}, AY {archiveTarget.academicYear})? This will move all{" "}
+                    {archiveStats?.total ?? 0} grantee{(archiveStats?.total ?? 0) === 1 ? "" : "s"} to the archive and
+                    remove the batch from the active list.
+                  </p>
+                  {archiveStats?.unclaimed > 0 ? (
+                    <p className="text-amber-700 dark:text-amber-300">
+                      {archiveStats.unclaimed} grantee{archiveStats.unclaimed === 1 ? " has" : "s have"} not claimed
+                      their payouts yet. You can still archive manually, but this batch will no longer appear in active
+                      batches.
+                    </p>
+                  ) : null}
+                  <p>This action cannot be undone from the batches page.</p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isArchiving}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={(event) => {
+                  event.preventDefault()
+                  void handleConfirmArchive()
+                }}
+                disabled={isArchiving}
+              >
+                {isArchiving ? "Archiving…" : "Archive batch"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : null}
 
       <FeedbackModal
         open={feedbackOpen}

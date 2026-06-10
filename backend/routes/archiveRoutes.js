@@ -6,6 +6,10 @@ const archiveController = require('../controllers/archiveController');
 // Expected payload body: { "batchNo": "18.2", "program": "TES", "academicYear": "2023-2024" }
 router.post('/check-archive', archiveController.archiveBatchAndGrantees);
 
+// Route to manually archive a batch regardless of claim status
+// Expected payload body: { "batchNo": "18.2", "program": "TES", "academicYear": "2023-2024" }
+router.post('/manual', archiveController.manualArchiveBatch);
+
 // Route to fetch all archived batches for your OSGFA and Registrar archive tables
 router.get('/list', archiveController.getArchivedBatches);
 
