@@ -9,12 +9,24 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   buildBatchesFromGrantees,
-  buildMonthlyClaimTrend,
   buildProgramQuantityBars,
   buildYearLevelDonut,
-  fetchAllGrantees,
   programQuantityScaleSubtitle,
 } from "@/lib/granteesApi"
+import {
+  buildBatchFilterOptions,
+  buildSemestralOptions,
+  claimTrendForRange,
+  filterRecordsForTrendBatch,
+  parseTrendBatchFilter,
+  TREND_BATCH_ALL,
+  TREND_RANGE,
+  TREND_SEMESTRAL_ALL,
+  trendFilterBatchTriggerClass,
+  trendFilterRowClass,
+  trendFilterTriggerClass,
+} from "@/lib/claimTrendFilters"
+import { useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
@@ -38,68 +50,6 @@ const YEAR_LEVEL_DONUT_STYLES = [
   { colorFrom: "#047857", colorTo: "#34d399", color: "#10b981" },
   { colorFrom: "#0e7490", colorTo: "#22d3ee", color: "#0891b2" },
 ]
-
-const TREND_RANGE = {
-  THIS_WEEK: "this-week",
-  THIS_MONTH: "this-month",
-  LAST_MONTH: "last-month",
-  THIS_YEAR: "this-year",
-  LAST_YEAR: "last-year",
-}
-
-function splitMonthIntoWeeks(claimed, unclaimed) {
-  const weights = [0.23, 0.27, 0.26, 0.24]
-  return weights.map((w, i) => ({
-    month: `Week ${i + 1}`,
-    claimed: Math.max(0, Math.round(claimed * w)),
-    unclaimed: Math.max(0, Math.round(unclaimed * w)),
-  }))
-}
-
-function splitIntoWeekDays(claimed, unclaimed) {
-  const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-  const weights = [0.13, 0.14, 0.15, 0.15, 0.16, 0.14, 0.13]
-  return labels.map((month, i) => ({
-    month,
-    claimed: Math.max(0, Math.round(claimed * weights[i])),
-    unclaimed: Math.max(0, Math.round(unclaimed * weights[i])),
-  }))
-}
-
-function claimTrendForRange(rows, range, referenceDate = new Date()) {
-  const monthIdx = referenceDate.getMonth()
-  const monthly = buildMonthlyClaimTrend(rows)
-  const safeRow = (i) => monthly[Math.min(Math.max(i, 0), monthly.length - 1)]
-
-  switch (range) {
-    case TREND_RANGE.THIS_YEAR:
-      return monthly.slice(0, monthIdx + 1)
-    case TREND_RANGE.LAST_YEAR:
-      return monthly.map((d) => ({
-        month: d.month,
-        claimed: Math.max(0, Math.round(d.claimed * 0.88)),
-        unclaimed: Math.max(0, Math.round(d.unclaimed * 0.92)),
-      }))
-    case TREND_RANGE.THIS_MONTH: {
-      const row = safeRow(monthIdx)
-      return splitMonthIntoWeeks(row.claimed, row.unclaimed)
-    }
-    case TREND_RANGE.LAST_MONTH: {
-      const idx = monthIdx === 0 ? 11 : monthIdx - 1
-      const row = safeRow(idx)
-      return splitMonthIntoWeeks(row.claimed, row.unclaimed)
-    }
-    case TREND_RANGE.THIS_WEEK: {
-      const row = safeRow(monthIdx)
-      return splitIntoWeekDays(
-        Math.max(0, Math.round(row.claimed / 4)),
-        Math.max(0, Math.round(row.unclaimed / 4)),
-      )
-    }
-    default:
-      return monthly
-  }
-}
 
 function enrichYearLevelDonut(donut) {
   return donut.map((entry, i) => {
@@ -141,34 +91,39 @@ export default function CashierDashboard() {
   const { formatStat, privacy } = useCashierPrivacySettings()
   const { activePrograms } = useOsgfaPrograms()
   const hideSensitiveStats = privacy.hideSensitiveStatsFromSharedScreens
+  const [trendBatchFilter, setTrendBatchFilter] = useState(TREND_BATCH_ALL)
+  const [trendSemestralFilter, setTrendSemestralFilter] = useState(TREND_SEMESTRAL_ALL)
   const [trendRange, setTrendRange] = useState(TREND_RANGE.THIS_YEAR)
-  const [records, setRecords] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
-
-  const loadRecords = async () => {
-    try {
-      setIsLoading(true)
-      setFetchError(null)
-      const rows = await fetchAllGrantees()
-      setRecords(rows)
-    } catch (err) {
-      console.error("Failed to load cashier dashboard grantees:", err)
-      setFetchError(err?.message ?? "Failed to load dashboard data.")
-      setRecords([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadRecords()
-  }, [])
+  const {
+    data: records = [],
+    isLoading,
+    error: granteesError,
+    refetch: loadRecords,
+  } = useGranteesQuery()
+  const fetchError = granteesError?.message ?? null
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
   const batches = useMemo(() => buildBatchesFromGrantees(records), [records])
-  const claimTrend = useMemo(() => claimTrendForRange(records, trendRange), [records, trendRange])
+
+  useEffect(() => {
+    setTrendSemestralFilter(TREND_SEMESTRAL_ALL)
+  }, [trendBatchFilter])
+
+  const batchFilterOptions = useMemo(() => buildBatchFilterOptions(batches), [batches])
+  const trendRows = useMemo(
+    () => filterRecordsForTrendBatch(records, trendBatchFilter),
+    [records, trendBatchFilter],
+  )
+  const selectedBatchYear = useMemo(() => parseTrendBatchFilter(trendBatchFilter)?.schoolYear ?? "", [trendBatchFilter])
+  const semestralOptions = useMemo(
+    () => buildSemestralOptions(trendRows, selectedBatchYear),
+    [trendRows, selectedBatchYear],
+  )
+  const claimTrend = useMemo(
+    () => claimTrendForRange(trendRows, trendRange, trendSemestralFilter, selectedBatchYear),
+    [trendRows, trendRange, trendSemestralFilter, selectedBatchYear],
+  )
   const yearLevelDonut = useMemo(() => enrichYearLevelDonut(buildYearLevelDonut(records)), [records])
   const yearLevelTotal = useMemo(() => yearLevelDonut.reduce((s, d) => s + d.value, 0), [yearLevelDonut])
   const donutChartConfig = useMemo(
@@ -373,23 +328,49 @@ export default function CashierDashboard() {
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-900 dark:text-white">Claimed vs unclaimed trend</p>
             </div>
-            <Select value={trendRange} onValueChange={setTrendRange}>
-              <SelectTrigger
-                size="sm"
-                className="h-9 w-full shrink-0 rounded-full border-slate-300/90 bg-white/90 px-3 text-xs font-medium shadow-sm transition hover:border-slate-400 hover:bg-white dark:border-white/15 dark:bg-white/5 sm:w-46"
-                aria-label="Trend period"
-              >
-                <span className="text-[11px] text-slate-500 dark:text-slate-400">Range:</span>
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent align="end" className="rounded-xl">
-                <SelectItem value={TREND_RANGE.THIS_WEEK}>This week</SelectItem>
-                <SelectItem value={TREND_RANGE.THIS_MONTH}>This month</SelectItem>
-                <SelectItem value={TREND_RANGE.LAST_MONTH}>Last month</SelectItem>
-                <SelectItem value={TREND_RANGE.THIS_YEAR}>This year</SelectItem>
-                <SelectItem value={TREND_RANGE.LAST_YEAR}>Last year</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className={trendFilterRowClass}>
+              <Select value={trendBatchFilter} onValueChange={setTrendBatchFilter}>
+                <SelectTrigger size="sm" className={trendFilterBatchTriggerClass} aria-label="Trend batch filter">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Batch:</span>
+                  <SelectValue placeholder="All batches" />
+                </SelectTrigger>
+                <SelectContent align="end" className="rounded-xl">
+                  <SelectItem value={TREND_BATCH_ALL}>All batches</SelectItem>
+                  {batchFilterOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={trendSemestralFilter} onValueChange={setTrendSemestralFilter}>
+                <SelectTrigger size="sm" className={trendFilterTriggerClass} aria-label="Trend semester filter">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Semester:</span>
+                  <SelectValue placeholder="All semesters" />
+                </SelectTrigger>
+                <SelectContent align="end" className="rounded-xl">
+                  <SelectItem value={TREND_SEMESTRAL_ALL}>All semesters</SelectItem>
+                  {semestralOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={trendRange} onValueChange={setTrendRange}>
+                <SelectTrigger size="sm" className={trendFilterTriggerClass} aria-label="Trend period">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Range:</span>
+                  <SelectValue placeholder="Period" />
+                </SelectTrigger>
+                <SelectContent align="end" className="rounded-xl">
+                  <SelectItem value={TREND_RANGE.THIS_WEEK}>This week</SelectItem>
+                  <SelectItem value={TREND_RANGE.THIS_MONTH}>This month</SelectItem>
+                  <SelectItem value={TREND_RANGE.LAST_MONTH}>Last month</SelectItem>
+                  <SelectItem value={TREND_RANGE.THIS_YEAR}>This year</SelectItem>
+                  <SelectItem value={TREND_RANGE.LAST_YEAR}>Last year</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="rounded-xl bg-slate-50/90 p-1 dark:bg-white/4">
             {hideSensitiveStats ? (

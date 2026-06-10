@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { CalendarDays, GraduationCap, Layers, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
-import { fetchArchivedBatches } from "@/lib/archiveApi"
-import { buildBatchesFromGrantees, fetchAllGrantees } from "@/lib/granteesApi"
+import { buildBatchesFromGrantees } from "@/lib/granteesApi"
+import { useArchivedBatchesQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 import {
@@ -62,10 +62,18 @@ export default function Batches() {
   const navigate = useNavigate()
   const modulePrefs = useCashierModuleSettings()
 
-  // Real database dynamic array states
-  const [granteesRawData, setGranteesRawData] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
+  const {
+    data: granteesRawData = [],
+    isLoading: granteesLoading,
+    error: granteesError,
+  } = useGranteesQuery()
+  const {
+    data: archivedBatches = [],
+    isLoading: archivedLoading,
+    error: archivedError,
+  } = useArchivedBatchesQuery()
+  const isLoading = granteesLoading || archivedLoading
+  const fetchError = granteesError?.message ?? archivedError?.message ?? null
 
   const [searchTerm, setSearchTerm] = useState("")
   const [batchFilter, setBatchFilter] = useState("__")
@@ -73,7 +81,7 @@ export default function Batches() {
   const [yearFilter, setYearFilter] = useState("__")
   const [sortMode, setSortMode] = useState("batch-asc")
   const [batchesView, setBatchesView] = useState(() => modulePrefs.defaultBatchesView || "grid")
-  const [archivedBatchCount, setArchivedBatchCount] = useState(0)
+  const archivedBatchCount = archivedBatches.length
   const landingVisibility = useLandingBatchVisibility()
 
   useEffect(() => {
@@ -85,38 +93,6 @@ export default function Batches() {
       navigate("/cashier/archive", { replace: true })
     }
   }, [modulePrefs.defaultBatchFilter, navigate])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadGrantees = async () => {
-      try {
-        setIsLoading(true)
-        setFetchError(null)
-        const [data, archived] = await Promise.all([
-          fetchAllGrantees(),
-          fetchArchivedBatches().catch(() => []),
-        ])
-        if (!cancelled) {
-          setGranteesRawData(data)
-          setArchivedBatchCount(archived.length)
-        }
-      } catch (err) {
-        console.error("Error connecting batches layout:", err)
-        if (!cancelled) {
-          setFetchError(err?.message ?? "Failed to load grantee records from the database.")
-          setGranteesRawData([])
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    loadGrantees()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const batches = useMemo(() => buildBatchesFromGrantees(granteesRawData), [granteesRawData])
 

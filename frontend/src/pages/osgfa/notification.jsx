@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { BellRing, CheckCheck, CheckCircle2, CircleAlert, Clock3, Info, Megaphone, Search, SlidersHorizontal } from "lucide-react"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -15,6 +16,8 @@ import {
   readNotificationPreferences,
   shouldShowNotification,
 } from "@/lib/osgfaSettings"
+import { useNotificationsQuery } from "@/hooks/useSrmsQueries"
+import { queryKeys } from "@/lib/queryKeys"
 import { cn } from "@/lib/utils"
 
 const NOTIF_TYPES = {
@@ -67,8 +70,13 @@ function formatDateTime(iso) {
 
 export default function NotificationPage() {
   const navigate = useNavigate()
-  const [notifications, setNotifications] = useState([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  const {
+    data: rawNotifications = [],
+    isLoading: loading,
+    error: notificationsQueryError,
+    refetch: loadNotifications,
+  } = useNotificationsQuery()
   const [errorMessage, setErrorMessage] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
   const [tab, setTab] = useState("all")
@@ -91,24 +99,15 @@ export default function NotificationPage() {
     }
   }, [])
 
-  const loadNotifications = useCallback(async () => {
-    try {
-      setLoading(true)
-      setErrorMessage("")
-      const response = await apiClient.get("/notifications")
-      const list = Array.isArray(response.data) ? response.data.map(normalizeNotification) : []
-      setNotifications(list)
-    } catch (error) {
-      setErrorMessage(error?.response?.data?.message || "Unable to load notifications.")
-      setNotifications([])
-    } finally {
-      setLoading(false)
-    }
-  }, [normalizeNotification])
+  const notifications = useMemo(
+    () => rawNotifications.map(normalizeNotification),
+    [rawNotifications, normalizeNotification],
+  )
 
-  useEffect(() => {
-    loadNotifications()
-  }, [loadNotifications])
+  const loadErrorMessage =
+    notificationsQueryError?.response?.data?.message ||
+    notificationsQueryError?.message ||
+    ""
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(loading)
 
@@ -164,7 +163,9 @@ export default function NotificationPage() {
     if (!hasUnread) return
     try {
       await apiClient.patch("/notifications/mark-all")
-      setNotifications((prev) => prev.map((item) => ({ ...item, read: true })))
+      queryClient.setQueryData(queryKeys.notifications, (prev) =>
+        (prev ?? []).map((item) => ({ ...item, read: true })),
+      )
     } catch (error) {
       setErrorMessage(error?.response?.data?.message || "Failed to mark all notifications as read.")
     }
@@ -173,7 +174,12 @@ export default function NotificationPage() {
   const markOneAsRead = async (id) => {
     try {
       await apiClient.patch(`/notifications/${id}/read`)
-      setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, read: true } : item)))
+      queryClient.setQueryData(queryKeys.notifications, (prev) =>
+        (prev ?? []).map((item) => {
+          const itemId = item?._id || item?.id
+          return itemId === id ? { ...item, read: true } : item
+        }),
+      )
     } catch (error) {
       setErrorMessage(error?.response?.data?.message || "Failed to update notification status.")
     }
@@ -315,12 +321,12 @@ export default function NotificationPage() {
         )}
 
         {!loading &&
-          (errorMessage ? (
+          (errorMessage || loadErrorMessage ? (
             <div
               className={cn("space-y-3", revealItemClass(contentRevealed, 0))}
               style={revealItemStyle(contentRevealed, 0)}
             >
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage || loadErrorMessage}</div>
               <Button type="button" variant="outline" onClick={loadNotifications}>
                 Retry
               </Button>
@@ -423,7 +429,7 @@ export default function NotificationPage() {
           ))}
       </div>
 
-      {!loading && !errorMessage && filtered.length > 0 ? (
+      {!loading && !errorMessage && !loadErrorMessage && filtered.length > 0 ? (
         <div className="flex flex-wrap items-center justify-between gap-3 pt-2 text-xs">
           <p className="text-slate-600 dark:text-slate-300">
             Showing{" "}

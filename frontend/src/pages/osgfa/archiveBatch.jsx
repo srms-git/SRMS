@@ -14,8 +14,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { fetchArchivedBatchDetail } from "@/lib/archiveApi"
 import { buildMonthlyClaimTrend, buildYearLevelDonut, mapGranteeFromApi } from "@/lib/granteesApi"
+import { useArchivedBatchDetailQuery } from "@/hooks/useSrmsQueries"
 import {
   ChartAreaSkeleton,
   ChartDonutSkeleton,
@@ -223,51 +223,31 @@ export default function ArchiveBatch() {
   const [page, setPage] = useState(1)
   const [recordDialogOpen, setRecordDialogOpen] = useState(false)
   const [activeSeqNo, setActiveSeqNo] = useState("")
-  const [granteeRows, setGranteeRows] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
-
   const batchNo = String(params.get("batchNo") ?? "").trim()
   const program = String(params.get("program") ?? "").trim().toUpperCase()
   const academicYear = String(params.get("academicYear") ?? "").trim()
+  const hasBatchParams = Boolean(batchNo && program && academicYear)
 
-  useEffect(() => {
-    let cancelled = false
+  const {
+    data: archivedDetail,
+    isLoading,
+    error: archiveDetailError,
+  } = useArchivedBatchDetailQuery(
+    { batchNo, program, academicYear },
+    { enabled: hasBatchParams },
+  )
 
-    if (!batchNo || !program || !academicYear) {
-      setGranteeRows([])
-      setFetchError("Missing batch parameters. Open this page from the archive list.")
-      setIsLoading(false)
-      return () => {
-        cancelled = true
-      }
-    }
+  const granteeRows = useMemo(() => {
+    if (!hasBatchParams) return []
+    const rows = Array.isArray(archivedDetail?.grantees)
+      ? archivedDetail.grantees.map(mapGranteeFromApi).filter(Boolean)
+      : []
+    return rows
+  }, [archivedDetail, hasBatchParams])
 
-    const loadDetail = async () => {
-      try {
-        setIsLoading(true)
-        setFetchError(null)
-        const detail = await fetchArchivedBatchDetail({ batchNo, program, academicYear })
-        if (cancelled) return
-        const rows = Array.isArray(detail?.grantees)
-          ? detail.grantees.map(mapGranteeFromApi).filter(Boolean)
-          : []
-        setGranteeRows(rows)
-      } catch (err) {
-        if (!cancelled) {
-          setFetchError(err.message || "Failed to load archived batch details.")
-          setGranteeRows([])
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    loadDetail()
-    return () => {
-      cancelled = true
-    }
-  }, [batchNo, program, academicYear])
+  const fetchError = !hasBatchParams
+    ? "Missing batch parameters. Open this page from the archive list."
+    : archiveDetailError?.message || null
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 

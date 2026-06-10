@@ -838,12 +838,29 @@ function AboutImageSlideshow({ slides }) {
 /** Scroll focus band — step reveals only when it enters this viewport slice. */
 const TIMELINE_SCROLL_ROOT_MARGIN = "-8% 0px -28% 0px"
 const TIMELINE_SCROLL_THRESHOLDS = [0, 0.15, 0.35, 0.55, 0.75, 1]
+const TIMELINE_FOCUS_RATIO = 0.32
+const TIMELINE_ACTIVE_RATIO = 0.28
 
-function useTimelineScrollReveal(stepCount) {
+/** Approximate intersection ratio for a node within the scroll focus band (matches rootMargin above). */
+function measureTimelineStepRatio(node) {
+  const rect = node.getBoundingClientRect()
+  const height = rect.height
+  if (height <= 0) return 0
+
+  const viewportHeight = window.innerHeight
+  const bandTop = viewportHeight * 0.08
+  const bandBottom = viewportHeight * 0.72
+  const visibleTop = Math.max(rect.top, bandTop)
+  const visibleBottom = Math.min(rect.bottom, bandBottom)
+  const visibleHeight = Math.max(0, visibleBottom - visibleTop)
+
+  return visibleHeight / height
+}
+
+function useTimelineScrollReveal(stepCount, containerRef, stepsKey) {
   const [inFocus, setInFocus] = useState(() => new Set())
   const [activeIndex, setActiveIndex] = useState(-1)
   const [scrollDirection, setScrollDirection] = useState("down")
-  const stepRefs = useRef([])
   const ratiosRef = useRef([])
   const lastScrollYRef = useRef(0)
 
@@ -863,11 +880,19 @@ function useTimelineScrollReveal(stepCount) {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  useEffect(() => {
-    const nodes = stepRefs.current.filter(Boolean)
-    if (!nodes.length) return undefined
+  useLayoutEffect(() => {
+    if (!stepCount) {
+      setInFocus(new Set())
+      setActiveIndex(-1)
+      return undefined
+    }
 
-    ratiosRef.current = Array.from({ length: stepCount }, () => 0)
+    setInFocus(new Set())
+    setActiveIndex(-1)
+
+    let cancelled = false
+    let observer = null
+    let retryFrame = 0
 
     const pickActiveIndex = () => {
       let best = -1
@@ -879,56 +904,105 @@ function useTimelineScrollReveal(stepCount) {
           best = i
         }
       }
-      return bestRatio >= 0.28 ? best : -1
+      return bestRatio >= TIMELINE_ACTIVE_RATIO ? best : -1
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const index = Number(entry.target.getAttribute("data-step-index"))
-          if (Number.isNaN(index)) continue
-          ratiosRef.current[index] = entry.isIntersecting ? entry.intersectionRatio : 0
-        }
+    const applyRatios = () => {
+      if (cancelled) return
 
-        setInFocus((prev) => {
-          const next = new Set(prev)
-          let changed = false
-          for (let i = 0; i < stepCount; i += 1) {
-            const ratio = ratiosRef.current[i] ?? 0
-            const focused = ratio >= 0.32
-            if (focused && !next.has(i)) {
-              next.add(i)
-              changed = true
-            } else if (!focused && next.has(i)) {
-              next.delete(i)
-              changed = true
-            }
+      setInFocus((prev) => {
+        const next = new Set(prev)
+        let changed = false
+        for (let i = 0; i < stepCount; i += 1) {
+          const ratio = ratiosRef.current[i] ?? 0
+          const focused = ratio >= TIMELINE_FOCUS_RATIO
+          if (focused && !next.has(i)) {
+            next.add(i)
+            changed = true
+          } else if (!focused && next.has(i)) {
+            next.delete(i)
+            changed = true
           }
-          return changed ? next : prev
-        })
+        }
+        return changed ? next : prev
+      })
 
-        const nextActive = pickActiveIndex()
-        setActiveIndex((prev) => (prev === nextActive ? prev : nextActive))
-      },
-      { threshold: TIMELINE_SCROLL_THRESHOLDS, rootMargin: TIMELINE_SCROLL_ROOT_MARGIN },
-    )
-
-    for (const node of nodes) observer.observe(node)
-    return () => observer.disconnect()
-  }, [stepCount])
-
-  const registerStepRef = useCallback((index) => {
-    return (node) => {
-      stepRefs.current[index] = node
+      const nextActive = pickActiveIndex()
+      setActiveIndex((prev) => (prev === nextActive ? prev : nextActive))
     }
-  }, [])
+
+    const syncFromNodes = (nodes) => {
+      for (const node of nodes) {
+        const index = Number(node.getAttribute("data-step-index"))
+        if (Number.isNaN(index)) continue
+        ratiosRef.current[index] = measureTimelineStepRatio(node)
+      }
+      applyRatios()
+    }
+
+    const setupObserver = () => {
+      if (cancelled) return false
+
+      const container = containerRef.current
+      if (!container) return false
+
+      const nodes = Array.from(container.querySelectorAll("[data-step-index]"))
+      if (!nodes.length) return false
+
+      ratiosRef.current = Array.from({ length: stepCount }, () => 0)
+      observer?.disconnect()
+
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const index = Number(entry.target.getAttribute("data-step-index"))
+            if (Number.isNaN(index)) continue
+            ratiosRef.current[index] = entry.isIntersecting ? entry.intersectionRatio : 0
+          }
+          applyRatios()
+        },
+        { threshold: TIMELINE_SCROLL_THRESHOLDS, rootMargin: TIMELINE_SCROLL_ROOT_MARGIN },
+      )
+
+      for (const node of nodes) observer.observe(node)
+      syncFromNodes(nodes)
+      return true
+    }
+
+    const onLayoutSettled = () => {
+      if (cancelled) return
+      if (!setupObserver()) {
+        retryFrame = window.requestAnimationFrame(onLayoutSettled)
+      }
+    }
+
+    onLayoutSettled()
+
+    const onResize = () => {
+      const container = containerRef.current
+      if (!container) return
+      const nodes = Array.from(container.querySelectorAll("[data-step-index]"))
+      if (nodes.length) syncFromNodes(nodes)
+    }
+
+    window.addEventListener("resize", onResize, { passive: true })
+    window.addEventListener("load", onResize, { passive: true })
+
+    return () => {
+      cancelled = true
+      if (retryFrame) window.cancelAnimationFrame(retryFrame)
+      observer?.disconnect()
+      window.removeEventListener("resize", onResize)
+      window.removeEventListener("load", onResize)
+    }
+  }, [stepCount, stepsKey, containerRef])
 
   const progress =
     stepCount <= 1 ? (activeIndex >= 0 ? 100 : 0) : activeIndex < 0 ? 0 : (activeIndex / (stepCount - 1)) * 100
 
   const animationMode = scrollDirection === "up" ? "fade" : "slide"
 
-  return { inFocus, activeIndex, registerStepRef, progress, animationMode }
+  return { inFocus, activeIndex, progress, animationMode }
 }
 
 function ProcessWorkflowTimelineStepCard({
@@ -1075,7 +1149,16 @@ function ProcessWorkflowTimelineNode({
 }
 
 function ProcessWorkflowTimeline({ steps }) {
-  const { inFocus, activeIndex, registerStepRef, progress, animationMode } = useTimelineScrollReveal(steps.length)
+  const listRef = useRef(null)
+  const stepsKey = useMemo(
+    () => steps.map((step) => step.id ?? step.step).join("|"),
+    [steps],
+  )
+  const { inFocus, activeIndex, progress, animationMode } = useTimelineScrollReveal(
+    steps.length,
+    listRef,
+    stepsKey,
+  )
 
   return (
     <div
@@ -1099,7 +1182,7 @@ function ProcessWorkflowTimeline({ steps }) {
         />
       </div>
 
-      <ol className="relative space-y-0">
+      <ol ref={listRef} className="relative space-y-0">
           {steps.map((item, index) => {
             const isLast = index === steps.length - 1
             const isEven = index % 2 === 0
@@ -1109,7 +1192,6 @@ function ProcessWorkflowTimeline({ steps }) {
             return (
               <li
                 key={item.id ?? item.step}
-                ref={registerStepRef(index)}
                 data-step-index={index}
                 className={`group relative scroll-mt-20 grid grid-cols-[auto_minmax(0,1fr)] content-center items-center gap-x-3 py-3 sm:gap-x-4 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
                   isLast ? "pb-1" : "pb-2 sm:pb-3"
