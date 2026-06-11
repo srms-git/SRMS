@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Archive, CalendarDays, GraduationCap, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
-import { fetchArchivedBatches } from "@/lib/archiveApi"
+import { useArchivedBatchesQuery } from "@/hooks/useSrmsQueries"
 import {
   ArchiveBatchCardSkeleton,
   SummaryStatCardSkeleton,
@@ -53,39 +53,17 @@ function formatDateTime(iso) {
 
 export default function CashierArchive() {
   const navigate = useNavigate()
-  const [rows, setRows] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
+  const {
+    data: rows = [],
+    isLoading,
+    error: archiveError,
+  } = useArchivedBatchesQuery()
+  const fetchError = archiveError?.message ?? null
   const [searchTerm, setSearchTerm] = useState("")
   const [batchFilter, setBatchFilter] = useState("__")
   const [programFilter, setProgramFilter] = useState("__")
   const [yearFilter, setYearFilter] = useState("__")
   const [sortMode, setSortMode] = useState("claimed-newest")
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadArchivedBatches = async () => {
-      try {
-        setIsLoading(true)
-        setFetchError(null)
-        const data = await fetchArchivedBatches()
-        if (!cancelled) setRows(data)
-      } catch (err) {
-        if (!cancelled) {
-          setFetchError(err.message || "Failed to load archived batches.")
-          setRows([])
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    loadArchivedBatches()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 

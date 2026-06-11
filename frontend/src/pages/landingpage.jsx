@@ -2,12 +2,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ChevronDown, ChevronRight, Globe, LayoutList, ListChecks, Megaphone } from "lucide-react"
 import { Link, useLocation } from "react-router-dom"
 
-import picture1 from "@/assets/picture-1.png"
-import picture2 from "@/assets/picture-2.png"
-import picture3 from "@/assets/picture-3.png"
-import picture4 from "@/assets/picture-4.png"
+import picture1 from "@/assets/UPRES.png"
+import picture2 from "@/assets/VPSAS.png"
+import picture3 from "@/assets/VPAF.png"
+import picture4 from "@/assets/VPRE.png"
+import picture5 from "@/assets/VPAA.png"
+import ABOUT1 from "@/assets/picture-1.png"
+import ABOUT2 from "@/assets/picture-2.png"
+import ABOUT3 from "@/assets/picture-3.png"
+import ABOUT4 from "@/assets/picture-4.png"
 import marsuLogo from "@/assets/marsuLogo.png"
 import navHeroBackground from "@/assets/navbackground.png"
+import leadershipSectionBackground from "@/assets/sec1background.jpg"
 import orgLogo from "@/assets/orgLogo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
@@ -637,24 +643,67 @@ const ABOUT_WHEEL_THRESHOLD = 85
 /** Cooldown after each slide change — prevents double navigation per scroll. */
 const ABOUT_WHEEL_COOLDOWN_MS = 1100
 
+/** Standard passport photo ratio — 35mm × 45mm (width × height). */
+const aboutPassportPhotos = [
+  { src: picture1, name: "Diosdado P. Zulueta, FFUP, DPA", title: "SUC President III" },
+  { src: picture2, name: "Marvin P. Plata, MAN, RN, RM ", title: "Vice President for Student Affairs & Services " },
+  { src: picture3, name: "Rosalyn J. Dasco, RGC, Ph.D", title: "Director of Students Programs & Services" },
+  { src: picture4, name: "Michael Jaye P. Ribleza, DBA", title: "Head, Office of Scholarships, Grants, and Financial Assistance" },
+  { src: picture5, name: "Lemuel Q. Malate", title: "Technical Staff" },
+]
+
+const aboutPassportCardWidthClassName =
+  "w-[6.5rem] min-[400px]:w-[7.25rem] sm:w-[9.5rem] md:w-[11rem] lg:w-[12.5rem] xl:w-[13.5rem]"
+
+function AboutPassportPhotoRow({ photos }) {
+  if (!photos?.length) return null
+
+  return (
+    <div className="flex justify-center" role="group" aria-label="University leadership photos">
+      <ul className="flex max-w-full flex-nowrap items-start justify-center gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden min-[400px]:gap-3.5 sm:gap-5 md:gap-6">
+        {photos.map((photo, index) => (
+          <li
+            key={`${photo.name}-${index}`}
+            className={`flex shrink-0 flex-col items-center ${aboutPassportCardWidthClassName}`}
+          >
+            <img
+              src={photo.src}
+              alt={`${photo.name}, ${photo.title}`}
+              className="aspect-[35/45] w-full object-cover object-top"
+              decoding="async"
+              loading="lazy"
+            />
+            <p className="mt-2 w-full text-center text-[10px] font-bold leading-tight text-black sm:mt-2.5 sm:text-xs md:text-sm">
+              {photo.name}
+            </p>
+            <p className="mt-0.5 w-full text-center text-[9px] font-normal leading-snug text-black sm:text-[10px] md:text-xs">
+              {photo.title}
+            </p>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 const aboutSlideshowSlides = [
   {
-    src: picture1,
+    src: ABOUT1,
     alt: "OSGFA - banner",
     objectFit: "cover",
   },
   {
-    src: picture2,
+    src: ABOUT2,
     alt: "Group Chat - QR",
     objectFit: "cover",
   },
   {
-    src: picture3,
+    src: ABOUT3,
     alt: "Organization Activities - 1",
     objectFit: "cover",
   },
   {
-    src: picture4,
+    src: ABOUT4,
     alt: "Organization Activities - 2",
     objectFit: "cover",
   },
@@ -838,12 +887,29 @@ function AboutImageSlideshow({ slides }) {
 /** Scroll focus band — step reveals only when it enters this viewport slice. */
 const TIMELINE_SCROLL_ROOT_MARGIN = "-8% 0px -28% 0px"
 const TIMELINE_SCROLL_THRESHOLDS = [0, 0.15, 0.35, 0.55, 0.75, 1]
+const TIMELINE_FOCUS_RATIO = 0.32
+const TIMELINE_ACTIVE_RATIO = 0.28
 
-function useTimelineScrollReveal(stepCount) {
+/** Approximate intersection ratio for a node within the scroll focus band (matches rootMargin above). */
+function measureTimelineStepRatio(node) {
+  const rect = node.getBoundingClientRect()
+  const height = rect.height
+  if (height <= 0) return 0
+
+  const viewportHeight = window.innerHeight
+  const bandTop = viewportHeight * 0.08
+  const bandBottom = viewportHeight * 0.72
+  const visibleTop = Math.max(rect.top, bandTop)
+  const visibleBottom = Math.min(rect.bottom, bandBottom)
+  const visibleHeight = Math.max(0, visibleBottom - visibleTop)
+
+  return visibleHeight / height
+}
+
+function useTimelineScrollReveal(stepCount, containerRef, stepsKey) {
   const [inFocus, setInFocus] = useState(() => new Set())
   const [activeIndex, setActiveIndex] = useState(-1)
   const [scrollDirection, setScrollDirection] = useState("down")
-  const stepRefs = useRef([])
   const ratiosRef = useRef([])
   const lastScrollYRef = useRef(0)
 
@@ -863,11 +929,19 @@ function useTimelineScrollReveal(stepCount) {
     return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
-  useEffect(() => {
-    const nodes = stepRefs.current.filter(Boolean)
-    if (!nodes.length) return undefined
+  useLayoutEffect(() => {
+    if (!stepCount) {
+      setInFocus(new Set())
+      setActiveIndex(-1)
+      return undefined
+    }
 
-    ratiosRef.current = Array.from({ length: stepCount }, () => 0)
+    setInFocus(new Set())
+    setActiveIndex(-1)
+
+    let cancelled = false
+    let observer = null
+    let retryFrame = 0
 
     const pickActiveIndex = () => {
       let best = -1
@@ -879,56 +953,105 @@ function useTimelineScrollReveal(stepCount) {
           best = i
         }
       }
-      return bestRatio >= 0.28 ? best : -1
+      return bestRatio >= TIMELINE_ACTIVE_RATIO ? best : -1
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          const index = Number(entry.target.getAttribute("data-step-index"))
-          if (Number.isNaN(index)) continue
-          ratiosRef.current[index] = entry.isIntersecting ? entry.intersectionRatio : 0
-        }
+    const applyRatios = () => {
+      if (cancelled) return
 
-        setInFocus((prev) => {
-          const next = new Set(prev)
-          let changed = false
-          for (let i = 0; i < stepCount; i += 1) {
-            const ratio = ratiosRef.current[i] ?? 0
-            const focused = ratio >= 0.32
-            if (focused && !next.has(i)) {
-              next.add(i)
-              changed = true
-            } else if (!focused && next.has(i)) {
-              next.delete(i)
-              changed = true
-            }
+      setInFocus((prev) => {
+        const next = new Set(prev)
+        let changed = false
+        for (let i = 0; i < stepCount; i += 1) {
+          const ratio = ratiosRef.current[i] ?? 0
+          const focused = ratio >= TIMELINE_FOCUS_RATIO
+          if (focused && !next.has(i)) {
+            next.add(i)
+            changed = true
+          } else if (!focused && next.has(i)) {
+            next.delete(i)
+            changed = true
           }
-          return changed ? next : prev
-        })
+        }
+        return changed ? next : prev
+      })
 
-        const nextActive = pickActiveIndex()
-        setActiveIndex((prev) => (prev === nextActive ? prev : nextActive))
-      },
-      { threshold: TIMELINE_SCROLL_THRESHOLDS, rootMargin: TIMELINE_SCROLL_ROOT_MARGIN },
-    )
-
-    for (const node of nodes) observer.observe(node)
-    return () => observer.disconnect()
-  }, [stepCount])
-
-  const registerStepRef = useCallback((index) => {
-    return (node) => {
-      stepRefs.current[index] = node
+      const nextActive = pickActiveIndex()
+      setActiveIndex((prev) => (prev === nextActive ? prev : nextActive))
     }
-  }, [])
+
+    const syncFromNodes = (nodes) => {
+      for (const node of nodes) {
+        const index = Number(node.getAttribute("data-step-index"))
+        if (Number.isNaN(index)) continue
+        ratiosRef.current[index] = measureTimelineStepRatio(node)
+      }
+      applyRatios()
+    }
+
+    const setupObserver = () => {
+      if (cancelled) return false
+
+      const container = containerRef.current
+      if (!container) return false
+
+      const nodes = Array.from(container.querySelectorAll("[data-step-index]"))
+      if (!nodes.length) return false
+
+      ratiosRef.current = Array.from({ length: stepCount }, () => 0)
+      observer?.disconnect()
+
+      observer = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const index = Number(entry.target.getAttribute("data-step-index"))
+            if (Number.isNaN(index)) continue
+            ratiosRef.current[index] = entry.isIntersecting ? entry.intersectionRatio : 0
+          }
+          applyRatios()
+        },
+        { threshold: TIMELINE_SCROLL_THRESHOLDS, rootMargin: TIMELINE_SCROLL_ROOT_MARGIN },
+      )
+
+      for (const node of nodes) observer.observe(node)
+      syncFromNodes(nodes)
+      return true
+    }
+
+    const onLayoutSettled = () => {
+      if (cancelled) return
+      if (!setupObserver()) {
+        retryFrame = window.requestAnimationFrame(onLayoutSettled)
+      }
+    }
+
+    onLayoutSettled()
+
+    const onResize = () => {
+      const container = containerRef.current
+      if (!container) return
+      const nodes = Array.from(container.querySelectorAll("[data-step-index]"))
+      if (nodes.length) syncFromNodes(nodes)
+    }
+
+    window.addEventListener("resize", onResize, { passive: true })
+    window.addEventListener("load", onResize, { passive: true })
+
+    return () => {
+      cancelled = true
+      if (retryFrame) window.cancelAnimationFrame(retryFrame)
+      observer?.disconnect()
+      window.removeEventListener("resize", onResize)
+      window.removeEventListener("load", onResize)
+    }
+  }, [stepCount, stepsKey, containerRef])
 
   const progress =
     stepCount <= 1 ? (activeIndex >= 0 ? 100 : 0) : activeIndex < 0 ? 0 : (activeIndex / (stepCount - 1)) * 100
 
   const animationMode = scrollDirection === "up" ? "fade" : "slide"
 
-  return { inFocus, activeIndex, registerStepRef, progress, animationMode }
+  return { inFocus, activeIndex, progress, animationMode }
 }
 
 function ProcessWorkflowTimelineStepCard({
@@ -1075,7 +1198,16 @@ function ProcessWorkflowTimelineNode({
 }
 
 function ProcessWorkflowTimeline({ steps }) {
-  const { inFocus, activeIndex, registerStepRef, progress, animationMode } = useTimelineScrollReveal(steps.length)
+  const listRef = useRef(null)
+  const stepsKey = useMemo(
+    () => steps.map((step) => step.id ?? step.step).join("|"),
+    [steps],
+  )
+  const { inFocus, activeIndex, progress, animationMode } = useTimelineScrollReveal(
+    steps.length,
+    listRef,
+    stepsKey,
+  )
 
   return (
     <div
@@ -1099,7 +1231,7 @@ function ProcessWorkflowTimeline({ steps }) {
         />
       </div>
 
-      <ol className="relative space-y-0">
+      <ol ref={listRef} className="relative space-y-0">
           {steps.map((item, index) => {
             const isLast = index === steps.length - 1
             const isEven = index % 2 === 0
@@ -1109,7 +1241,6 @@ function ProcessWorkflowTimeline({ steps }) {
             return (
               <li
                 key={item.id ?? item.step}
-                ref={registerStepRef(index)}
                 data-step-index={index}
                 className={`group relative scroll-mt-20 grid grid-cols-[auto_minmax(0,1fr)] content-center items-center gap-x-3 py-3 sm:gap-x-4 sm:py-4 lg:grid-cols-[1fr_auto_1fr] lg:gap-x-8 xl:gap-x-10 ${
                   isLast ? "pb-1" : "pb-2 sm:pb-3"
@@ -1887,11 +2018,34 @@ export default function LandingPage() {
         </section>
 
         <section
+          id="leadership"
+          className="relative z-40 -mt-2 w-full scroll-mt-17 overflow-hidden sm:-mt-3 lg:mt-0"
+        >
+          <img
+            src={leadershipSectionBackground}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover object-center"
+            decoding="async"
+            aria-hidden
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(180deg, rgba(238, 242, 255, 0.55) 0%, rgba(255, 255, 255, 0.78) 18%, rgba(255, 255, 255, 0.86) 55%, rgba(238, 242, 255, 0.9) 82%, ${bvIce} 100%)`,
+            }}
+            aria-hidden
+          />
+          <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+            <AboutPassportPhotoRow photos={aboutPassportPhotos} />
+          </div>
+        </section>
+
+        <section
           id="about"
-          className="relative z-40 -mt-2 w-full scroll-mt-17 overflow-x-hidden border-b-0 sm:-mt-3 lg:mt-0 lg:border-b"
+          className="relative z-40 -mt-10 w-full scroll-mt-17 overflow-x-hidden border-b sm:-mt-12"
           style={{
             borderColor: borderNavySoft,
-            backgroundImage: `linear-gradient(180deg, ${bvIce} 0%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
+            backgroundImage: `linear-gradient(180deg, transparent 0%, ${bvIce} 10%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
           }}
         >
           <div className="relative z-10 mx-auto w-full max-w-7xl overflow-x-hidden px-4 pb-10 pt-3 sm:px-6 sm:pb-12 sm:pt-4 lg:px-8 lg:py-12">

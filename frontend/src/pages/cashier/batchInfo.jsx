@@ -46,6 +46,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { useBatchGranteesRecords } from "@/hooks/useSrmsQueries"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
 import {
@@ -63,7 +64,6 @@ import {
   buildYearLevelDonut,
   fetchAllGrantees,
   fetchGranteeById,
-  fetchGranteesForBatch,
   GRANTEE_UPDATED_EVENT,
   granteeInactiveRemarks,
   granteeRecordStatusLabel,
@@ -89,6 +89,7 @@ import {
   mapSemesterClaimsWithFieldChange,
   normalizeSemesterClaim,
   reconcileSemesterClaimsWithRequirementChecklist,
+  SEMESTER_CLAIMED_AT_KEY,
   semesterClaimsForRow,
 } from "@/lib/granteeSemesterClaims"
 import {
@@ -132,6 +133,102 @@ const TREND_RANGE = {
   LAST_MONTH: "last-month",
   THIS_YEAR: "this-year",
   LAST_YEAR: "last-year",
+}
+
+const TREND_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+const TREND_SEMESTRAL_ALL = "__all__"
+
+const trendFilterRowClass =
+  "flex flex-nowrap items-center justify-end gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+
+const trendFilterTriggerClass =
+  "h-9 w-[8.75rem] shrink-0 rounded-full border-slate-300/90 bg-white/90 px-3 text-xs font-medium shadow-sm transition hover:border-slate-400 hover:bg-white dark:border-white/15 dark:bg-white/5 sm:w-40"
+
+function buildSemestralOptions(rows, fallbackYear = "") {
+  const years = [
+    ...new Set(
+      [
+        ...((rows ?? []).map((row) => String(row.academicYear ?? "").trim()).filter(Boolean)),
+        String(fallbackYear ?? "").trim(),
+      ].filter(Boolean),
+    ),
+  ].sort()
+
+  return years.flatMap((year) => [
+    { value: `1st|${year}`, label: `1st Semester ${year}` },
+    { value: `2nd|${year}`, label: `2nd Semester ${year}` },
+  ])
+}
+
+function trendRowClaimDate(row) {
+  const raw = row?.lastUpdated ?? row?.updatedAt ?? row?.createdAt
+  if (!raw) return null
+  const d = new Date(String(raw).includes("T") ? raw : `${raw}T12:00:00`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function parseTrendSemestralFilter(filter) {
+  if (!filter || filter === "__" || filter === TREND_SEMESTRAL_ALL) return null
+  const [semester, year] = String(filter).split("|")
+  if (!semester || !year) return null
+  const semKey = semester === "1st" ? "firstSem" : semester === "2nd" ? "secondSem" : null
+  if (!semKey) return null
+  return { semKey, year, claimedAtKey: SEMESTER_CLAIMED_AT_KEY[semKey] }
+}
+
+function semesterClaimForTrendRow(row) {
+  const claims = semesterClaimsForRow(row, YEAR_LEVELS)
+  const yearLevel = supportedYearLevel(row.yearLevel) || YEAR_LEVELS[0]
+  return claims.find((claim) => claim.yearLevel === yearLevel) ?? claims[claims.length - 1] ?? null
+}
+
+function buildMonthlySemesterClaimTrend(rows, semestralFilter, fallbackYear = "") {
+  const parsed = parseTrendSemestralFilter(semestralFilter)
+  if (!parsed) return buildMonthlyClaimTrend(rows)
+
+  const buckets = TREND_MONTH_LABELS.map((month) => ({ month, claimed: 0, unclaimed: 0 }))
+  const { semKey, year, claimedAtKey } = parsed
+  const matchingRows = (rows ?? []).filter((row) => {
+    const rowYear = String(row.academicYear ?? fallbackYear ?? "").trim()
+    return rowYear === year
+  })
+  let hasDated = false
+  const undated = []
+
+  for (const row of matchingRows) {
+    const current = semesterClaimForTrendRow(row)
+    if (!current) continue
+
+    const status = String(current[semKey] ?? "Unclaimed")
+    const rawAt = current[claimedAtKey]
+    let claimDate = null
+    if (rawAt) {
+      claimDate = new Date(String(rawAt).includes("T") ? rawAt : `${rawAt}T12:00:00`)
+      if (Number.isNaN(claimDate.getTime())) claimDate = null
+    }
+    if (!claimDate) claimDate = trendRowClaimDate(row)
+
+    if (!claimDate) {
+      undated.push(status)
+      continue
+    }
+
+    hasDated = true
+    const bucket = buckets[claimDate.getMonth()]
+    if (status === "Claimed") bucket.claimed += 1
+    else bucket.unclaimed += 1
+  }
+
+  if (!hasDated && undated.length) {
+    const bucket = buckets[new Date().getMonth()]
+    for (const status of undated) {
+      if (status === "Claimed") bucket.claimed += 1
+      else bucket.unclaimed += 1
+    }
+  }
+
+  return buckets
 }
 
 function formatDisplayDate(iso) {
@@ -281,9 +378,9 @@ function splitIntoWeekDays(claimed, unclaimed) {
   }))
 }
 
-function claimTrendForRange(rows, range, referenceDate = new Date()) {
+function claimTrendForRange(rows, range, semestralFilter = "", fallbackYear = "", referenceDate = new Date()) {
   const monthIdx = referenceDate.getMonth()
-  const monthly = buildMonthlyClaimTrend(rows)
+  const monthly = buildMonthlySemesterClaimTrend(rows, semestralFilter, fallbackYear)
   const safeRow = (i) => monthly[Math.min(Math.max(i, 0), monthly.length - 1)]
 
   switch (range) {
@@ -1505,6 +1602,7 @@ export default function CashierBatchInfo() {
   const modulePrefs = useCashierModuleSettings()
   useOsgfaPrograms()
   const [trendRange, setTrendRange] = useState(TREND_RANGE.THIS_YEAR)
+  const [trendSemestralFilter, setTrendSemestralFilter] = useState(TREND_SEMESTRAL_ALL)
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("__")
   const [recordActiveFilter, setRecordActiveFilter] = useState("__")
@@ -1568,52 +1666,24 @@ export default function CashierBatchInfo() {
     }
   }, [batchNo, program, modulePrefs.autoOpenLatestBatch, navigate])
 
-  const [records, setRecords] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
+  const { records, isLoading, fetchError, loadRecords, setRecords } = useBatchGranteesRecords({
+    program,
+    batchNo,
+    academicYear,
+  })
   const [isSaving, setIsSaving] = useState(false)
-
-  const loadRecords = async () => {
-    if (!program) {
-      setRecords([])
-      setFetchError("Missing program in the URL. Open this page from Batches (TES or TDP).")
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      setIsLoading(true)
-      setFetchError(null)
-      const rows = await fetchGranteesForBatch({ program, batchNo, academicYear })
-      setRecords(rows)
-    } catch (err) {
-      console.error("Failed to load batch grantees:", err)
-      setFetchError(err?.message ?? "Failed to load grantee records.")
-      setRecords([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   useEffect(() => {
     setSearchTerm("")
     setStatusFilter("__")
     setRecordActiveFilter("__")
     setSemestralFilter("__")
+    setTrendSemestralFilter(TREND_SEMESTRAL_ALL)
     setRequirementsCoverageFilter("__")
     setPage(1)
     setActiveRowKey(null)
     setEditDraft(null)
     setRecordDialogOpen(false)
-    loadRecords()
-  }, [batchNo, program, academicYear])
-
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && program) loadRecords()
-    }
-    document.addEventListener("visibilitychange", onVisible)
-    return () => document.removeEventListener("visibilitychange", onVisible)
   }, [batchNo, program, academicYear])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
@@ -1621,17 +1691,17 @@ export default function CashierBatchInfo() {
   const batchGrantees = useMemo(() => records, [records])
   const filtered = batchGrantees
 
-  const claimTrend = useMemo(() => claimTrendForRange(filtered, trendRange), [filtered, trendRange])
+  const displayedRows = filtered
+  const semestralOptions = useMemo(
+    () => buildSemestralOptions(displayedRows, academicYear),
+    [displayedRows, academicYear],
+  )
+  const claimTrend = useMemo(
+    () => claimTrendForRange(filtered, trendRange, trendSemestralFilter, academicYear),
+    [filtered, trendRange, trendSemestralFilter, academicYear],
+  )
   const yearLevelDonut = useMemo(() => buildYearLevelDonut(filtered), [filtered])
   const yearLevelTotal = useMemo(() => yearLevelDonut.reduce((s, d) => s + d.value, 0), [yearLevelDonut])
-  const displayedRows = filtered
-  const semestralOptions = useMemo(() => {
-    const years = [...new Set(displayedRows.map((row) => String(row.academicYear ?? "").trim()).filter(Boolean))].sort()
-    return years.flatMap((year) => [
-      { value: `1st|${year}`, label: `1st Semester ${year}` },
-      { value: `2nd|${year}`, label: `2nd Semester ${year}` },
-    ])
-  }, [displayedRows])
   const tableRows = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
     const matchesSemestralFilter = (row) => {
@@ -2060,23 +2130,43 @@ export default function CashierBatchInfo() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-900 dark:text-white">Claimed vs unclaimed trend</p>
                 </div>
-                <Select value={trendRange} onValueChange={setTrendRange}>
-                  <SelectTrigger
-                    size="sm"
-                    className="h-9 w-full shrink-0 rounded-full border-slate-300/90 bg-white/90 px-3 text-xs font-medium shadow-sm transition hover:border-slate-400 hover:bg-white dark:border-white/15 dark:bg-white/5 sm:w-46"
-                    aria-label="Trend period"
-                  >
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">Range:</span>
-                    <SelectValue placeholder="Period" />
-                  </SelectTrigger>
-                  <SelectContent align="end" className="rounded-xl">
-                    <SelectItem value={TREND_RANGE.THIS_WEEK}>This week</SelectItem>
-                    <SelectItem value={TREND_RANGE.THIS_MONTH}>This month</SelectItem>
-                    <SelectItem value={TREND_RANGE.LAST_MONTH}>Last month</SelectItem>
-                    <SelectItem value={TREND_RANGE.THIS_YEAR}>This year</SelectItem>
-                    <SelectItem value={TREND_RANGE.LAST_YEAR}>Last year</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className={trendFilterRowClass}>
+                  <Select value={trendSemestralFilter} onValueChange={setTrendSemestralFilter}>
+                    <SelectTrigger
+                      size="sm"
+                      className={trendFilterTriggerClass}
+                      aria-label="Trend semester filter"
+                    >
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Semester:</span>
+                      <SelectValue placeholder="All semesters" />
+                    </SelectTrigger>
+                    <SelectContent align="end" className="rounded-xl">
+                      <SelectItem value={TREND_SEMESTRAL_ALL}>All semesters</SelectItem>
+                      {semestralOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={trendRange} onValueChange={setTrendRange}>
+                    <SelectTrigger
+                      size="sm"
+                      className={trendFilterTriggerClass}
+                      aria-label="Trend period"
+                    >
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">Range:</span>
+                      <SelectValue placeholder="Period" />
+                    </SelectTrigger>
+                    <SelectContent align="end" className="rounded-xl">
+                      <SelectItem value={TREND_RANGE.THIS_WEEK}>This week</SelectItem>
+                      <SelectItem value={TREND_RANGE.THIS_MONTH}>This month</SelectItem>
+                      <SelectItem value={TREND_RANGE.LAST_MONTH}>Last month</SelectItem>
+                      <SelectItem value={TREND_RANGE.THIS_YEAR}>This year</SelectItem>
+                      <SelectItem value={TREND_RANGE.LAST_YEAR}>Last year</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               <div className="rounded-xl bg-slate-50/90 p-1 dark:bg-white/4">
                 {hideSensitiveStats ? (

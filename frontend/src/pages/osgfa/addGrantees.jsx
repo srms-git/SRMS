@@ -23,10 +23,10 @@ import {
   batchSaveGrantees,
   buildBatchesFromGrantees,
   buildLatestBatchGranteeCards,
-  fetchAllGrantees,
 } from "@/lib/granteesApi"
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { downloadGranteePdfAsXlsx, parseGranteeXlsxFromFile } from "@/lib/granteePdfConverterApi"
+import { useGranteesQuery, useInvalidateGranteeCaches } from "@/hooks/useSrmsQueries"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
@@ -618,34 +618,22 @@ export default function AddGrantees() {
   const [editorPage, setEditorPage] = useState(1)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [savingGrantees, setSavingGrantees] = useState(false)
-  const [granteeRecords, setGranteeRecords] = useState([])
-  const [granteesLoading, setGranteesLoading] = useState(true)
-  const [granteesLoadError, setGranteesLoadError] = useState("")
+  const {
+    data: granteeRecords = [],
+    isLoading: granteesLoading,
+    error: granteesQueryError,
+    refetch: reloadGranteeRecords,
+  } = useGranteesQuery()
+  const invalidateGranteeCaches = useInvalidateGranteeCaches()
+  const granteesLoadError = granteesQueryError
+    ? "We couldn't load existing grantee records. Refresh the page or check your connection, then try again."
+    : ""
   const [alertState, setAlertState] = useState({ open: false, variant: "info", title: "", message: "" })
   const landingVisibility = useLandingBatchVisibility()
 
   const showAlert = (variant, message, title = "") => {
     setAlertState({ open: true, variant, title, message })
   }
-
-  const reloadGranteeRecords = async ({ silent = false } = {}) => {
-    try {
-      if (!silent) setGranteesLoading(true)
-      setGranteesLoadError("")
-      const rows = await fetchAllGrantees()
-      setGranteeRecords(rows)
-    } catch (err) {
-      console.error("Failed to load grantee records:", err)
-      setGranteeRecords([])
-      setGranteesLoadError("We couldn't load existing grantee records. Refresh the page or check your connection, then try again.")
-    } finally {
-      if (!silent) setGranteesLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    reloadGranteeRecords()
-  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -857,7 +845,8 @@ export default function AddGrantees() {
         granteeRows: mappedRows,
       })
 
-      await reloadGranteeRecords({ silent: true })
+      invalidateGranteeCaches()
+      await reloadGranteeRecords()
 
       setFormNotice(null)
       showAlert(
