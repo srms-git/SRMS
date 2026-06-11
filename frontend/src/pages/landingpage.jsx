@@ -4,9 +4,9 @@ import { Link, useLocation } from "react-router-dom"
 
 import picture1 from "@/assets/UPRES.png"
 import picture2 from "@/assets/VPSAS.png"
-import picture3 from "@/assets/VPAF.png"
-import picture4 from "@/assets/VPRE.png"
-import picture5 from "@/assets/VPAA.png"
+import picture3 from "@/assets/SPS.png"
+import picture4 from "@/assets/OSG.png"
+import picture5 from "@/assets/TS.png"
 import ABOUT1 from "@/assets/picture-1.png"
 import ABOUT2 from "@/assets/picture-2.png"
 import ABOUT3 from "@/assets/picture-3.png"
@@ -646,14 +646,14 @@ const ABOUT_WHEEL_COOLDOWN_MS = 1100
 /** Standard passport photo ratio — 35mm × 45mm (width × height). */
 const aboutPassportPhotos = [
   { src: picture1, name: "Diosdado P. Zulueta, FFUP, DPA", title: "SUC President III" },
-  { src: picture2, name: "Marvin P. Plata, MAN, RN, RM ", title: "Vice President for Student Affairs & Services " },
+  { src: picture2, name: "Marvin P. Plata, MAN, RN, RM ", title: "Vice President for Student Affairs & Services" },
   { src: picture3, name: "Rosalyn J. Dasco, RGC, Ph.D", title: "Director of Students Programs & Services" },
   { src: picture4, name: "Michael Jaye P. Ribleza, DBA", title: "Head, Office of Scholarships, Grants, and Financial Assistance" },
   { src: picture5, name: "Lemuel Q. Malate", title: "Technical Staff" },
 ]
 
 const aboutPassportCardWidthClassName =
-  "w-[6.5rem] min-[400px]:w-[7.25rem] sm:w-[9.5rem] md:w-[11rem] lg:w-[12.5rem] xl:w-[13.5rem]"
+  "sm:w-[9.5rem] md:w-[11rem] lg:w-[12.5rem] xl:w-[13.5rem]"
 
 function LeadershipSectionBackground() {
   const edgeFadeMask =
@@ -693,7 +693,7 @@ function LeadershipSectionBackground() {
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 h-32 sm:h-40 lg:h-48"
         style={{
-          background: `linear-gradient(to top, ${bvIce} 0%, rgba(238, 242, 255, 0.98) 12%, rgba(238, 242, 255, 0.82) 28%, rgba(238, 242, 255, 0.52) 52%, rgba(238, 242, 255, 0.18) 78%, transparent 100%)`,
+          background: `linear-gradient(to top, ${bvIce} 0%, rgba(238, 242, 255, 0.98) 12%, rgba(238, 242, 255, 0.82) 28%, rgba(238, 242, 255, 0.52) 52%, rgba(238, 242, 255, 0.18) 85%, transparent 100%)`,
         }}
         aria-hidden
       />
@@ -706,11 +706,15 @@ function AboutPassportPhotoRow({ photos }) {
 
   return (
     <div className="flex flex-col items-center" role="group" aria-label="University leadership photos">
-      <ul className="flex max-w-full flex-nowrap items-start justify-center gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden min-[400px]:gap-3.5 sm:gap-5 md:gap-6">
+      <ul className="mx-auto grid w-full max-w-[17.5rem] grid-cols-2 justify-items-center gap-x-3 gap-y-4 px-1 py-1 pb-2 min-[400px]:max-w-[19rem] min-[400px]:gap-x-3.5 sm:mx-0 sm:flex sm:max-w-full sm:flex-nowrap sm:items-start sm:justify-center sm:gap-5 sm:overflow-x-auto md:gap-6 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {photos.map((photo, index) => (
           <li
             key={`${photo.name}-${index}`}
-            className={`group flex shrink-0 flex-col items-center ${aboutPassportCardWidthClassName}`}
+            className={`group flex flex-col items-center sm:shrink-0 ${
+              index === 0
+                ? "col-span-2 w-[8.75rem] min-[400px]:w-[9.25rem]"
+                : "w-[7.5rem] min-[400px]:w-[8.25rem]"
+            } ${aboutPassportCardWidthClassName}`}
           >
             <div className="w-full overflow-hidden rounded-xl shadow-[0_14px_36px_-18px_rgba(8,31,92,0.45)] ring-1 ring-white/80 transition duration-500 group-hover:-translate-y-1 group-hover:shadow-[0_20px_44px_-16px_rgba(8,31,92,0.5)] sm:rounded-2xl">
               <img
@@ -724,7 +728,7 @@ function AboutPassportPhotoRow({ photos }) {
             <p className="mt-2 w-full text-center text-[10px] font-bold leading-tight text-black sm:mt-2.5 sm:text-xs md:text-sm">
               {photo.name}
             </p>
-            <p className="mt-0.5 w-full text-center text-[9px] font-normal leading-snug text-black sm:text-[10px] md:text-xs">
+            <p className="mt-0.5 min-h-[2.25rem] w-full text-center text-[9px] font-normal leading-snug text-black sm:min-h-[2.5rem] sm:text-[10px] md:text-xs">
               {photo.title}
             </p>
           </li>
@@ -2070,7 +2074,7 @@ export default function LandingPage() {
           className="relative z-30 w-full scroll-mt-17 overflow-hidden"
         >
           <LeadershipSectionBackground />
-          <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
+          <div className="relative z-10 mx-auto w-full max-w-7xl px-4 pt-8 pb-10 sm:px-6 sm:pt-10 sm:pb-12 lg:px-8 lg:pt-12 lg:pb-14">
             <AboutPassportPhotoRow photos={aboutPassportPhotos} />
           </div>
         </section>
