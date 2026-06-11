@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "react-router-dom"
 import { BellRing, CheckCheck, CheckCircle2, CircleAlert, Clock3, Info, Search, SlidersHorizontal } from "lucide-react"
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import apiClient from "@/lib/apiClient"
@@ -309,15 +310,14 @@ export default function CashierNotificationPage() {
 
         {!loading &&
           (errorMessage || loadErrorMessage ? (
-            <div
-              className={cn("space-y-3", revealItemClass(contentRevealed, 0))}
+            <ConnectionProblemState
+              error={errorMessage || loadErrorMessage}
+              onRetry={loadNotifications}
+              subject="notifications"
+              variant="card"
+              className={revealItemClass(contentRevealed, 0)}
               style={revealItemStyle(contentRevealed, 0)}
-            >
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage || loadErrorMessage}</div>
-              <Button type="button" variant="outline" onClick={loadNotifications}>
-                Retry
-              </Button>
-            </div>
+            />
           ) : filtered.length === 0 ? (
             <div
               className={cn(

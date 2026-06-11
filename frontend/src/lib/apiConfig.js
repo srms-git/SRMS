@@ -46,7 +46,13 @@ export function getNetworkErrorMessage(error) {
     !error?.response
 
   if (isNetworkFailure && !error?.response) {
-    return `Cannot connect to the API server. ${getApiSetupHint()}`
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return "No internet connection. Check your Wi‑Fi or mobile data, then try again."
+    }
+    if (import.meta.env.DEV) {
+      return `Can't reach the server right now. ${getApiSetupHint()}`
+    }
+    return "Can't reach the server right now. Check your connection and try again in a moment."
   }
   return null
 }

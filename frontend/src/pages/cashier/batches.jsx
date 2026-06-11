@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { CalendarDays, GraduationCap, Layers, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { buildBatchesFromGrantees } from "@/lib/granteesApi"
 import { useArchivedBatchesQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
@@ -66,11 +67,13 @@ export default function Batches() {
     data: granteesRawData = [],
     isLoading: granteesLoading,
     error: granteesError,
+    refetch: refetchGrantees,
   } = useGranteesQuery()
   const {
     data: archivedBatches = [],
     isLoading: archivedLoading,
     error: archivedError,
+    refetch: refetchArchived,
   } = useArchivedBatchesQuery()
   const isLoading = granteesLoading || archivedLoading
   const fetchError = granteesError?.message ?? archivedError?.message ?? null
@@ -380,15 +383,17 @@ export default function Batches() {
 
         {!isLoading &&
           (fetchError ? (
-            <div
-              className={cn(
-                "relative z-10 rounded-2xl border border-dashed border-red-200 bg-red-50/50 p-10 text-center text-sm text-red-500",
-                revealItemClass(contentRevealed, 0),
-              )}
+            <ConnectionProblemState
+              error={fetchError}
+              onRetry={() => {
+                void refetchGrantees()
+                void refetchArchived()
+              }}
+              subject="batches"
+              variant="card"
+              className={cn("relative z-10", revealItemClass(contentRevealed, 0))}
               style={revealItemStyle(contentRevealed, 0)}
-            >
-              Error syncing dashboard: {fetchError}
-            </div>
+            />
           ) : batchesView === "list" ? (
           <div
             className={cn(

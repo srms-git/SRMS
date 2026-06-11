@@ -24,6 +24,7 @@ import {
   User,
 } from "lucide-react"
 
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
@@ -2477,16 +2478,11 @@ export default function ProgramWorkspace() {
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
       {fetchError ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
-          <p>{fetchError}</p>
-          <button
-            type="button"
-            onClick={loadRecords}
-            className="mt-2 text-xs font-semibold underline underline-offset-2"
-          >
-            Retry loading records
-          </button>
-        </div>
+        <ConnectionProblemState
+          error={fetchError}
+          onRetry={loadRecords}
+          subject="records"
+        />
       ) : null}
 
       <div className="relative min-h-[124px]">

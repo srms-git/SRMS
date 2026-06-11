@@ -24,6 +24,7 @@ import {
   AnnouncementImageGallery,
   AnnouncementPhotoFrame,
 } from "@/components/AnnouncementImageGallery"
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -294,24 +295,14 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
 function AnnouncementsEmptyState({ variant, errorMessage, onClearFilters, onCreate, onRetry, className, style }) {
   if (variant === "error") {
     return (
-      <div
-        className={cn(
-          "flex min-h-[280px] flex-col items-center justify-center rounded-2xl border border-dashed border-red-200/80 bg-red-50/50 px-6 py-12 text-center",
-          className,
-        )}
+      <ConnectionProblemState
+        error={errorMessage}
+        onRetry={onRetry}
+        subject="announcements"
+        variant="card"
+        className={cn("min-h-[280px] justify-center", className)}
         style={style}
-      >
-        <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600">
-          <Megaphone className="h-6 w-6" aria-hidden />
-        </span>
-        <p className="mt-4 text-lg font-semibold text-slate-900">Couldn&apos;t load announcements</p>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600">
-          {errorMessage || "Something went wrong while fetching the list. Check your connection and try again."}
-        </p>
-        <Button type="button" variant="outline" className="mt-6" onClick={onRetry}>
-          Retry
-        </Button>
-      </div>
+      />
     )
   }
 

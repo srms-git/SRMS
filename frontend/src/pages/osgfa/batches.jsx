@@ -4,7 +4,6 @@ import {
   Archive,
   CalendarDays,
   ChevronDown,
-  CircleAlert,
   EyeOff,
   Globe,
   GraduationCap,
@@ -13,13 +12,13 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
-  RefreshCw,
   Search,
   SearchX,
   SlidersHorizontal,
   TableProperties,
 } from "lucide-react"
 
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { FeedbackModal } from "@/components/FeedbackModal"
 import {
   AlertDialog,
@@ -872,28 +871,14 @@ export default function Batches() {
 
         {!isLoading &&
           (fetchError ? (
-            <div
-              className={cn(
-                "flex flex-col items-center rounded-2xl border border-dashed border-red-200 bg-red-50/60 px-6 py-12 text-center dark:border-red-500/30 dark:bg-red-950/20",
-                revealItemClass(contentRevealed, 0),
-              )}
+            <ConnectionProblemState
+              error={fetchError}
+              onRetry={loadGrantees}
+              subject="batches"
+              variant="card"
+              className={revealItemClass(contentRevealed, 0)}
               style={revealItemStyle(contentRevealed, 0)}
-            >
-              <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-300">
-                <CircleAlert className="h-6 w-6" aria-hidden />
-              </span>
-              <p className="mt-4 text-lg font-semibold text-red-900 dark:text-red-100">Couldn't load batches</p>
-              <p className="mt-2 max-w-md text-sm leading-relaxed text-red-700/90 dark:text-red-200/90">{fetchError}</p>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-6 gap-2 border-red-200 hover:bg-red-50"
-                onClick={loadGrantees}
-              >
-                <RefreshCw className="h-4 w-4" aria-hidden />
-                Try again
-              </Button>
-            </div>
+            />
           ) : (
             <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sortedBatches.map((row, index) => {

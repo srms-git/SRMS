@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { Archive, ChevronRight, CircleCheck, CircleDashed, Layers, Settings, UserPlus, Users } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
 
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { ProgramQuantityScale } from "@/components/dashboard/ProgramQuantityScale"
 import { RequirementsCompletionCard } from "@/components/dashboard/RequirementsCompletionCard"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
@@ -233,16 +234,11 @@ export default function Dashboard() {
       </div>
 
       {fetchError ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
-          <p>{fetchError}</p>
-          <button
-            type="button"
-            onClick={loadRecords}
-            className="mt-2 text-xs font-semibold underline underline-offset-2"
-          >
-            Retry loading dashboard
-          </button>
-        </div>
+        <ConnectionProblemState
+          error={fetchError}
+          onRetry={loadRecords}
+          subject="dashboard"
+        />
       ) : null}
 
       <div className="relative min-h-[124px]">

@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react"
+
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import {
   BookOpen,
   CalendarDays,
@@ -283,6 +285,7 @@ export default function CashierClaimHistory() {
     data: claimEntries = [],
     isLoading,
     error: claimHistoryError,
+    refetch: refetchClaimHistory,
   } = useClaimHistoryQuery()
   const fetchError = claimHistoryError?.message ?? null
   const [searchTerm, setSearchTerm] = useState("")
@@ -557,7 +560,11 @@ export default function CashierClaimHistory() {
       </div>
 
       {fetchError ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{fetchError}</p>
+        <ConnectionProblemState
+          error={fetchError}
+          onRetry={() => void refetchClaimHistory()}
+          subject="claim history"
+        />
       ) : null}
 
       <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border bg-white shadow-sm">

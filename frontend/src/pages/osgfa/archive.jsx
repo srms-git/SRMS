@@ -2,6 +2,7 @@ import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { Archive, CalendarDays, GraduationCap, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { useArchivedBatchesQuery } from "@/hooks/useSrmsQueries"
 import {
   ArchiveBatchCardSkeleton,
@@ -57,6 +58,7 @@ export default function ArchivePage() {
     data: rows = [],
     isLoading,
     error: archiveError,
+    refetch: refetchArchive,
   } = useArchivedBatchesQuery()
   const fetchError = archiveError?.message ?? null
   const [searchTerm, setSearchTerm] = useState("")
@@ -119,9 +121,11 @@ export default function ArchivePage() {
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
       {fetchError ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-500/35 dark:bg-red-500/10 dark:text-red-100">
-          {fetchError}
-        </div>
+        <ConnectionProblemState
+          error={fetchError}
+          onRetry={() => void refetchArchive()}
+          subject="archive"
+        />
       ) : null}
 
       <div className="relative min-h-[124px]">

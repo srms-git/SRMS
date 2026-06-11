@@ -27,6 +27,7 @@ import {
 } from "lucide-react"
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
 
+import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import {
   AlertDialog,
@@ -2791,16 +2792,12 @@ export default function BatchInfo() {
         </div>
 
         {fetchError ? (
-          <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-100">
-            <p>{fetchError}</p>
-            <button
-              type="button"
-              onClick={loadRecords}
-              className="mt-2 text-xs font-semibold underline underline-offset-2"
-            >
-              Retry loading records
-            </button>
-          </div>
+          <ConnectionProblemState
+            error={fetchError}
+            onRetry={loadRecords}
+            subject="batch"
+            className="mb-3"
+          />
         ) : null}
 
         <section className="space-y-4">
