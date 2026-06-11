@@ -8,11 +8,13 @@ import {
   Bell,
   ChevronDown,
   ChevronRight,
+  FileSpreadsheet,
   GripVertical,
   GraduationCap,
   Layers,
   LayoutDashboard,
   ListChecks,
+  Lock,
   LogOut,
   Megaphone,
   MoreHorizontal,
@@ -238,9 +240,10 @@ export default function Osgfa() {
     loading: programsLoading,
   } = useOsgfaPrograms()
   const [programsOpen, setProgramsOpen] = useState(isProgramsGroupActive)
+  const [addProgramWarningOpen, setAddProgramWarningOpen] = useState(false)
   const [addProgramOpen, setAddProgramOpen] = useState(false)
   const [newProgramCode, setNewProgramCode] = useState("")
-  const [newProgramName, setNewProgramName] = useState("")
+  const [newProgramFullName, setNewProgramFullName] = useState("")
   const [newProgramDescription, setNewProgramDescription] = useState("")
   const [addProgramSaving, setAddProgramSaving] = useState(false)
   const [programActionId, setProgramActionId] = useState("")
@@ -270,10 +273,11 @@ export default function Osgfa() {
       Boolean(programMenuOpenId)
       || renameProgramOpen
       || requirementsProgramOpen
+      || addProgramWarningOpen
       || addProgramOpen
       || deactivateConfirmOpen
       || Boolean(programActionId),
-    [programMenuOpenId, renameProgramOpen, requirementsProgramOpen, addProgramOpen, deactivateConfirmOpen, programActionId],
+    [programMenuOpenId, renameProgramOpen, requirementsProgramOpen, addProgramWarningOpen, addProgramOpen, deactivateConfirmOpen, programActionId],
   )
 
   const showFeedback = useCallback((variant, title, message) => {
@@ -341,7 +345,7 @@ export default function Osgfa() {
     if (activeProgramSlug) {
       const program = findProgramBySlug(activeProgramSlug)
       if (program) {
-        return { title: program.name, description: program.description }
+        return { title: program.fullName || program.name, description: program.description }
       }
     }
     return ADMIN_PAGE_META[location.pathname] ?? DEFAULT_ADMIN_HEADER
@@ -364,8 +368,23 @@ export default function Osgfa() {
 
   const resetAddProgramForm = () => {
     setNewProgramCode("")
-    setNewProgramName("")
+    setNewProgramFullName("")
     setNewProgramDescription("")
+  }
+
+  const openAddProgramWarning = () => {
+    setSidebarOpen(true)
+    setProgramsOpen(true)
+    setAddProgramWarningOpen(true)
+  }
+
+  const handleAddProgramWarningOpenChange = (open) => {
+    setAddProgramWarningOpen(open)
+  }
+
+  const proceedToAddProgram = () => {
+    setAddProgramWarningOpen(false)
+    handleAddProgramOpenChange(true)
   }
 
   const handleAddProgramOpenChange = (open) => {
@@ -382,8 +401,8 @@ export default function Osgfa() {
     setAddProgramSaving(true)
     const result = await addProgram({
       code: newProgramCode,
-      name: newProgramName,
-      fullName: newProgramName,
+      name: newProgramCode,
+      fullName: newProgramFullName,
       description: newProgramDescription,
     })
     setAddProgramSaving(false)
@@ -845,7 +864,7 @@ export default function Osgfa() {
                               <button
                                 type="button"
                                 disabled={!canAddMore}
-                                onClick={() => handleAddProgramOpenChange(true)}
+                                onClick={openAddProgramWarning}
                                 title={
                                   canAddMore
                                     ? "Add a scholarship program"
@@ -1126,14 +1145,19 @@ export default function Osgfa() {
             <DialogHeader className="space-y-4 text-left">
               <div className="flex flex-wrap items-start gap-4">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-[#04133d] via-[#081F5C] to-[#1447a6] text-sm font-bold tracking-wide text-white shadow-md">
-                  {(renameTarget?.code || renameProgramName || "—").slice(0, 4)}
+                  {(renameProgramName || renameTarget?.code || "—").slice(0, 4)}
                 </span>
                 <div className="min-w-0 flex-1 space-y-1.5">
-                  <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2.5">
                     <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
                     <DialogTitle className="text-xl font-semibold tracking-tight text-[#081F5C] dark:text-blue-100">
-                      Edit program
+                      {renameProgramFullName.trim() || renameProgramName.trim() || "Edit program"}
                     </DialogTitle>
+                    {renameProgramName.trim() ? (
+                      <span className="rounded-lg bg-[#081F5C]/10 px-2.5 py-0.5 text-xs font-bold tracking-wide text-[#081F5C] dark:bg-blue-950/50 dark:text-blue-100">
+                        {renameProgramName.trim().toUpperCase()}
+                      </span>
+                    ) : null}
                   </div>
                   <DialogDescription className="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                     Update how this program appears in the sidebar and at the top of its workspace. Use{" "}
@@ -1418,62 +1442,190 @@ export default function Osgfa() {
         </DialogContent>
       </Dialog>
 
+      <AlertDialog open={addProgramWarningOpen} onOpenChange={handleAddProgramWarningOpenChange}>
+        <AlertDialogContent className="!w-[min(calc(100vw-1.5rem),52rem)] !max-w-none gap-0 overflow-hidden rounded-2xl border border-[#081F5C]/14 bg-white p-0 shadow-[0_28px_56px_-16px_rgba(8,31,92,0.22)] duration-300 ease-out data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[size=default]:!max-w-none data-[size=default]:sm:!max-w-none dark:border-[#081F5C]/25 dark:bg-slate-950">
+          <div className={programDialogAccentClass} aria-hidden />
+          <div className="px-6 py-6 sm:px-8 sm:py-7">
+            <AlertDialogHeader className="mb-5 space-y-0 text-left sm:place-items-start">
+              <div className="flex w-full items-center gap-3.5">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+                  <AlertTriangle className="size-5" aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <AlertDialogTitle className="text-base font-semibold text-[#081F5C] sm:text-[17px] dark:text-blue-100">
+                    Before you add a program
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    Review both requirements below — they cannot be undone later.
+                  </AlertDialogDescription>
+                </div>
+              </div>
+            </AlertDialogHeader>
+
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="flex gap-3.5 rounded-xl border border-slate-200/90 bg-slate-50/80 px-5 py-5 dark:border-white/10 dark:bg-slate-900/50">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700 shadow-sm dark:bg-slate-800 dark:text-slate-200">
+                  <Lock className="size-4" aria-hidden />
+                </span>
+                <div className="min-w-0 text-sm leading-relaxed">
+                  <p className="font-semibold text-[#081F5C] dark:text-blue-100">Permanent — cannot be removed</p>
+                  <p className="mt-1.5 text-slate-600 dark:text-slate-300">
+                    Saved programs stay in the system forever. Deactivation hides them but does not delete them.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3.5 rounded-xl border-2 border-amber-300/90 bg-amber-50 px-5 py-5 dark:border-amber-500/40 dark:bg-amber-950/35">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-500/25 dark:text-amber-100">
+                  <FileSpreadsheet className="size-4" aria-hidden />
+                </span>
+                <div className="min-w-0 text-sm leading-relaxed">
+                  <p className="font-bold uppercase tracking-wide text-amber-900 dark:text-amber-100">
+                    Unifast format required
+                  </p>
+                  <p className="mt-1.5 text-amber-950/90 dark:text-amber-100/90">
+                    Must match the <strong className="font-bold uppercase">Unifast format</strong> (same as <strong>TES</strong>/<strong>TDP</strong>). Other formats will fail on imports and grantee records.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <AlertDialogFooter className="!-mx-0 !-mb-0 mt-6 !border-0 !bg-transparent !p-0 pt-5 flex-col gap-3.5 border-t border-slate-200/70 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+              <p className="text-left text-sm leading-relaxed text-muted-foreground sm:max-w-[55%]">
+                <span className="font-medium text-foreground">Not sure?</span>{" "}
+                Compare with a TES/TDP template or confirm with your coordinator.
+              </p>
+              <div className="flex w-full shrink-0 flex-col-reverse gap-2.5 sm:w-auto sm:flex-row">
+                <AlertDialogCancel variant="outline" className={cn(programDialogCancelClass, "h-10 px-5")}>
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className={cn(programDialogSaveClass, "h-10 px-5")}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    proceedToAddProgram()
+                  }}
+                >
+                  I understand, proceed
+                </AlertDialogAction>
+              </div>
+            </AlertDialogFooter>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <Dialog open={addProgramOpen} onOpenChange={handleAddProgramOpenChange}>
-        <DialogContent className="max-w-md rounded-2xl border border-[#081F5C]/15 bg-white/95 backdrop-blur-md shadow-sm dark:bg-slate-950/50">
-          <DialogHeader>
-            <DialogTitle className="text-[#081F5C] dark:text-blue-100">Add program</DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Register a scholarship program for the sidebar workspace. You can add up to {maxPrograms} programs while load testing is in progress.
-            </DialogDescription>
-          </DialogHeader>
-          <form className="space-y-4" onSubmit={handleAddProgramSubmit}>
-            <div className="space-y-2">
-              <label htmlFor="program-code" className="text-sm font-medium text-foreground">
-                Program code
-              </label>
-              <Input
-                id="program-code"
-                value={newProgramCode}
-                onChange={(event) => setNewProgramCode(event.target.value.toUpperCase())}
-                placeholder="e.g. TES, TDP"
-                maxLength={12}
-                required
-                className="uppercase"
-              />
-              <p className="text-xs text-muted-foreground">2–12 letters or numbers. Used in batch imports and grantee records.</p>
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="program-name" className="text-sm font-medium text-foreground">
-                Display name
-              </label>
-              <Input
-                id="program-name"
-                value={newProgramName}
-                onChange={(event) => setNewProgramName(event.target.value)}
-                placeholder="e.g. Tertiary Education Subsidy"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <label htmlFor="program-description" className="text-sm font-medium text-foreground">
-                Description <span className="font-normal text-muted-foreground">(optional)</span>
-              </label>
-              <Input
-                id="program-description"
-                value={newProgramDescription}
-                onChange={(event) => setNewProgramDescription(event.target.value)}
-                placeholder="Short summary shown in the page header"
-              />
-            </div>
-            <DialogFooter className="gap-2 sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => handleAddProgramOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={!canAddMore || addProgramSaving}>
-                {addProgramSaving ? "Saving…" : "Add program"}
-              </Button>
-            </DialogFooter>
-          </form>
+        <DialogContent className={cn(programDialogShellClass, "w-[min(92vw,40rem)]")}>
+          <div className={programDialogAccentClass} aria-hidden />
+          <div className={programDialogBodyClass}>
+            <DialogHeader className="space-y-4 text-left">
+              <div className="flex flex-wrap items-start gap-4">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-[#04133d] via-[#081F5C] to-[#1447a6] text-sm font-bold tracking-wide text-white shadow-md">
+                  {(newProgramCode || "—").slice(0, 4)}
+                </span>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                    <span className="h-7 w-1 shrink-0 rounded-full bg-linear-to-b from-[#04133d] via-[#081F5C] to-[#1447a6]" aria-hidden />
+                    <DialogTitle className="text-xl font-semibold tracking-tight text-[#081F5C] dark:text-blue-100">
+                      {newProgramFullName.trim() || newProgramCode.trim() || "Add program"}
+                    </DialogTitle>
+                    {newProgramCode.trim() ? (
+                      <span className="rounded-lg bg-[#081F5C]/10 px-2.5 py-0.5 text-xs font-bold tracking-wide text-[#081F5C] dark:bg-blue-950/50 dark:text-blue-100">
+                        {newProgramCode.trim().toUpperCase()}
+                      </span>
+                    ) : null}
+                  </div>
+                  <DialogDescription className="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                    Register a scholarship program for the sidebar workspace. You can add up to {maxPrograms} programs while load testing is in progress.
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <form className="space-y-6" onSubmit={handleAddProgramSubmit}>
+              <section className={cn(programSectionClass, "transition-opacity duration-300 ease-out")}>
+                <p className={programSectionTitleClass}>
+                  <span className="h-5 w-1 rounded-full bg-[#081F5C] dark:bg-blue-400" aria-hidden />
+                  Program details
+                </p>
+                <div className="grid gap-5 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <label htmlFor="add-program-code" className={programFieldLabelClass}>
+                      Short name
+                    </label>
+                    <Input
+                      id="add-program-code"
+                      value={newProgramCode}
+                      onChange={(event) => setNewProgramCode(event.target.value.toUpperCase())}
+                      placeholder="e.g. TES"
+                      maxLength={12}
+                      required
+                      className={cn(programFieldInputClass, "uppercase transition-colors duration-200")}
+                      aria-describedby="add-program-code-hint"
+                    />
+                    <p id="add-program-code-hint" className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                      Shown in the sidebar and stored on grantee records.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="add-program-full-name" className={programFieldLabelClass}>
+                      Full title
+                    </label>
+                    <Input
+                      id="add-program-full-name"
+                      value={newProgramFullName}
+                      onChange={(event) => setNewProgramFullName(event.target.value)}
+                      placeholder="e.g. Tertiary Education Subsidy"
+                      required
+                      className={cn(programFieldInputClass, "transition-colors duration-200")}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="add-program-description" className={programFieldLabelClass}>
+                    Description <span className="font-normal text-slate-500">(optional)</span>
+                  </label>
+                  <textarea
+                    id="add-program-description"
+                    value={newProgramDescription}
+                    onChange={(event) => setNewProgramDescription(event.target.value)}
+                    rows={3}
+                    placeholder="Short summary shown under the program name in the workspace header"
+                    className={cn(
+                      programFieldInputClass,
+                      "min-h-[5.5rem] w-full resize-y px-3 py-2.5 transition-colors duration-200",
+                    )}
+                  />
+                  <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                    Appears below the program title when staff open this program&apos;s workspace.
+                  </p>
+                </div>
+              </section>
+
+              <DialogFooter className={programDialogFooterClass}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className={programDialogCancelClass}
+                  onClick={() => handleAddProgramOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className={programDialogSaveClass}
+                  disabled={
+                    !canAddMore
+                    || addProgramSaving
+                    || !newProgramCode.trim()
+                    || !newProgramFullName.trim()
+                  }
+                >
+                  {addProgramSaving ? "Saving…" : "Add program"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </div>
         </DialogContent>
       </Dialog>
 

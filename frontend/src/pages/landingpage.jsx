@@ -44,6 +44,7 @@ import ProcessWorkflowProgramTabs, {
 import { AnnouncementImageGallery } from "@/components/AnnouncementImageGallery"
 import { LandingPublicHeader } from "@/components/LandingPublicHeader"
 import { Button } from "@/components/ui/button"
+import { formatAppVersionDisplay } from "@/lib/appVersion"
 import { cn } from "@/lib/utils"
 
 /**
@@ -2447,6 +2448,7 @@ export default function LandingPage() {
 
           <p className="pt-5 text-justify text-xs text-white/70 sm:text-center">
             © 2026 Scholarship Records Management System. All Rights Reserved.
+            <span className="mt-1 block text-[11px] text-white/50">{formatAppVersionDisplay()}</span>
           </p>
         </div>
       </footer>

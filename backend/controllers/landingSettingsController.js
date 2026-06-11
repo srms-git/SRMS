@@ -86,15 +86,15 @@ const DEFAULT_PROCESS_WORKFLOW_STEPS = [
 const DEFAULT_PRIVACY = {
     maskBatchNumberInPublicList: false,
     hideGranteeCountInPublicList: false,
-    showProgramTag: true,
-    showAcademicYear: true,
-    showDateAdded: true,
+    showProgramTag: false,
+    showAcademicYear: false,
+    showDateAdded: false,
     showViewAllBatchesLink: true,
-    showStudentIdInLandingBatchList: true,
-    showAwardNumberInLandingBatchList: true,
-    showFullNameInLandingBatchList: true,
-    showEnrolledProgramInLandingBatchList: true,
-    showYearLevelInLandingBatchList: true,
+    showStudentIdInLandingBatchList: false,
+    showAwardNumberInLandingBatchList: false,
+    showFullNameInLandingBatchList: false,
+    showEnrolledProgramInLandingBatchList: false,
+    showYearLevelInLandingBatchList: false,
 };
 
 const DEFAULT_CONTACT_INFO = {
@@ -108,15 +108,20 @@ function normalizePrivacy(raw = {}) {
     return {
         maskBatchNumberInPublicList: Boolean(source.maskBatchNumberInPublicList),
         hideGranteeCountInPublicList: Boolean(source.hideGranteeCountInPublicList),
-        showProgramTag: source.showProgramTag !== false,
-        showAcademicYear: source.showAcademicYear !== false,
-        showDateAdded: source.showDateAdded !== false,
+        showProgramTag: source.showProgramTag ?? DEFAULT_PRIVACY.showProgramTag,
+        showAcademicYear: source.showAcademicYear ?? DEFAULT_PRIVACY.showAcademicYear,
+        showDateAdded: source.showDateAdded ?? DEFAULT_PRIVACY.showDateAdded,
         showViewAllBatchesLink: source.showViewAllBatchesLink !== false,
-        showStudentIdInLandingBatchList: source.showStudentIdInLandingBatchList !== false,
-        showAwardNumberInLandingBatchList: source.showAwardNumberInLandingBatchList !== false,
-        showFullNameInLandingBatchList: source.showFullNameInLandingBatchList !== false,
-        showEnrolledProgramInLandingBatchList: source.showEnrolledProgramInLandingBatchList !== false,
-        showYearLevelInLandingBatchList: source.showYearLevelInLandingBatchList !== false,
+        showStudentIdInLandingBatchList:
+            source.showStudentIdInLandingBatchList ?? DEFAULT_PRIVACY.showStudentIdInLandingBatchList,
+        showAwardNumberInLandingBatchList:
+            source.showAwardNumberInLandingBatchList ?? DEFAULT_PRIVACY.showAwardNumberInLandingBatchList,
+        showFullNameInLandingBatchList:
+            source.showFullNameInLandingBatchList ?? DEFAULT_PRIVACY.showFullNameInLandingBatchList,
+        showEnrolledProgramInLandingBatchList:
+            source.showEnrolledProgramInLandingBatchList ?? DEFAULT_PRIVACY.showEnrolledProgramInLandingBatchList,
+        showYearLevelInLandingBatchList:
+            source.showYearLevelInLandingBatchList ?? DEFAULT_PRIVACY.showYearLevelInLandingBatchList,
     };
 }
 
