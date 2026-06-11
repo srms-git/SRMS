@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { isEmailConfigured, sendPasswordChangeOtpEmail } = require('../utils/emailService');
 
 const OTP_TTL_MS = 10 * 60 * 1000;
+const MAX_OTP_ATTEMPTS = 5;
 
 function hashOtp(otp) {
     return crypto.createHash('sha256').update(String(otp)).digest('hex');
@@ -21,6 +22,7 @@ async function issuePasswordChangeOtp(user) {
     const otp = generateOtp();
     user.passwordChangeOtpHash = hashOtp(otp);
     user.passwordChangeOtpExpires = new Date(Date.now() + OTP_TTL_MS);
+    user.passwordChangeOtpAttempts = 0;
     await user.save();
 
     await sendPasswordChangeOtpEmail({
@@ -32,27 +34,44 @@ async function issuePasswordChangeOtp(user) {
     return { sent: true, expiresInMinutes: OTP_TTL_MS / 60000 };
 }
 
-function verifyPasswordChangeOtp(user, otp) {
+async function verifyPasswordChangeOtp(user, otp) {
     const normalized = String(otp ?? '').trim();
     if (!/^\d{6}$/.test(normalized)) {
-        return false;
+        return { ok: false, locked: false };
     }
     if (!user.passwordChangeOtpHash || !user.passwordChangeOtpExpires) {
-        return false;
+        return { ok: false, locked: false };
     }
     if (user.passwordChangeOtpExpires <= new Date()) {
-        return false;
+        return { ok: false, locked: false };
     }
-    return user.passwordChangeOtpHash === hashOtp(normalized);
+
+    if (user.passwordChangeOtpHash !== hashOtp(normalized)) {
+        user.passwordChangeOtpAttempts = Number(user.passwordChangeOtpAttempts || 0) + 1;
+        if (user.passwordChangeOtpAttempts >= MAX_OTP_ATTEMPTS) {
+            clearPasswordChangeOtp(user);
+            await user.save();
+            return { ok: false, locked: true };
+        }
+        await user.save();
+        return { ok: false, locked: false };
+    }
+
+    clearPasswordChangeOtp(user);
+    user.passwordChangeOtpAttempts = 0;
+    await user.save();
+    return { ok: true, locked: false };
 }
 
 function clearPasswordChangeOtp(user) {
     user.passwordChangeOtpHash = undefined;
     user.passwordChangeOtpExpires = undefined;
+    user.passwordChangeOtpAttempts = 0;
 }
 
 module.exports = {
     issuePasswordChangeOtp,
     verifyPasswordChangeOtp,
     clearPasswordChangeOtp,
+    MAX_OTP_ATTEMPTS,
 };

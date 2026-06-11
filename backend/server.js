@@ -28,6 +28,14 @@ function shutdown(signal) {
 }
 
 async function start() {
+    const jwtSecret = String(process.env.JWT_SECRET || '').trim();
+    if (process.env.NODE_ENV === 'production') {
+        if (!jwtSecret || jwtSecret.length < 32 || /change-me/i.test(jwtSecret)) {
+            console.error('Refusing to start: set a strong JWT_SECRET (32+ chars) in production.');
+            process.exit(1);
+        }
+    }
+
     try {
         await connectDatabase();
         console.log('Database connected');

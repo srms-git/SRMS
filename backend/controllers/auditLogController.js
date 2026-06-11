@@ -1,7 +1,33 @@
 const AuditLog = require('../models/AuditLogModel');
+const { escapeRegex } = require('../utils/escapeRegex');
+const { isValidObjectId, queryString } = require('../utils/validateObjectId');
 const User = require('../models/UserModel');
 
 const CASHIER_ENTITY_TYPES = ['users', 'grantees', 'claims', 'archives'];
+
+async function appendCashierScopeConditions(andConditions, entityType) {
+    const cashierUsers = await User.find({ role: 'cashier' }).select('_id').lean();
+    const cashierIds = cashierUsers.map((user) => user._id);
+
+    andConditions.push({
+        $or: [
+            { userId: { $in: cashierIds } },
+            { action: 'UPDATE_CASHIER_PRIVACY' },
+        ],
+    });
+
+    if (!entityType) {
+        andConditions.push({ entityType: { $in: CASHIER_ENTITY_TYPES } });
+    }
+}
+
+function logMatchesCashierScope(log, cashierIdSet) {
+    const userId = log.userId?._id ?? log.userId;
+    const userIdStr = userId ? String(userId) : '';
+    const matchesActor = cashierIdSet.has(userIdStr) || log.action === 'UPDATE_CASHIER_PRIVACY';
+    const matchesEntity = CASHIER_ENTITY_TYPES.includes(String(log.entityType ?? '').toLowerCase());
+    return matchesActor && matchesEntity;
+}
 
 /**
  * Get all system audit logs with filtering, optional search, and pagination
@@ -9,7 +35,15 @@ const CASHIER_ENTITY_TYPES = ['users', 'grantees', 'claims', 'archives'];
  */
 const getAuditLogs = async (req, res) => {
     try {
-        const { entityType, action, userId, search, scope, page = 1, limit = 10 } = req.query;
+        const entityType = queryString(req.query.entityType);
+        const action = queryString(req.query.action);
+        const userId = queryString(req.query.userId);
+        const search = queryString(req.query.search);
+        const requestedScope = queryString(req.query.scope);
+        const page = queryString(req.query.page) || '1';
+        const limit = queryString(req.query.limit) || '10';
+        const isCashierUser = String(req.userRole ?? '').toLowerCase() === 'cashier';
+        const scope = isCashierUser ? 'cashier' : requestedScope;
         
         // Build the dynamic filter query
         const query = {};
@@ -22,32 +56,27 @@ const getAuditLogs = async (req, res) => {
             query.action = action.toUpperCase();
         }
         if (userId) {
+            if (!isValidObjectId(userId)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid userId filter.',
+                });
+            }
             query.userId = userId;
         }
 
-        if (String(scope ?? '').trim().toLowerCase() === 'cashier') {
-            const cashierUsers = await User.find({ role: 'cashier' }).select('_id').lean();
-            const cashierIds = cashierUsers.map((user) => user._id);
-
-            andConditions.push({
-                $or: [
-                    { userId: { $in: cashierIds } },
-                    { action: 'UPDATE_CASHIER_PRIVACY' },
-                ],
-            });
-
-            if (!entityType) {
-                andConditions.push({ entityType: { $in: CASHIER_ENTITY_TYPES } });
-            }
+        if (scope.toLowerCase() === 'cashier') {
+            await appendCashierScopeConditions(andConditions, entityType);
         }
 
         // Add regular expression text search for actions, codes, or custom changes
         if (search) {
+            const safeSearch = escapeRegex(String(search).trim());
             andConditions.push({
                 $or: [
-                    { action: { $regex: search, $options: 'i' } },
-                    { entityType: { $regex: search, $options: 'i' } },
-                    { entityId: { $regex: search, $options: 'i' } }
+                    { action: { $regex: safeSearch, $options: 'i' } },
+                    { entityType: { $regex: safeSearch, $options: 'i' } },
+                    { entityId: { $regex: safeSearch, $options: 'i' } }
                 ],
             });
         }
@@ -87,7 +116,6 @@ const getAuditLogs = async (req, res) => {
         return res.status(500).json({ 
             success: false, 
             error: 'Server error retrieving audit logs.',
-            details: error.message 
         });
     }
 };
@@ -116,6 +144,17 @@ const getAuditLogById = async (req, res) => {
             });
         }
 
+        if (String(req.userRole ?? '').toLowerCase() === 'cashier') {
+            const cashierUsers = await User.find({ role: 'cashier' }).select('_id').lean();
+            const cashierIdSet = new Set(cashierUsers.map((user) => String(user._id)));
+            if (!logMatchesCashierScope(log, cashierIdSet)) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'You do not have permission to view this audit log entry.',
+                });
+            }
+        }
+
         return res.status(200).json({ 
             success: true, 
             data: log 
@@ -124,7 +163,6 @@ const getAuditLogById = async (req, res) => {
         return res.status(500).json({ 
             success: false, 
             error: 'Server error retrieving audit log detail description.',
-            details: error.message 
         });
     }
 };

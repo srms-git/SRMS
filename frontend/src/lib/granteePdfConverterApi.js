@@ -1,11 +1,12 @@
 import * as XLSX from "xlsx"
 
+import authService from "@/services/authService"
 import { mapSheetRowToGranteeShape } from "@/lib/granteeImportMapping"
 
 /**
- * Base URL for the Flask PDF converter (no trailing slash).
- * - Dev: Vite proxies `/api/pdf-converter` → `http://127.0.0.1:5001` (Python PDF service)
- * - Prod: set `VITE_PDF_CONVERTER_URL` (e.g. https://api.example.com)
+ * Base URL for the PDF converter (no trailing slash).
+ * - Dev: Vite proxies `/api/pdf-converter` → Node API (auth required) → Flask PDF service
+ * - Prod: set `VITE_PDF_CONVERTER_URL` to your backend base + `/api/pdf-converter`, or leave default
  */
 export function getPdfConverterBaseUrl() {
   const raw = import.meta.env.VITE_PDF_CONVERTER_URL
@@ -39,9 +40,16 @@ export async function downloadGranteePdfAsXlsx(file) {
   const form = new FormData()
   form.append("pdf", file, file.name)
 
+  const token = authService.getToken()
+  const headers = {}
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
   const res = await fetch(`${base}/upload`, {
     method: "POST",
     body: form,
+    headers,
   })
 
   if (!res.ok) {

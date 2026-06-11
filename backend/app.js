@@ -1,8 +1,14 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const mongoSanitize = require('./middleware/mongoSanitize');
 const multer = require('multer');
 
 const requireDatabase = require('./middleware/requireDatabase');
+const authenticate = require('./middleware/authenticate');
+const requireRole = require('./middleware/requireRole');
+const { isPdfBuffer } = require('./utils/pdfBuffer');
 
 const granteeRoutes = require('./routes/granteeRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -14,24 +20,82 @@ const landingSettingsRoutes = require('./routes/landingSettingsRoutes');
 const landingBatchRoutes = require('./routes/landingBatchRoutes');
 const programRoutes = require('./routes/programRoutes');
 const auditLogRoutes = require('./routes/auditLogRoutes');
+const publicRoutes = require('./routes/publicRoutes');
 
 const app = express();
-const pdfUpload = multer({ storage: multer.memoryStorage() });
+const pdfUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 32 * 1024 * 1024 },
+});
 
 const frontendOrigin = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+const extraOrigins = String(process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((value) => value.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+const allowedOrigins = new Set([frontendOrigin, ...extraOrigins]);
+
+app.set('trust proxy', 1);
+app.set('query parser', 'simple');
+app.use(helmet({
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
+}));
+app.use(mongoSanitize());
 app.use(
     cors({
-        origin: (origin, callback) => {
-            if (!origin) return callback(null, true);
-            if (origin === frontendOrigin) return callback(null, true);
-            return callback(null, true);
+        origin(origin, callback) {
+            if (!origin || allowedOrigins.has(origin)) {
+                return callback(null, true);
+            }
+            return callback(new Error('Not allowed by CORS'));
         },
     }),
 );
 
+function buildRateLimiter({ windowMs, max, message }) {
+    return rateLimit({
+        windowMs,
+        max,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { message },
+    });
+}
+
+const authLimiter = buildRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 30,
+    message: 'Too many authentication attempts. Please try again later.',
+});
+
+const otpRequestLimiter = buildRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    message: 'Too many verification code requests. Please try again later.',
+});
+
+const otpVerifyLimiter = buildRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: 'Too many password change attempts. Please try again later.',
+});
+
+const publicLimiter = buildRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 120,
+    message: 'Too many requests. Please try again later.',
+});
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+app.use('/api/public', publicLimiter, requireDatabase, publicRoutes);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
+app.use('/api/auth/change-password/request-otp', otpRequestLimiter);
+app.use('/api/auth/change-password', otpVerifyLimiter);
 app.use('/api/auth', requireDatabase, authRoutes);
 app.use('/api/grantees', requireDatabase, granteeRoutes);
 app.use('/api/archive', requireDatabase, archiveRoutes);
@@ -58,7 +122,18 @@ function getPdfConverterUploadUrl() {
     return `${normalized}/upload`;
 }
 
-app.post('/api/pdf-converter/upload', pdfUpload.single('pdf'), async (req, res) => {
+function getPdfConverterInternalHeaders() {
+    const token = String(process.env.PDF_CONVERTER_INTERNAL_TOKEN || '').trim();
+    if (!token) return {};
+    return { 'X-Internal-Token': token };
+}
+
+app.post(
+    '/api/pdf-converter/upload',
+    authenticate,
+    requireRole('osgfa'),
+    pdfUpload.single('pdf'),
+    async (req, res) => {
     const upstreamUploadUrl = getPdfConverterUploadUrl();
 
     if (!upstreamUploadUrl) {
@@ -72,31 +147,35 @@ app.post('/api/pdf-converter/upload', pdfUpload.single('pdf'), async (req, res) 
         return res.status(400).json({ error: 'Missing form field "pdf" (PDF upload).' });
     }
 
+    if (!isPdfBuffer(req.file.buffer)) {
+        return res.status(400).json({ error: 'Only valid PDF files are accepted.' });
+    }
+
     try {
         const form = new FormData();
-        const fileBlob = new Blob([req.file.buffer], { type: req.file.mimetype || 'application/pdf' });
+        const fileBlob = new Blob([req.file.buffer], { type: 'application/pdf' });
         form.append('pdf', fileBlob, req.file.originalname || 'upload.pdf');
 
         const upstreamRes = await fetch(upstreamUploadUrl, {
             method: 'POST',
             body: form,
+            headers: getPdfConverterInternalHeaders(),
         });
 
         const contentType = upstreamRes.headers.get('content-type') || 'application/octet-stream';
-        const contentDisposition = upstreamRes.headers.get('content-disposition');
         const bodyBuffer = Buffer.from(await upstreamRes.arrayBuffer());
 
-        if (contentDisposition) res.setHeader('Content-Disposition', contentDisposition);
         res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', 'attachment; filename="converted_grantees.xlsx"');
         return res.status(upstreamRes.status).send(bodyBuffer);
     } catch (error) {
         return res.status(502).json({
             error: 'Failed to reach PDF converter service.',
             hint: 'Check PDF converter URL env vars and verify the Python converter is online.',
-            details: error?.message || 'Unknown upstream error',
         });
     }
-});
+    },
+);
 
 app.get('/api/health', (req, res) => {
     res.json({ ok: true });
@@ -106,5 +185,12 @@ app.get('/', (req, res) => {
     res.send('SRMS Backend is Running!');
 });
 
-module.exports = app;
+app.use((err, req, res, next) => {
+    if (err?.message === 'Not allowed by CORS') {
+        return res.status(403).json({ message: 'Origin not allowed.' });
+    }
+    console.error('Unhandled error:', err);
+    return res.status(500).json({ message: 'Internal server error.' });
+});
 
+module.exports = app;

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "concurrently -n FRONTEND,API -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
     "dev:full": "concurrently -k -n FRONTEND,API,PDF -c cyan,magenta,yellow \"npm:dev:web\" \"npm:dev:api\" \"npm:dev:pdf\"",
-    "dev:web": "vite",
+    "dev:web": "node ../backend/scripts/wait-for-api.js && vite",
     "dev:api": "npm run dev --prefix ../backend",
     "dev:pdf": "python ../backend/app.py",
     "build": "vite build",

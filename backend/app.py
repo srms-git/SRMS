@@ -206,9 +206,25 @@ def _pdf_tables_to_workbook(pdf_bytes: bytes) -> tuple[dict[str, pd.DataFrame], 
     return sheets, count
 
 
-def _cors(resp):
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    return resp
+INTERNAL_TOKEN = os.environ.get("PDF_CONVERTER_INTERNAL_TOKEN", "").strip()
+FLASK_DEBUG = os.environ.get("FLASK_DEBUG", "").strip().lower() in {"1", "true", "yes"}
+
+
+def _is_pdf_bytes(data: bytes) -> bool:
+    return len(data) >= 5 and data[:5] == b"%PDF-"
+
+
+def _require_internal_token():
+    if not INTERNAL_TOKEN:
+        return None
+    token = request.headers.get("X-Internal-Token", "")
+    if token != INTERNAL_TOKEN:
+        return jsonify({"error": "Unauthorized."}), 401
+    return None
+
+
+def _json_response(payload, status=200):
+    return jsonify(payload), status
 
 
 # --------------------------------------------------
@@ -229,20 +245,23 @@ def home():
 def upload_options():
     r = app.make_response("")
     r.status_code = 204
-    r.headers["Access-Control-Allow-Origin"] = "*"
     r.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    r.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    r.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Internal-Token"
     return r
 
 
 @app.post("/upload")
 def upload_pdf():
+    auth_error = _require_internal_token()
+    if auth_error:
+        return auth_error
+
     file = request.files.get("pdf")
     if not file or file.filename == "":
-        return _cors(jsonify({"error": "No file selected."})), 400
+        return _json_response({"error": "No file selected."}, 400)
 
     if not file.filename.lower().endswith(".pdf"):
-        return _cors(jsonify({"error": "Only .pdf files are accepted."})), 400
+        return _json_response({"error": "Only .pdf files are accepted."}, 400)
 
     safe_name = secure_filename(file.filename) or "upload.pdf"
     pdf_path = os.path.join(app.config["UPLOAD_FOLDER"], f"{uuid.uuid4().hex}_{safe_name}")
@@ -250,19 +269,20 @@ def upload_pdf():
     file.save(pdf_path)
     try:
         if os.path.getsize(pdf_path) > MAX_UPLOAD_BYTES:
-            return _cors(jsonify({"error": f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)."})), 413
+            return _json_response({"error": f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)."}, 413)
+
+        with open(pdf_path, "rb") as handle:
+            header = handle.read(5)
+        if not _is_pdf_bytes(header):
+            return _json_response({"error": "Only valid PDF files are accepted."}, 400)
 
         rows = extract_rows_from_pdf(pdf_path)
         if not rows:
-            return (
-                _cors(
-                    jsonify(
-                        {
-                            "error": "No rows detected from PDF.",
-                            "hint": "Expected lines like: 5-digit SEQ, index, student ID, TDP-… award, name, program, year level.",
-                        }
-                    )
-                ),
+            return _json_response(
+                {
+                    "error": "No rows detected from PDF.",
+                    "hint": "Expected lines like: 5-digit SEQ, index, student ID, TDP-… award, name, program, year level.",
+                },
                 422,
             )
 
@@ -277,7 +297,7 @@ def upload_pdf():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         resp.headers["X-Rows-Extracted"] = str(len(rows))
-        return _cors(resp)
+        return resp
     finally:
         try:
             os.remove(pdf_path)
@@ -289,43 +309,44 @@ def upload_pdf():
 def convert_options():
     r = app.make_response("")
     r.status_code = 204
-    r.headers["Access-Control-Allow-Origin"] = "*"
     r.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-    r.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    r.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Internal-Token"
     return r
 
 
 @app.post("/convert")
 def convert():
+    auth_error = _require_internal_token()
+    if auth_error:
+        return auth_error
+
     if "file" not in request.files:
-        return _cors(jsonify({"error": 'Missing form field "file" (PDF upload).'})), 400
+        return _json_response({"error": 'Missing form field "file" (PDF upload).'}, 400)
     upload = request.files["file"]
     if not upload.filename:
-        return _cors(jsonify({"error": "Empty filename."})), 400
+        return _json_response({"error": "Empty filename."}, 400)
     if not upload.filename.lower().endswith(".pdf"):
-        return _cors(jsonify({"error": "Only .pdf files are accepted."})), 400
+        return _json_response({"error": "Only .pdf files are accepted."}, 400)
 
     data = upload.read()
     if not data:
-        return _cors(jsonify({"error": "Empty file."})), 400
+        return _json_response({"error": "Empty file."}, 400)
     if len(data) > MAX_UPLOAD_BYTES:
-        return _cors(jsonify({"error": f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)."})), 413
+        return _json_response({"error": f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)."}, 413)
+    if not _is_pdf_bytes(data):
+        return _json_response({"error": "Only valid PDF files are accepted."}, 400)
 
     try:
         sheets, n_tables = _pdf_tables_to_workbook(data)
-    except Exception as exc:  # noqa: BLE001
-        return _cors(jsonify({"error": "Could not read PDF.", "detail": str(exc)})), 400
+    except Exception:  # noqa: BLE001
+        return _json_response({"error": "Could not read PDF."}, 400)
 
     if not sheets:
-        return (
-            _cors(
-                jsonify(
-                    {
-                        "error": "No tables found in PDF.",
-                        "hint": "Try a text-based PDF; scanned images need OCR first.",
-                    }
-                )
-            ),
+        return _json_response(
+            {
+                "error": "No tables found in PDF.",
+                "hint": "Try a text-based PDF; scanned images need OCR first.",
+            },
             422,
         )
 
@@ -343,9 +364,9 @@ def convert():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     resp.headers["X-Tables-Extracted"] = str(n_tables)
-    return _cors(resp)
+    return resp
 
 
 if __name__ == "__main__":
     # PDF service runs separately from the Node API (port 5000) to avoid route conflicts.
-    app.run(host="127.0.0.1", port=5001, debug=True)
+    app.run(host="127.0.0.1", port=5001, debug=FLASK_DEBUG)

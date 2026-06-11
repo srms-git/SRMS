@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { buildMonthlyClaimTrend, buildYearLevelDonut, mapGranteeFromApi } from "@/lib/granteesApi"
+import { escapeHtml } from "@/lib/escapeHtml"
 import { useArchivedBatchDetailQuery } from "@/hooks/useSrmsQueries"
 import {
   ChartAreaSkeleton,
@@ -366,23 +367,23 @@ export default function ArchiveBatch() {
       .map(
         (row) =>
           `<tr>${Object.values(row)
-            .map((cell) => `<td style="border:1px solid #e2e8f0;padding:8px;text-align:left;">${String(cell)}</td>`)
+            .map((cell) => `<td style="border:1px solid #e2e8f0;padding:8px;text-align:left;">${escapeHtml(cell)}</td>`)
             .join("")}</tr>`,
       )
       .join("")
     const htmlHeader = Object.keys(exportRows[0])
-      .map((head) => `<th style="border:1px solid #cbd5e1;padding:8px;text-align:left;background:#f1f5f9;">${head}</th>`)
+      .map((head) => `<th style="border:1px solid #cbd5e1;padding:8px;text-align:left;background:#f1f5f9;">${escapeHtml(head)}</th>`)
       .join("")
     const printWindow = window.open("", "_blank", "width=1100,height=800")
     if (!printWindow) return
     printWindow.document.write(`
       <html>
         <head>
-          <title>${batchTitle} Export</title>
+          <title>${escapeHtml(batchTitle)} Export</title>
         </head>
         <body style="font-family: Arial, sans-serif; margin: 16px;">
-          <h2 style="margin: 0 0 6px;">${batchTitle}</h2>
-          <p style="margin: 0 0 14px; color: #475569;">${batchSubtitle}</p>
+          <h2 style="margin: 0 0 6px;">${escapeHtml(batchTitle)}</h2>
+          <p style="margin: 0 0 14px; color: #475569;">${escapeHtml(batchSubtitle)}</p>
           <table style="border-collapse: collapse; width: 100%; font-size: 12px;">
             <thead><tr>${htmlHeader}</tr></thead>
             <tbody>${htmlRows}</tbody>

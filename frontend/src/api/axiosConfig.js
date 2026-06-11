@@ -6,7 +6,7 @@ const apiClient = axios.create({
 
 // This "Interceptor" acts like a gatekeeper for every request
 apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("userToken");
+  const token = localStorage.getItem("token");
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

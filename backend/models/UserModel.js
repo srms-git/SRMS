@@ -48,6 +48,11 @@ const UserSchema = new mongoose.Schema({
         type: Date,
         select: false,
     },
+    passwordChangeOtpAttempts: {
+        type: Number,
+        default: 0,
+        select: false,
+    },
     cashierPrivacy: {
         maskStudentIdInLists: {
             type: Boolean,

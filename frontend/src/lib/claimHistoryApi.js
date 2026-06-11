@@ -1,6 +1,4 @@
-import { getApiClientBaseUrl } from "@/lib/apiConfig";
-
-const API_BASE = getApiClientBaseUrl();
+import apiClient from "@/lib/apiClient";
 
 function toDateOnly(value) {
   if (!value) return null
@@ -43,24 +41,18 @@ export function mapClaimHistoryFromApi(doc) {
 }
 
 export async function fetchClaimHistory(query = {}) {
-  const params = new URLSearchParams()
   const { program, batchNo, academicYear, semester, claimedBy, search } = query
 
-  if (program) params.set("program", String(program).trim().toUpperCase())
-  if (batchNo) params.set("batchNo", String(batchNo).trim())
-  if (academicYear) params.set("academicYear", String(academicYear).trim())
-  if (semester) params.set("semester", String(semester).trim())
-  if (claimedBy) params.set("claimedBy", String(claimedBy).trim())
-  if (search) params.set("search", String(search).trim())
+  const params = {}
+  if (program) params.program = String(program).trim().toUpperCase()
+  if (batchNo) params.batchNo = String(batchNo).trim()
+  if (academicYear) params.academicYear = String(academicYear).trim()
+  if (semester) params.semester = String(semester).trim()
+  if (claimedBy) params.claimedBy = String(claimedBy).trim()
+  if (search) params.search = String(search).trim()
 
-  const qs = params.toString()
-  const response = await fetch(`${API_BASE}/claim-history${qs ? `?${qs}` : ""}`)
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}))
-    throw new Error(data.message || "Failed to load claim history.")
-  }
-
-  const data = await response.json()
+  const response = await apiClient.get("/claim-history", { params })
+  const data = response.data
   if (!Array.isArray(data)) return []
   return data.map(mapClaimHistoryFromApi).filter(Boolean)
 }
