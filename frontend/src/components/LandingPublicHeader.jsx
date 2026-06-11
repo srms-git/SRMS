@@ -231,7 +231,7 @@ export function LandingPublicHeader({ onSectionNavigate, variant = "default" }) 
   }
 
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-50 pt-3 sm:pt-4">
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-[60] pt-3 sm:pt-4">
       <MobileMenuToggle open={mobileNavOpen} onClick={() => setMobileNavOpen((prev) => !prev)} />
 
       <div className="pointer-events-auto mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">

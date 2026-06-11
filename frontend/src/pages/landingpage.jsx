@@ -655,24 +655,72 @@ const aboutPassportPhotos = [
 const aboutPassportCardWidthClassName =
   "w-[6.5rem] min-[400px]:w-[7.25rem] sm:w-[9.5rem] md:w-[11rem] lg:w-[12.5rem] xl:w-[13.5rem]"
 
+function LeadershipSectionBackground() {
+  const edgeFadeMask =
+    "linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.35) 8%, black 22%, black 78%, rgba(0,0,0,0.35) 92%, transparent 100%)"
+
+  return (
+    <>
+      <div
+        className="absolute inset-0"
+        style={{
+          WebkitMaskImage: edgeFadeMask,
+          maskImage: edgeFadeMask,
+        }}
+        aria-hidden
+      >
+        <img
+          src={leadershipSectionBackground}
+          alt=""
+          className="h-full w-full object-cover object-[center_42%] scale-105"
+          decoding="async"
+        />
+      </div>
+      <div
+        className="absolute inset-0"
+        style={{
+          background: `linear-gradient(180deg, rgba(238, 242, 255, 0.55) 0%, rgba(255, 255, 255, 0.42) 22%, rgba(255, 255, 255, 0.38) 50%, rgba(255, 255, 255, 0.42) 78%, rgba(238, 242, 255, 0.55) 100%)`,
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-32 sm:h-40 lg:h-48"
+        style={{
+          background: `linear-gradient(to bottom, ${bvIce} 0%, rgba(238, 242, 255, 0.98) 12%, rgba(238, 242, 255, 0.82) 28%, rgba(238, 242, 255, 0.52) 52%, rgba(238, 242, 255, 0.18) 78%, transparent 100%)`,
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-32 sm:h-40 lg:h-48"
+        style={{
+          background: `linear-gradient(to top, ${bvIce} 0%, rgba(238, 242, 255, 0.98) 12%, rgba(238, 242, 255, 0.82) 28%, rgba(238, 242, 255, 0.52) 52%, rgba(238, 242, 255, 0.18) 78%, transparent 100%)`,
+        }}
+        aria-hidden
+      />
+    </>
+  )
+}
+
 function AboutPassportPhotoRow({ photos }) {
   if (!photos?.length) return null
 
   return (
-    <div className="flex justify-center" role="group" aria-label="University leadership photos">
+    <div className="flex flex-col items-center" role="group" aria-label="University leadership photos">
       <ul className="flex max-w-full flex-nowrap items-start justify-center gap-3 overflow-x-auto px-1 py-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden min-[400px]:gap-3.5 sm:gap-5 md:gap-6">
         {photos.map((photo, index) => (
           <li
             key={`${photo.name}-${index}`}
-            className={`flex shrink-0 flex-col items-center ${aboutPassportCardWidthClassName}`}
+            className={`group flex shrink-0 flex-col items-center ${aboutPassportCardWidthClassName}`}
           >
-            <img
-              src={photo.src}
-              alt={`${photo.name}, ${photo.title}`}
-              className="aspect-[35/45] w-full object-cover object-top"
-              decoding="async"
-              loading="lazy"
-            />
+            <div className="w-full overflow-hidden rounded-xl shadow-[0_14px_36px_-18px_rgba(8,31,92,0.45)] ring-1 ring-white/80 transition duration-500 group-hover:-translate-y-1 group-hover:shadow-[0_20px_44px_-16px_rgba(8,31,92,0.5)] sm:rounded-2xl">
+              <img
+                src={photo.src}
+                alt={`${photo.name}, ${photo.title}`}
+                className="aspect-[35/45] w-full object-cover object-top"
+                decoding="async"
+                loading="lazy"
+              />
+            </div>
             <p className="mt-2 w-full text-center text-[10px] font-bold leading-tight text-black sm:mt-2.5 sm:text-xs md:text-sm">
               {photo.name}
             </p>
@@ -2019,22 +2067,9 @@ export default function LandingPage() {
 
         <section
           id="leadership"
-          className="relative z-40 -mt-2 w-full scroll-mt-17 overflow-hidden sm:-mt-3 lg:mt-0"
+          className="relative z-30 w-full scroll-mt-17 overflow-hidden"
         >
-          <img
-            src={leadershipSectionBackground}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover object-center"
-            decoding="async"
-            aria-hidden
-          />
-          <div
-            className="absolute inset-0"
-            style={{
-              background: `linear-gradient(180deg, rgba(238, 242, 255, 0.55) 0%, rgba(255, 255, 255, 0.78) 18%, rgba(255, 255, 255, 0.86) 55%, rgba(238, 242, 255, 0.9) 82%, ${bvIce} 100%)`,
-            }}
-            aria-hidden
-          />
+          <LeadershipSectionBackground />
           <div className="relative z-10 mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8 lg:py-12">
             <AboutPassportPhotoRow photos={aboutPassportPhotos} />
           </div>
@@ -2042,13 +2077,13 @@ export default function LandingPage() {
 
         <section
           id="about"
-          className="relative z-40 -mt-10 w-full scroll-mt-17 overflow-x-hidden border-b sm:-mt-12"
+          className="relative z-40 -mt-16 w-full scroll-mt-17 overflow-x-hidden border-b sm:-mt-20 lg:-mt-24"
           style={{
             borderColor: borderNavySoft,
-            backgroundImage: `linear-gradient(180deg, transparent 0%, ${bvIce} 10%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
+            backgroundImage: `linear-gradient(180deg, transparent 0%, ${bvIce} 6%, ${bvIce} 14%, ${bvPeriwinkle} 42%, ${bvLilac} 100%)`,
           }}
         >
-          <div className="relative z-10 mx-auto w-full max-w-7xl overflow-x-hidden px-4 pb-10 pt-3 sm:px-6 sm:pb-12 sm:pt-4 lg:px-8 lg:py-12">
+          <div className="relative z-10 mx-auto w-full max-w-7xl overflow-x-hidden px-4 pb-5 pt-10 sm:px-6 sm:pb-6 sm:pt-12 lg:px-8 lg:pb-5 lg:pt-14">
             <div className="grid min-w-0 items-center gap-5 overflow-x-hidden lg:grid-cols-2 lg:gap-3 xl:gap-4">
               <div className="order-1 min-w-0 overflow-hidden lg:mx-0 lg:w-full">
                 <AboutImageSlideshow slides={aboutSlideshowSlides} />
