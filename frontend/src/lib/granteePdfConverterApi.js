@@ -24,6 +24,14 @@ function buildPdfConverterUnavailableMessage(base, status) {
   return `Server conversion failed (${status}).`
 }
 
+function buildPdfConverterNetworkErrorMessage(base) {
+  const usingDefaultLocalProxy = base === "/api/pdf-converter"
+  if (usingDefaultLocalProxy) {
+    return "PDF converter is not running on port 5001. Restart with npm run dev from the frontend folder (starts frontend, API, and PDF services). If it still fails, run: python -m pip install -r backend/requirements.txt"
+  }
+  return `Could not reach PDF converter at ${base}/upload. Check VITE_PDF_CONVERTER_URL and that the service is online.`
+}
+
 function normalizeBackendImportRow(rawRow) {
   const shaped = mapSheetRowToGranteeShape(rawRow)
   if (shaped.program && !shaped.enrolledProgram) {
@@ -33,16 +41,27 @@ function normalizeBackendImportRow(rawRow) {
   return shaped
 }
 
+/** `{originalBaseName}-SRMS.xlsx` from the uploaded PDF file name. */
+export function buildGranteeXlsxDownloadName(pdfFileName) {
+  const base = String(pdfFileName ?? "").replace(/\.pdf$/i, "").trim() || "converted"
+  return `${base}-SRMS.xlsx`
+}
+
 /** Download .xlsx from Flask `/upload`; does not parse in JS. */
 export async function downloadGranteePdfAsXlsx(file) {
   const base = getPdfConverterBaseUrl()
   const form = new FormData()
   form.append("pdf", file, file.name)
 
-  const res = await fetch(`${base}/upload`, {
-    method: "POST",
-    body: form,
-  })
+  let res
+  try {
+    res = await fetch(`${base}/upload`, {
+      method: "POST",
+      body: form,
+    })
+  } catch {
+    throw new Error(buildPdfConverterNetworkErrorMessage(base))
+  }
 
   if (!res.ok) {
     let message = buildPdfConverterUnavailableMessage(base, res.status)
@@ -63,12 +82,7 @@ export async function downloadGranteePdfAsXlsx(file) {
   }
 
   const blob = await res.blob()
-  const cd = res.headers.get("Content-Disposition") ?? ""
-  const m = cd.match(/filename\*?=(?:UTF-8''|")?([^";\r\n]+)/i)
-  let downloadName = (file.name.replace(/\.pdf$/i, "") || "converted") + ".xlsx"
-  if (m?.[1]) {
-    downloadName = decodeURIComponent(m[1].replace(/^"|"$/g, "").trim())
-  }
+  const downloadName = buildGranteeXlsxDownloadName(file.name)
 
   const url = URL.createObjectURL(blob)
   try {

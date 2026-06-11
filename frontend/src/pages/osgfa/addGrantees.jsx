@@ -340,6 +340,36 @@ const CONVERTER_STEPS = [
   { step: "3", title: "Import below", detail: "Use the preview section to add grantees" },
 ]
 
+const CONVERTER_LOADING_MESSAGES = [
+  "Hang tight — we're reading your PDF…",
+  "Still working on it, thanks for waiting…",
+  "Pulling grantee details from your file…",
+  "Almost there — shaping your Excel file…",
+  "Nearly done! Your download should start any second…",
+]
+
+const CONVERTER_LOADING_MESSAGE_MS = 2800
+
+function useConverterLoadingMessage(loading) {
+  const [messageIndex, setMessageIndex] = useState(0)
+
+  useEffect(() => {
+    if (!loading) {
+      setMessageIndex(0)
+      return
+    }
+
+    setMessageIndex(0)
+    const interval = window.setInterval(() => {
+      setMessageIndex((prev) => Math.min(prev + 1, CONVERTER_LOADING_MESSAGES.length - 1))
+    }, CONVERTER_LOADING_MESSAGE_MS)
+
+    return () => window.clearInterval(interval)
+  }, [loading])
+
+  return CONVERTER_LOADING_MESSAGES[messageIndex] ?? CONVERTER_LOADING_MESSAGES[0]
+}
+
 function OptionalBadge() {
   return (
     <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:bg-slate-950/50 dark:text-slate-300">
@@ -348,7 +378,7 @@ function OptionalBadge() {
   )
 }
 
-function PdfToExcelConverterPanel({ file, loading, error, onFileChange, onConvert }) {
+function PdfToExcelConverterPanel({ file, loading, loadingMessage, error, onFileChange, onConvert }) {
   return (
     <section
       aria-label="PDF to Excel converter"
@@ -395,12 +425,15 @@ function PdfToExcelConverterPanel({ file, loading, error, onFileChange, onConver
           <div className={`relative flex min-h-0 flex-1 flex-col space-y-2.5 p-3 ${osgfaSubPanelClass}`}>
             {loading ? (
               <div
-                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-white/90 px-4 dark:bg-slate-950/85"
+                className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2.5 rounded-xl bg-white/90 px-4 text-center dark:bg-slate-950/85"
                 role="status"
                 aria-live="polite"
+                aria-busy="true"
               >
                 <Loader2 className="h-8 w-8 animate-spin text-[#081F5C] dark:text-sky-300" aria-hidden />
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">Converting to Excel…</p>
+                <p className="max-w-[260px] text-sm font-medium leading-relaxed text-slate-700 dark:text-slate-200">
+                  {loadingMessage}
+                </p>
               </div>
             ) : null}
 
@@ -475,7 +508,7 @@ function PdfToExcelConverterPanel({ file, loading, error, onFileChange, onConver
               ) : (
                 <Download className="h-4 w-4 shrink-0" aria-hidden />
               )}
-              {loading ? "Converting…" : "Convert & download .xlsx"}
+              {loading ? "Working on it…" : "Convert & download .xlsx"}
             </Button>
 
             {error ? (
@@ -604,6 +637,7 @@ export default function AddGrantees() {
   const [toYear, setToYear] = useState("")
   const [converterPdfFile, setConverterPdfFile] = useState(null)
   const [converterLoading, setConverterLoading] = useState(false)
+  const converterLoadingMessage = useConverterLoadingMessage(converterLoading)
   const [converterError, setConverterError] = useState("")
   const [previewExcelFile, setPreviewExcelFile] = useState(null)
   const [formNotice, setFormNotice] = useState(null)
@@ -1006,6 +1040,7 @@ export default function AddGrantees() {
         <PdfToExcelConverterPanel
           file={converterPdfFile}
           loading={converterLoading}
+          loadingMessage={converterLoadingMessage}
           error={converterError}
           onFileChange={(event) => {
             setConverterError("")

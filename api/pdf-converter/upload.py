@@ -25,6 +25,11 @@ def _cors(resp):
     return resp
 
 
+def build_xlsx_download_name(pdf_filename: str) -> str:
+    base = re.sub(r"\.pdf$", "", pdf_filename or "", flags=re.IGNORECASE).strip() or "converted"
+    return f"{base}-SRMS.xlsx"
+
+
 def extract_rows_from_pdf_bytes(pdf_bytes: bytes):
     rows = []
     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
@@ -170,7 +175,7 @@ def upload():
     resp = send_file(
         out,
         as_attachment=True,
-        download_name="converted_grantees.xlsx",
+        download_name=build_xlsx_download_name(file.filename),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     resp.headers["X-Rows-Extracted"] = str(len(rows))

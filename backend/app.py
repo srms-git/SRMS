@@ -225,6 +225,11 @@ def home():
     return render_template("index.html")
 
 
+def build_xlsx_download_name(pdf_filename: str) -> str:
+    base = re.sub(r"\.pdf$", "", pdf_filename or "", flags=re.IGNORECASE).strip() or "converted"
+    return f"{base}-SRMS.xlsx"
+
+
 @app.route("/upload", methods=["OPTIONS"])
 def upload_options():
     r = app.make_response("")
@@ -273,7 +278,7 @@ def upload_pdf():
         resp = send_file(
             output_excel,
             as_attachment=True,
-            download_name="converted_grantees.xlsx",
+            download_name=build_xlsx_download_name(file.filename),
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         resp.headers["X-Rows-Extracted"] = str(len(rows))
