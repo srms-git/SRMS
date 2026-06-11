@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useMemo, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   CalendarDays,
   CheckCircle,
@@ -66,6 +67,8 @@ import {
   getAnnouncementTypeLabel,
   isOtherAnnouncementType,
 } from "@/lib/announcementTypes"
+import { useAnnouncementsQuery } from "@/hooks/useSrmsQueries"
+import { queryKeys } from "@/lib/queryKeys"
 import { cn } from "@/lib/utils"
 
 const selectShellClass =
@@ -567,11 +570,16 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
 }
 
 export default function AnnouncementPage() {
+  const queryClient = useQueryClient()
+  const {
+    data: rawAnnouncements = [],
+    isLoading,
+    error: announcementsQueryError,
+    refetch: loadAnnouncements,
+  } = useAnnouncementsQuery()
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [dateRange, setDateRange] = useState("__")
-  const [announcements, setAnnouncements] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -601,28 +609,16 @@ export default function AnnouncementPage() {
     [draftStartDate],
   )
 
-  const loadAnnouncements = async ({ silent = false } = {}) => {
-    try {
-      if (!silent) setIsLoading(true)
-      setError("")
-      const response = await apiClient.get("/announcements")
-      const fetched = Array.isArray(response.data) ? response.data.map(normalizeAnnouncement) : []
-      setAnnouncements(fetched)
-    } catch (err) {
-      console.error("Failed to load announcements:", err)
-      setError(
-        err?.userMessage ||
-          err?.response?.data?.message ||
-          "Failed to load announcements. Please try again.",
-      )
-    } finally {
-      if (!silent) setIsLoading(false)
-    }
-  }
+  const announcements = useMemo(
+    () => rawAnnouncements.map(normalizeAnnouncement),
+    [rawAnnouncements],
+  )
 
-  useEffect(() => {
-    void loadAnnouncements()
-  }, [])
+  const loadError =
+    announcementsQueryError?.userMessage ||
+    announcementsQueryError?.response?.data?.message ||
+    announcementsQueryError?.message ||
+    ""
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
@@ -785,7 +781,7 @@ export default function AnnouncementPage() {
         await apiClient.patch(`/announcements/${item.id}/toggle`)
       }
 
-      await loadAnnouncements({ silent: true })
+      await loadAnnouncements()
       setConfirmOpen(false)
       setConfirmAction(null)
     } catch (err) {
@@ -880,13 +876,16 @@ export default function AnnouncementPage() {
         if (editingId) {
           const response = await saveAnnouncementWithFormData("put", `/announcements/${editingId}`, formData)
           saved = normalizeAnnouncement(response.data)
-          setAnnouncements((prev) =>
-            prev.map((announcement) => (announcement.id === editingId ? saved : announcement)),
+          queryClient.setQueryData(queryKeys.announcements, (prev) =>
+            (prev ?? []).map((announcement) => {
+              const announcementId = announcement?.id || announcement?._id
+              return announcementId === editingId ? response.data : announcement
+            }),
           )
         } else {
           const response = await saveAnnouncementWithFormData("post", "/announcements", formData)
           saved = normalizeAnnouncement(response.data)
-          setAnnouncements((prev) => [...prev, saved])
+          queryClient.setQueryData(queryKeys.announcements, (prev) => [...(prev ?? []), response.data])
         }
 
         setDialogOpen(false)
@@ -1130,7 +1129,7 @@ export default function AnnouncementPage() {
 
       {error && announcements.length > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
-          {error}
+          {error || loadError}
         </div>
       ) : null}
 
@@ -1153,7 +1152,7 @@ export default function AnnouncementPage() {
       ) : error && announcements.length === 0 ? (
         <AnnouncementsEmptyState
           variant="error"
-          errorMessage={error}
+          errorMessage={error || loadError}
           onRetry={() => void loadAnnouncements()}
           className={revealItemClass(contentRevealed, 0)}
           style={revealItemStyle(contentRevealed, 0)}

@@ -38,11 +38,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input"
 import {
   batchNumberConflictsInProgram,
-  fetchAllGrantees,
   isGranteeRecordActive,
   updateBatchMetadata,
 } from "@/lib/granteesApi"
-import { fetchArchivedBatches, manualArchiveBatch } from "@/lib/archiveApi"
+import { useArchivedBatchesQuery, useGranteesQuery, useInvalidateGranteeCaches } from "@/hooks/useSrmsQueries"
 import {
   isBatchVisibleOnLanding,
   renameLandingBatchVisibility,
@@ -218,9 +217,23 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
 export default function Batches() {
   const navigate = useNavigate()
 
-  const [granteesRawData, setGranteesRawData] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
+  const {
+    data: granteesRawData = [],
+    isLoading: granteesLoading,
+    error: granteesError,
+    refetch: refetchGrantees,
+  } = useGranteesQuery()
+  const {
+    data: archivedBatches = [],
+    isLoading: archivedLoading,
+    error: archivedError,
+    refetch: refetchArchived,
+  } = useArchivedBatchesQuery()
+  const isLoading = granteesLoading || archivedLoading
+  const fetchError =
+    granteesError?.message ??
+    archivedError?.message ??
+    null
 
   const [searchTerm, setSearchTerm] = useState("")
   const [batchFilter, setBatchFilter] = useState("__")
@@ -246,7 +259,7 @@ export default function Batches() {
   const [isArchiving, setIsArchiving] = useState(false)
   const landingVisibility = useLandingBatchVisibility()
   const { activePrograms, programs } = useOsgfaPrograms()
-  const [archivedBatchCount, setArchivedBatchCount] = useState(0)
+  const archivedBatchCount = archivedBatches.length
 
   const showFeedback = useCallback((variant, title, message) => {
     setFeedbackVariant(variant)
@@ -255,30 +268,11 @@ export default function Batches() {
     setFeedbackOpen(true)
   }, [])
 
+  const invalidateGranteeCaches = useInvalidateGranteeCaches()
   const loadGrantees = useCallback(async () => {
-    try {
-      setIsLoading(true)
-      setFetchError(null)
-      const [data, archived] = await Promise.all([
-        fetchAllGrantees(),
-        fetchArchivedBatches().catch(() => []),
-      ])
-      setGranteesRawData(data)
-      setArchivedBatchCount(archived.length)
-    } catch (err) {
-      console.error("Error connecting batches layout:", err)
-      setFetchError(
-        err?.message ?? "We couldn't load your batches right now. Please check your connection and try again.",
-      )
-      setGranteesRawData([])
-    } finally {
-      setIsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadGrantees()
-  }, [loadGrantees])
+    invalidateGranteeCaches()
+    await Promise.all([refetchGrantees(), refetchArchived()])
+  }, [invalidateGranteeCaches, refetchGrantees, refetchArchived])
 
   const [contentRevealed, setContentRevealed] = useState(false)
   const [skeletonLeaving, setSkeletonLeaving] = useState(false)
@@ -656,6 +650,7 @@ export default function Batches() {
 
     try {
       setIsArchiving(true)
+      const { manualArchiveBatch } = await import("@/lib/archiveApi")
       const result = await manualArchiveBatch({
         batchNo: target.batchNo,
         program: target.program,

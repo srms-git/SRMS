@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useMemo, useState } from "react"
 import {
   BookOpen,
   CalendarDays,
@@ -36,8 +36,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
-import { fetchClaimHistory } from "@/lib/claimHistoryApi"
 import { cn } from "@/lib/utils"
+import { useClaimHistoryQuery } from "@/hooks/useSrmsQueries"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
 import {
   ClaimHistoryTableRowSkeleton,
@@ -279,9 +279,12 @@ function ClaimHistoryDetailView({ entry, formatStudentId }) {
 
 export default function CashierClaimHistory() {
   const { formatStudentId, formatStat } = useCashierPrivacySettings()
-  const [claimEntries, setClaimEntries] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
+  const {
+    data: claimEntries = [],
+    isLoading,
+    error: claimHistoryError,
+  } = useClaimHistoryQuery()
+  const fetchError = claimHistoryError?.message ?? null
   const [searchTerm, setSearchTerm] = useState("")
   const [batchFilter, setBatchFilter] = useState("__")
   const [programFilter, setProgramFilter] = useState("__")
@@ -291,32 +294,6 @@ export default function CashierClaimHistory() {
   const [page, setPage] = useState(1)
   const [detailOpen, setDetailOpen] = useState(false)
   const [activeEntryId, setActiveEntryId] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-
-    const loadHistory = async () => {
-      try {
-        setIsLoading(true)
-        setFetchError(null)
-        const rows = await fetchClaimHistory()
-        if (!cancelled) setClaimEntries(rows)
-      } catch (err) {
-        console.error("Failed to load claim history:", err)
-        if (!cancelled) {
-          setFetchError(err?.message ?? "Failed to load claim history.")
-          setClaimEntries([])
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
-
-    loadHistory()
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 

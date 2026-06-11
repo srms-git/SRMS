@@ -67,13 +67,13 @@ import {
   RequirementSubmittedByInfo,
 } from "@/components/grantee/semester-claim-display"
 import {
-  fetchGranteesByProgram,
   filterGranteesByProgram,
   granteeInactiveRemarks,
   granteeRecordStatusLabel,
   isGranteeRecordActive,
   updateGrantee,
 } from "@/lib/granteesApi"
+import { useProgramGranteesRecords } from "@/hooks/useSrmsQueries"
 import {
   ensureSemesterClaimTimestamps,
   mapSemesterClaimsWithFieldChange,
@@ -1966,14 +1966,22 @@ export default function ProgramWorkspace() {
   const requirements = program?.requirements ?? []
   const { formatStudentId, formatStat } = useOsgfaPrivacySettings()
   const PAGE_SIZE = 100
-  const [records, setRecords] = useState([])
   const scholarshipProgramCodes = useMemo(() => [...buildActiveProgramCodeSet(programs)], [programs])
+  const {
+    records: programRows,
+    isLoading,
+    fetchError,
+    loadRecords,
+    setRecords,
+  } = useProgramGranteesRecords(programCode)
+  const records = useMemo(
+    () => filterGranteesByProgram(programRows, programCode),
+    [programRows, programCode],
+  )
   const enrolledProgramOptions = useMemo(
     () => collectEnrolledProgramOptions(records, [], { scholarshipCodes: scholarshipProgramCodes }),
     [records, scholarshipProgramCodes],
   )
-  const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const [batchFilter, setBatchFilter] = useState("__")
@@ -1987,26 +1995,6 @@ export default function ProgramWorkspace() {
   const [editDraft, setEditDraft] = useState(null)
   const [saveConfirmOpen, setSaveConfirmOpen] = useState(false)
   const [pendingSaveChanges, setPendingSaveChanges] = useState([])
-
-  const loadRecords = async () => {
-    try {
-      setIsLoading(true)
-      setFetchError(null)
-      const rows = await fetchGranteesByProgram(programCode)
-      setRecords(filterGranteesByProgram(rows, programCode))
-    } catch (err) {
-      console.error(`Failed to load ${programCode} grantees:`, err)
-      setFetchError(err?.message ?? "Failed to load program records.")
-      setRecords([])
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    if (!programCode) return
-    loadRecords()
-  }, [programCode])
 
   const [contentRevealed, setContentRevealed] = useState(false)
   const [skeletonLeaving, setSkeletonLeaving] = useState(false)
