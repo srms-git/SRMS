@@ -302,8 +302,11 @@ exports.updateProcessWorkflow = async (req, res) => {
         const doc = await LandingSettings.findOneAndUpdate(
             { key: SETTINGS_KEY },
             { $set: { processWorkflow } },
-            { new: true, upsert: true, setDefaultsOnInsert: true },
+            { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
         );
+        if (!doc) {
+            return res.status(500).json({ message: 'Failed to save process workflow settings.' });
+        }
         return res.status(200).json({
             customized: true,
             byProgram: normalizeProcessWorkflow(doc.processWorkflow).byProgram,
@@ -324,6 +327,7 @@ exports.getPageSettings = async (req, res) => {
             processWorkflow: normalizeProcessWorkflow(doc.processWorkflow),
         });
     } catch (error) {
+        console.error('getPageSettings error:', error);
         return res.status(500).json({
             message: error.message || 'Failed to load landing page settings.',
         });
@@ -349,14 +353,18 @@ exports.updatePageSettings = async (req, res) => {
         const doc = await LandingSettings.findOneAndUpdate(
             { key: SETTINGS_KEY },
             { $set: updates },
-            { new: true, upsert: true, setDefaultsOnInsert: true },
+            { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
         );
+        if (!doc) {
+            return res.status(500).json({ message: 'Failed to save landing page settings.' });
+        }
         return res.status(200).json({
             privacy: normalizePrivacy(doc.privacy),
             contactInfo: normalizeContactInfo(doc.contactInfo),
             processWorkflow: normalizeProcessWorkflow(doc.processWorkflow),
         });
     } catch (error) {
+        console.error('updatePageSettings error:', error);
         return res.status(500).json({
             message: error.message || 'Failed to save landing page settings.',
         });
@@ -369,8 +377,11 @@ exports.updatePublishedBatchKeys = async (req, res) => {
         const doc = await LandingSettings.findOneAndUpdate(
             { key: SETTINGS_KEY },
             { $set: { publishedBatchKeys: keys } },
-            { new: true, upsert: true, setDefaultsOnInsert: true },
+            { returnDocument: 'after', upsert: true, setDefaultsOnInsert: true },
         );
+        if (!doc) {
+            return res.status(500).json({ message: 'Failed to save landing batch visibility.' });
+        }
         return res.status(200).json({
             keys: normalizeBatchKeys(doc.publishedBatchKeys),
         });

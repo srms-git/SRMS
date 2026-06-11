@@ -82,15 +82,7 @@ export async function loadLandingPageSettings() {
 
 export async function persistLandingPageSettings(settings) {
   const merged = writeStoredLandingPageSettings(settings)
-  try {
-    await apiClient.put(LANDING_PAGE_SETTINGS_API_PATH, merged)
-  } catch (error) {
-    // Backward compatibility for servers that still accept only privacy payloads.
-    await apiClient.put(LANDING_PAGE_SETTINGS_API_PATH, { privacy: merged.privacy })
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("Landing settings API accepted privacy-only payload.", error)
-    }
-  }
+  await apiClient.put(LANDING_PAGE_SETTINGS_API_PATH, merged)
   return merged
 }
 
