@@ -15,7 +15,6 @@ const {
 const { isEmailConfigured } = require('../utils/emailService');
 const { createInternalNotification } = require('./notificationController');
 const { logActivity } = require('../services/auditLogger');
-const { safeErrorMessage } = require('../utils/safeErrorMessage');
 
 const FORGOT_PASSWORD_MESSAGE =
     'If an account exists for that email, check your inbox for reset instructions.';
@@ -70,7 +69,7 @@ function formatUser(user) {
 
 exports.register = async (req, res) => {
     try {
-        const { firstName, lastName, email, password } = req.body;
+        const { firstName, lastName, email, password, role } = req.body;
 
         if (!firstName || !lastName || !email || !password) {
             return res.status(400).json({ message: 'firstName, lastName, email, and password are required.' });
@@ -83,8 +82,9 @@ exports.register = async (req, res) => {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // New staff accounts created via the API are cashiers only.
-        const assignedRole = 'cashier';
+        const assignedRole = (role && ['osgfa', 'cashier'].includes(role.toLowerCase()))
+            ? role.toLowerCase()
+            : 'osgfa';
 
         const user = await User.create({
             firstName: String(firstName).trim(),
@@ -118,7 +118,7 @@ exports.register = async (req, res) => {
         });
     } catch (error) {
         console.error('register error:', error);
-        return res.status(500).json({ message: safeErrorMessage(error, 'Registration failed.') });
+        return res.status(500).json({ message: error.message || 'Registration failed.' });
     }
 };
 
@@ -161,7 +161,7 @@ exports.login = async (req, res) => {
         });
     } catch (error) {
         console.error('login error:', error);
-        return res.status(500).json({ message: safeErrorMessage(error, 'Login failed.') });
+        return res.status(500).json({ message: error.message || 'Login failed.' });
     }
 };
 
@@ -346,7 +346,7 @@ exports.changePassword = async (req, res) => {
         }
 
         const user = await User.findById(req.userId).select(
-            '+passwordChangeOtpHash +passwordChangeOtpExpires +passwordChangeOtpAttempts',
+            '+passwordChangeOtpHash +passwordChangeOtpExpires',
         );
         if (!user || user.isActive === false) {
             return res.status(404).json({ message: 'User not found.' });
@@ -357,13 +357,7 @@ exports.changePassword = async (req, res) => {
             return res.status(401).json({ message: 'Current password is incorrect.' });
         }
 
-        const otpResult = await verifyPasswordChangeOtp(user, otp);
-        if (!otpResult.ok) {
-            if (otpResult.locked) {
-                return res.status(429).json({
-                    message: 'Too many incorrect verification codes. Request a new code from your email.',
-                });
-            }
+        if (!verifyPasswordChangeOtp(user, otp)) {
             return res.status(400).json({
                 message: 'Invalid or expired verification code. Request a new code from your email.',
             });
@@ -398,7 +392,7 @@ exports.changePassword = async (req, res) => {
         return res.status(200).json({ message: 'Password updated successfully.' });
     } catch (error) {
         console.error('changePassword error:', error);
-        return res.status(500).json({ message: safeErrorMessage(error, 'Password change failed.') });
+        return res.status(500).json({ message: error.message || 'Password change failed.' });
     }
 };
 

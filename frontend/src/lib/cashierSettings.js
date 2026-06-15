@@ -12,7 +12,6 @@ export const DEFAULT_SETTINGS = {
     unclaimedThresholdAlert: true,
     archiveSummary: true,
     claimActivityAlert: true,
-    payoutScheduleAlert: true,
   },
   privacy: {
     maskStudentIdInLists: false,
@@ -163,15 +162,6 @@ export function matchesClaimActivity(item) {
   )
 }
 
-export function matchesPayoutScheduleNotification(item) {
-  const metaKind = String(item?.meta?.kind ?? "").toLowerCase()
-  if (metaKind === "payout_schedule") return true
-  const type = String(item?.type ?? "").toLowerCase()
-  if (type !== "reminder") return false
-  const { title } = notificationText(item)
-  return title.includes("payout schedule")
-}
-
 const NON_CASHIER_TITLE_PREFIXES = ["updated:", "notice reactivated:"]
 
 function isNonCashierAdminTrace(item) {
@@ -193,8 +183,7 @@ export function isCashierRelevantNotification(item) {
     matchesNewBatchNotification(item) ||
     matchesUnclaimedAlert(item) ||
     matchesArchiveSummary(item) ||
-    matchesClaimActivity(item) ||
-    matchesPayoutScheduleNotification(item)
+    matchesClaimActivity(item)
   )
 }
 
@@ -209,9 +198,6 @@ export function shouldShowNotification(item, prefs = readNotificationPreferences
     return false
   }
   if (!prefs.claimActivityAlert && matchesClaimActivity(item)) {
-    return false
-  }
-  if (!prefs.payoutScheduleAlert && matchesPayoutScheduleNotification(item)) {
     return false
   }
   return true

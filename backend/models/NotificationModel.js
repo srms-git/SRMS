@@ -27,11 +27,7 @@ const NotificationSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         default: null
-    },
-    meta: {
-        type: mongoose.Schema.Types.Mixed,
-        default: null,
-    },
+    }
 }, {
     timestamps: true // Automatically sets 'createdAt' and 'updatedAt'
 });

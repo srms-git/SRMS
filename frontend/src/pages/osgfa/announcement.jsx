@@ -68,14 +68,6 @@ import {
   getAnnouncementTypeLabel,
   isOtherAnnouncementType,
 } from "@/lib/announcementTypes"
-import {
-  formatBatchOptionLabel,
-  formatLinkedBatchLabel,
-  getLinkedBatchKey,
-  isBatchLinkedAnnouncementType,
-  isPayoutScheduleAnnouncementType,
-} from "@/lib/announcementBatchLink"
-import { usePublishedLandingBatches } from "@/lib/landingFeaturedBatches"
 import { useAnnouncementsQuery } from "@/hooks/useSrmsQueries"
 import { queryKeys } from "@/lib/queryKeys"
 import { cn } from "@/lib/utils"
@@ -163,12 +155,6 @@ function buildAnnouncementFormData({
   active,
   imageFiles = [],
   clearExistingImages,
-  linkedBatchNo,
-  linkedProgram,
-  linkedAcademicYear,
-  scheduleDate,
-  scheduleTime,
-  scheduleLocation,
 }) {
   const formData = new FormData()
   formData.append("title", title)
@@ -176,14 +162,6 @@ function buildAnnouncementFormData({
   formData.append("type", type)
   if (isOtherAnnouncementType(type)) {
     formData.append("customType", customType.trim())
-  }
-  if (isBatchLinkedAnnouncementType(type)) {
-    formData.append("linkedBatchNo", linkedBatchNo)
-    formData.append("linkedProgram", linkedProgram)
-    formData.append("linkedAcademicYear", linkedAcademicYear)
-    formData.append("scheduleDate", scheduleDate)
-    formData.append("scheduleTime", scheduleTime)
-    formData.append("scheduleLocation", scheduleLocation)
   }
   formData.append("startDate", startDate)
   formData.append("endDate", endDate)
@@ -601,14 +579,7 @@ export default function AnnouncementPage() {
   const [draftType, setDraftType] = useState("new_batch")
   const [draftCustomType, setDraftCustomType] = useState("")
   const [typeError, setTypeError] = useState("")
-  const [linkError, setLinkError] = useState("")
   const [titleError, setTitleError] = useState("")
-  const [draftLinkedProgram, setDraftLinkedProgram] = useState("")
-  const [draftLinkedBatchKey, setDraftLinkedBatchKey] = useState("")
-  const [draftScheduleDate, setDraftScheduleDate] = useState("")
-  const [draftScheduleTime, setDraftScheduleTime] = useState("")
-  const [draftScheduleLocation, setDraftScheduleLocation] = useState("")
-  const { batches: publishedLandingBatches, loading: publishedBatchesLoading } = usePublishedLandingBatches()
   const [draftStartDate, setDraftStartDate] = useState(() => getTodayDateString())
   const [draftEndDate, setDraftEndDate] = useState("")
   const [startDateError, setStartDateError] = useState("")
@@ -628,26 +599,6 @@ export default function AnnouncementPage() {
     () => getMinimumEndDate(draftStartDate),
     [draftStartDate],
   )
-
-  const publishedPrograms = useMemo(
-    () =>
-      [...new Set(publishedLandingBatches.map((batch) => String(batch.program ?? "").trim().toUpperCase()).filter(Boolean))].sort(),
-    [publishedLandingBatches],
-  )
-
-  const publishedBatchesForProgram = useMemo(() => {
-    const program = String(draftLinkedProgram ?? "").trim().toUpperCase()
-    if (!program) return []
-    return publishedLandingBatches
-      .filter((batch) => String(batch.program ?? "").trim().toUpperCase() === program)
-      .sort((a, b) => {
-        const parseBatch = (row) => {
-          const n = Number.parseFloat(String(row?.batchNo ?? "").trim())
-          return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY
-        }
-        return parseBatch(a) - parseBatch(b)
-      })
-  }, [draftLinkedProgram, publishedLandingBatches])
 
   const announcements = useMemo(
     () => rawAnnouncements.map(normalizeAnnouncement),
@@ -672,11 +623,6 @@ export default function AnnouncementPage() {
     setDraftDescription("")
     setDraftType("new_batch")
     setDraftCustomType("")
-    setDraftLinkedProgram("")
-    setDraftLinkedBatchKey("")
-    setDraftScheduleDate("")
-    setDraftScheduleTime("")
-    setDraftScheduleLocation("")
     const today = getTodayDateString()
     setDraftStartDate(today)
     setDraftEndDate("")
@@ -685,38 +631,7 @@ export default function AnnouncementPage() {
     setDurationError("")
     setStartDateError("")
     setTypeError("")
-    setLinkError("")
     setTitleError("")
-  }
-
-  const resolveDraftLinkedBatchFields = () => {
-    const program = String(draftLinkedProgram ?? "").trim().toUpperCase()
-    if (!program || !draftLinkedBatchKey) {
-      return { linkedBatchNo: "", linkedProgram: "", linkedAcademicYear: "" }
-    }
-    const match = publishedBatchesForProgram.find(
-      (batch) =>
-        `${String(batch.batchNo ?? "").trim()}|${String(batch.program ?? "").trim().toUpperCase()}|${String(batch.schoolYear ?? "").trim()}` ===
-        draftLinkedBatchKey,
-    )
-    if (!match) {
-      if (draftLinkedBatchKey.includes("|")) {
-        const [linkedBatchNo, linkedProgram, linkedAcademicYear] = draftLinkedBatchKey.split("|")
-        if (linkedBatchNo && linkedProgram && linkedAcademicYear) {
-          return {
-            linkedBatchNo: String(linkedBatchNo).trim(),
-            linkedProgram: String(linkedProgram).trim().toUpperCase(),
-            linkedAcademicYear: String(linkedAcademicYear).trim(),
-          }
-        }
-      }
-      return { linkedBatchNo: "", linkedProgram: program, linkedAcademicYear: "" }
-    }
-    return {
-      linkedBatchNo: String(match.batchNo ?? "").trim(),
-      linkedProgram: String(match.program ?? "").trim().toUpperCase(),
-      linkedAcademicYear: String(match.schoolYear ?? "").trim(),
-    }
   }
 
   const openEditAnnouncement = (item) => {
@@ -726,11 +641,6 @@ export default function AnnouncementPage() {
     setDraftDescription(item.description)
     setDraftType(item.type || "new_batch")
     setDraftCustomType(isOtherAnnouncementType(item.type) ? String(item.customType ?? "").trim() : "")
-    setDraftLinkedProgram(String(item.linkedProgram ?? "").trim().toUpperCase())
-    setDraftLinkedBatchKey(getLinkedBatchKey(item))
-    setDraftScheduleDate(String(item.scheduleDate ?? "").trim())
-    setDraftScheduleTime(String(item.scheduleTime ?? "").trim())
-    setDraftScheduleLocation(String(item.scheduleLocation ?? "").trim())
     const { startDate, endDate } = resolveAnnouncementDates(item)
     setDraftStartDate(startDate)
     setDraftEndDate(endDate)
@@ -748,7 +658,6 @@ export default function AnnouncementPage() {
     setDurationError("")
     setStartDateError("")
     setTypeError("")
-    setLinkError("")
     setTitleError("")
     setDialogOpen(true)
   }
@@ -889,7 +798,6 @@ export default function AnnouncementPage() {
     setStartDateError("")
     setDurationError("")
     setTypeError("")
-    setLinkError("")
 
     let firstInvalidField = null
     const markInvalid = (field) => {
@@ -899,20 +807,6 @@ export default function AnnouncementPage() {
     if (isOtherAnnouncementType(draftType) && !draftCustomType.trim()) {
       setTypeError("Please enter a custom type. This field is required when Other is selected.")
       markInvalid("type")
-    }
-
-    if (isBatchLinkedAnnouncementType(draftType)) {
-      const linkedFields = resolveDraftLinkedBatchFields()
-      if (!draftLinkedProgram.trim()) {
-        setLinkError("Please select a program.")
-        markInvalid("batchLink")
-      } else if (!linkedFields.linkedBatchNo || !linkedFields.linkedAcademicYear) {
-        setLinkError("Please select a target batch.")
-        markInvalid("batchLink")
-      } else if (isPayoutScheduleAnnouncementType(draftType) && !String(draftScheduleDate ?? "").trim()) {
-        setLinkError("Please enter the payout date.")
-        markInvalid("batchLink")
-      }
     }
 
     if (!String(draftStartDate ?? "").trim()) {
@@ -956,7 +850,6 @@ export default function AnnouncementPage() {
           imageFiles = await draftImagesToUploadFiles(draftImages, editingId)
         }
 
-        const linkedFields = resolveDraftLinkedBatchFields()
         const formData = buildAnnouncementFormData({
           title,
           description,
@@ -967,12 +860,6 @@ export default function AnnouncementPage() {
           active: editingId ? existingActive : true,
           imageFiles,
           clearExistingImages,
-          linkedBatchNo: linkedFields.linkedBatchNo,
-          linkedProgram: linkedFields.linkedProgram,
-          linkedAcademicYear: linkedFields.linkedAcademicYear,
-          scheduleDate: draftScheduleDate.trim(),
-          scheduleTime: draftScheduleTime.trim(),
-          scheduleLocation: draftScheduleLocation.trim(),
         })
 
         let saved
@@ -1376,15 +1263,7 @@ export default function AnnouncementPage() {
                     if (!isOtherAnnouncementType(nextType)) {
                       setDraftCustomType("")
                     }
-                    if (!isBatchLinkedAnnouncementType(nextType)) {
-                      setDraftLinkedProgram("")
-                      setDraftLinkedBatchKey("")
-                      setDraftScheduleDate("")
-                      setDraftScheduleTime("")
-                      setDraftScheduleLocation("")
-                    }
                     setTypeError("")
-                    setLinkError("")
                   }}
                   aria-invalid={Boolean(typeError)}
                   aria-describedby={typeError ? "announcement-type-error" : undefined}
@@ -1424,159 +1303,6 @@ export default function AnnouncementPage() {
               ) : null}
               <FormFieldError id="announcement-type-error" message={typeError} />
             </div>
-
-            {isBatchLinkedAnnouncementType(draftType) ? (
-              <div
-                ref={(node) => {
-                  formFieldRefs.current.batchLink = node
-                }}
-                className="grid gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3"
-              >
-                <div>
-                  <p className="text-sm font-semibold text-slate-700">Target batch</p>
-                  <p className="mt-0.5 text-[11px] leading-snug text-slate-500">
-                    Link this announcement to a published landing-page batch so cashiers can see the schedule on that batch.
-                  </p>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="grid gap-1.5">
-                    <label htmlFor="announcement-linked-program" className="text-xs font-medium text-slate-600">
-                      Program <span className="text-red-600">*</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="announcement-linked-program"
-                        value={draftLinkedProgram}
-                        onChange={(event) => {
-                          setDraftLinkedProgram(event.target.value)
-                          setDraftLinkedBatchKey("")
-                          setLinkError("")
-                        }}
-                        disabled={publishedBatchesLoading}
-                        aria-invalid={Boolean(linkError)}
-                        className={cn(
-                          "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20",
-                          linkError && formInputErrorClass,
-                        )}
-                      >
-                        <option value="">Select program</option>
-                        {publishedPrograms.map((program) => (
-                          <option key={program} value={program}>
-                            {program}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                    </div>
-                  </div>
-
-                  <div className="grid gap-1.5">
-                    <label htmlFor="announcement-linked-batch" className="text-xs font-medium text-slate-600">
-                      Batch <span className="text-red-600">*</span>
-                    </label>
-                    <div className="relative">
-                      <select
-                        id="announcement-linked-batch"
-                        value={draftLinkedBatchKey}
-                        onChange={(event) => {
-                          setDraftLinkedBatchKey(event.target.value)
-                          setLinkError("")
-                        }}
-                        disabled={!draftLinkedProgram || publishedBatchesLoading}
-                        aria-invalid={Boolean(linkError)}
-                        className={cn(
-                          "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20 disabled:cursor-not-allowed disabled:bg-slate-100",
-                          linkError && formInputErrorClass,
-                        )}
-                      >
-                        <option value="">
-                          {!draftLinkedProgram
-                            ? "Select a program first"
-                            : publishedBatchesForProgram.length
-                              ? "Select batch"
-                              : "No published batches for this program"}
-                        </option>
-                        {publishedBatchesForProgram.map((batch) => {
-                          const optionKey = `${String(batch.batchNo ?? "").trim()}|${String(batch.program ?? "").trim().toUpperCase()}|${String(batch.schoolYear ?? "").trim()}`
-                          return (
-                            <option key={optionKey} value={optionKey}>
-                              {formatBatchOptionLabel(batch)}
-                            </option>
-                          )
-                        })}
-                        {draftLinkedBatchKey &&
-                        !publishedBatchesForProgram.some(
-                          (batch) =>
-                            `${String(batch.batchNo ?? "").trim()}|${String(batch.program ?? "").trim().toUpperCase()}|${String(batch.schoolYear ?? "").trim()}` ===
-                            draftLinkedBatchKey,
-                        ) ? (
-                          <option value={draftLinkedBatchKey}>
-                            {formatLinkedBatchLabel({
-                              linkedBatchNo: draftLinkedBatchKey.split("|")[0],
-                              linkedProgram: draftLinkedBatchKey.split("|")[1],
-                              linkedAcademicYear: draftLinkedBatchKey.split("|")[2],
-                            }) || draftLinkedBatchKey}
-                          </option>
-                        ) : null}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-                    </div>
-                  </div>
-                </div>
-
-                {isPayoutScheduleAnnouncementType(draftType) ? (
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="grid gap-1.5 sm:col-span-1">
-                      <label htmlFor="announcement-schedule-date" className="text-xs font-medium text-slate-600">
-                        Payout date <span className="text-red-600">*</span>
-                      </label>
-                      <Input
-                        id="announcement-schedule-date"
-                        type="date"
-                        value={draftScheduleDate}
-                        onChange={(event) => {
-                          setDraftScheduleDate(event.target.value)
-                          setLinkError("")
-                        }}
-                        aria-invalid={Boolean(linkError)}
-                        className={cn("h-8", linkError && formInputErrorClass)}
-                      />
-                    </div>
-                    <div className="grid gap-1.5">
-                      <label htmlFor="announcement-schedule-time" className="text-xs font-medium text-slate-600">
-                        Time window
-                      </label>
-                      <Input
-                        id="announcement-schedule-time"
-                        type="text"
-                        value={draftScheduleTime}
-                        onChange={(event) => setDraftScheduleTime(event.target.value)}
-                        placeholder="e.g. 9:00 AM – 3:00 PM"
-                        maxLength={120}
-                        className="h-8"
-                      />
-                    </div>
-                    <div className="grid gap-1.5 sm:col-span-1">
-                      <label htmlFor="announcement-schedule-location" className="text-xs font-medium text-slate-600">
-                        Location
-                      </label>
-                      <Input
-                        id="announcement-schedule-location"
-                        type="text"
-                        value={draftScheduleLocation}
-                        onChange={(event) => setDraftScheduleLocation(event.target.value)}
-                        placeholder="Cashier Office, Aux Building"
-                        maxLength={200}
-                        className="h-8"
-                      />
-                    </div>
-                  </div>
-                ) : null}
-
-                <FormFieldError id="announcement-batch-link-error" message={linkError} />
-              </div>
-            ) : null}
 
             <div
               ref={(node) => {

@@ -48,13 +48,6 @@ import {
   useLandingBatchVisibility,
 } from "@/lib/landingFeaturedBatches"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
-import {
-  BATCH_FILTER_PLACEHOLDER,
-  batchListFilterValueIsValid,
-  buildBatchListFilterOptions,
-  isUnsetBatchFilter,
-  matchesBatchListRowFilters,
-} from "@/lib/batchListFilters"
 import { buildActiveProgramCodeSet } from "@/lib/osgfaPrograms"
 import { cn } from "@/lib/utils"
 

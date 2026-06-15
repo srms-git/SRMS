@@ -4,8 +4,6 @@ const { archiveBatchIfFullyClaimed } = require('../services/archiveService');
 const { createInternalNotification } = require('./notificationController');
 const { logActivity } = require('../services/auditLogger');
 const { sanitizeGranteeOtherPersonFields } = require('../utils/granteeOtherPersonFields');
-const { pickGranteeUpdateFields } = require('../utils/granteeUpdateFields');
-const { safeErrorMessage } = require('../utils/safeErrorMessage');
 
 const DEFAULT_YEAR_LEVELS = ['1st Year', '2nd Year', '3rd Year', '4th Year'];
 
@@ -210,26 +208,7 @@ exports.batchSaveGrantees = async (req, res) => {
 
 exports.createGrantee = async (req, res) => {
     try {
-        const createBody = pickGranteeUpdateFields(req.body);
-
-        if (!createBody.program || !createBody.batchNo || !createBody.academicYear || !createBody.fullName) {
-            return res.status(400).json({
-                message: 'program, batchNo, academicYear, and fullName are required.',
-            });
-        }
-
-        if (!createBody.semesterClaims) {
-            createBody.semesterClaims = buildDefaultSemesterClaims(createBody.yearLevel);
-        }
-
-        if (createBody.status == null || createBody.status === '') {
-            createBody.status = 'Unclaimed';
-        }
-        if (createBody.active == null) {
-            createBody.active = true;
-        }
-
-        const grantee = await Grantee.create(createBody);
+        const grantee = await Grantee.create(req.body);
 
         // Log standalone individual creation events
         logActivity({
@@ -245,7 +224,7 @@ exports.createGrantee = async (req, res) => {
         return res.status(201).json(grantee);
     } catch (error) {
         console.error('createGrantee error:', error);
-        return res.status(400).json({ message: safeErrorMessage(error, 'Failed to create grantee.') });
+        return res.status(400).json({ message: error.message || 'Failed to create grantee.' });
     }
 };
 
@@ -385,7 +364,7 @@ exports.updateGrantee = async (req, res) => {
             return res.status(404).json({ message: 'Grantee not found.' });
         }
 
-        const updateBody = pickGranteeUpdateFields(req.body);
+        const updateBody = sanitizeGranteeOtherPersonFields({ ...req.body });
         const historyCreates = [];
 
         if (updateBody.semesterClaims && Array.isArray(updateBody.semesterClaims)) {

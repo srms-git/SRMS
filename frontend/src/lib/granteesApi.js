@@ -1,8 +1,13 @@
 import apiClient from "@/lib/apiClient";
+import { getApiClientBaseUrl } from "@/lib/apiConfig";
 import { sanitizeContactNumber } from "@/lib/contactNumber";
 import { normalizeSemesterClaim } from "@/lib/granteeSemesterClaims";
 import { sanitizeEnrolledProgramArchivesForSave } from "@/lib/granteeEnrolledProgramHistory"
 import { sanitizeRequirementChecklistForSave } from "@/lib/granteeRequirementsChecklist";
+
+const API_BASE =
+  getApiClientBaseUrl() ||
+  (import.meta.env.DEV ? "http://localhost:5000/api" : "");
 
 export function inferProgramFromRecord(row) {
   const direct = String(row?.program ?? "").trim().toUpperCase()
@@ -473,27 +478,30 @@ export async function updateBatchMetadata({
   newProgram,
   newAcademicYear,
 }) {
-  try {
-    const response = await apiClient.patch("/grantees/batch-update", {
+  const response = await fetch(`${API_BASE}/grantees/batch-update`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       originalBatchNo,
       originalProgram,
       originalAcademicYear,
       newBatchNo,
       newProgram,
       newAcademicYear,
-    })
-    return response.data
-  } catch (error) {
-    const data = error?.response?.data ?? {}
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
     let message = data.message || "Failed to update batch details."
-    if (error?.response?.status === 404 && !data.message) {
+    if (response.status === 404 && !data.message) {
       message = "Batch update is unavailable. Restart the backend server and try again."
     }
     const err = new Error(message)
     err.code = data.code
-    err.status = error?.response?.status
+    err.status = response.status
     throw err
   }
+  return data
 }
 
 /** True when another batch already uses the same batch number within the same program. */
@@ -533,18 +541,16 @@ export function batchNumberConflictsInProgram(records, { batchNo, program, exclu
 }
 
 export async function batchSaveGrantees({ program, batchNo, academicYear, granteeRows }) {
-  try {
-    const response = await apiClient.post("/grantees/batch-save", {
-      program,
-      batchNo,
-      academicYear,
-      granteeRows,
-    })
-    return response.data
-  } catch (error) {
-    const data = error?.response?.data ?? {}
+  const response = await fetch(`${API_BASE}/grantees/batch-save`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ program, batchNo, academicYear, granteeRows }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
     throw new Error(data.message || "Failed to save grantee batch to the database.")
   }
+  return data
 }
 
 /** Dispatched on `window` after a grantee is saved so open batch views stay in sync. */
@@ -569,18 +575,19 @@ export async function bulkUpdateGranteesActive(ids, active, remarks = "") {
     throw new Error("Remarks are required when marking grantees inactive.")
   }
 
-  let data
-  try {
-    const response = await apiClient.post("/grantees/bulk-active", {
+  const response = await fetch(`${API_BASE}/grantees/bulk-active`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       ids: normalizedIds,
       active,
       remarks: active ? "" : normalizedRemarks,
-    })
-    data = response.data
-  } catch (error) {
-    const payload = error?.response?.data ?? {}
-    let message = payload.message || "Failed to update grantee record status."
-    if (error?.response?.status === 404 && !payload.message) {
+    }),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    let message = data.message || "Failed to update grantee record status."
+    if (response.status === 404 && !data.message) {
       message = "Grantee status update is unavailable. Restart the backend server and try again."
     }
     throw new Error(message)
@@ -601,13 +608,14 @@ export async function updateGrantee(id, row) {
   if (!granteeId) {
     throw new Error("Cannot update grantee: missing database id.")
   }
-  let data
-  try {
-    const response = await apiClient.put(`/grantees/${encodeURIComponent(granteeId)}`, mapGranteeToApi(row))
-    data = response.data
-  } catch (error) {
-    const payload = error?.response?.data ?? {}
-    throw new Error(payload.message || "Failed to save grantee changes to the database.")
+  const response = await fetch(`${API_BASE}/grantees/${encodeURIComponent(granteeId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(mapGranteeToApi(row)),
+  })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to save grantee changes to the database.")
   }
   const mapped = mapGranteeFromApi(data)
   notifyGranteeUpdated(mapped)

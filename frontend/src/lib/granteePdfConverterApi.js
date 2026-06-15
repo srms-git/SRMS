@@ -1,12 +1,11 @@
 import * as XLSX from "xlsx"
 
-import authService from "@/services/authService"
 import { mapSheetRowToGranteeShape } from "@/lib/granteeImportMapping"
 
 /**
- * Base URL for the PDF converter (no trailing slash).
- * - Dev: Vite proxies `/api/pdf-converter` → Node API (auth required) → Flask PDF service
- * - Prod: set `VITE_PDF_CONVERTER_URL` to your backend base + `/api/pdf-converter`, or leave default
+ * Base URL for the Flask PDF converter (no trailing slash).
+ * - Dev: Vite proxies `/api/pdf-converter` → `http://127.0.0.1:5001` (Python PDF service)
+ * - Prod: set `VITE_PDF_CONVERTER_URL` (e.g. https://api.example.com)
  */
 export function getPdfConverterBaseUrl() {
   const raw = import.meta.env.VITE_PDF_CONVERTER_URL
@@ -16,9 +15,6 @@ export function getPdfConverterBaseUrl() {
 
 function buildPdfConverterUnavailableMessage(base, status) {
   const usingDefaultLocalProxy = base === "/api/pdf-converter"
-  if (status === 502 && usingDefaultLocalProxy) {
-    return "PDF converter is not running on port 5001. Restart with npm run dev from the frontend folder (starts frontend, API, and PDF services). If it still fails, run: python -m pip install -r backend/requirements.txt"
-  }
   if (status === 404 && usingDefaultLocalProxy) {
     return "PDF converter service is not available in production. Set VITE_PDF_CONVERTER_URL in your Vercel project to the deployed Python converter API URL."
   }
@@ -57,18 +53,11 @@ export async function downloadGranteePdfAsXlsx(file) {
   const form = new FormData()
   form.append("pdf", file, file.name)
 
-  const token = authService.getToken()
-  const headers = {}
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-
   let res
   try {
     res = await fetch(`${base}/upload`, {
       method: "POST",
       body: form,
-      headers,
     })
   } catch {
     throw new Error(buildPdfConverterNetworkErrorMessage(base))

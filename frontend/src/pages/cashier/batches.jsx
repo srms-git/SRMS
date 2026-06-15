@@ -3,18 +3,8 @@ import { useNavigate } from "react-router-dom"
 import { CalendarDays, GraduationCap, Layers, Search, SlidersHorizontal, TableProperties } from "lucide-react"
 
 import { ConnectionProblemState } from "@/components/ConnectionProblemState"
-import { PayoutScheduleBadge, PayoutScheduleDetailsDialog } from "@/components/PayoutScheduleBadge"
 import { buildBatchesFromGrantees } from "@/lib/granteesApi"
-import { useArchivedBatchesQuery, useAnnouncementsQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
-import { buildPayoutScheduleByBatchKey, getOperationalBatchKey } from "@/lib/announcementBatchLink"
-import {
-  BATCH_FILTER_PLACEHOLDER,
-  batchListFilterValueIsValid,
-  buildBatchListFilterOptions,
-  isUnsetBatchFilter,
-  matchesBatchListRowFilters,
-} from "@/lib/batchListFilters"
-import { getTodayDateString } from "@/lib/announcementDates"
+import { useArchivedBatchesQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 import {
@@ -85,11 +75,7 @@ export default function Batches() {
     error: archivedError,
     refetch: refetchArchived,
   } = useArchivedBatchesQuery()
-  const {
-    data: rawAnnouncements = [],
-    isLoading: announcementsLoading,
-  } = useAnnouncementsQuery()
-  const isLoading = granteesLoading || archivedLoading || announcementsLoading
+  const isLoading = granteesLoading || archivedLoading
   const fetchError = granteesError?.message ?? archivedError?.message ?? null
 
   const [searchTerm, setSearchTerm] = useState("")
@@ -97,9 +83,6 @@ export default function Batches() {
   const [programFilter, setProgramFilter] = useState("__")
   const [yearFilter, setYearFilter] = useState("__")
   const [sortMode, setSortMode] = useState("batch-asc")
-  const [scheduleFilter, setScheduleFilter] = useState("__")
-  const [scheduleDialogAnnouncement, setScheduleDialogAnnouncement] = useState(null)
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   const [batchesView, setBatchesView] = useState(() => modulePrefs.defaultBatchesView || "grid")
   const archivedBatchCount = archivedBatches.length
   const landingVisibility = useLandingBatchVisibility()
@@ -116,21 +99,6 @@ export default function Batches() {
 
   const batches = useMemo(() => buildBatchesFromGrantees(granteesRawData), [granteesRawData])
 
-  const publishedBatches = useMemo(
-    () => batches.filter((row) => isBatchVisibleOnLanding(row, landingVisibility)),
-    [batches, landingVisibility],
-  )
-
-  const payoutScheduleByBatchKey = useMemo(
-    () => buildPayoutScheduleByBatchKey(rawAnnouncements, getTodayDateString()),
-    [rawAnnouncements],
-  )
-
-  const openScheduleDetails = (announcement) => {
-    setScheduleDialogAnnouncement(announcement)
-    setScheduleDialogOpen(true)
-  }
-
   // Count instances for each distinct operational subset card
   const granteeCountsByBatchProgram = useMemo(() => {
     const map = new Map()
@@ -146,30 +114,18 @@ export default function Batches() {
   }, [granteesRawData])
 
   const uniqueBatchNos = useMemo(
-    () => [...new Set(publishedBatches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
-    [publishedBatches],
+    () => [...new Set(batches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
+    [batches],
   )
-  const uniqueYears = useMemo(
-    () => [...new Set(publishedBatches.map((row) => String(row.schoolYear ?? "").trim()).filter(Boolean))].sort(),
-    [publishedBatches],
-  )
-  const uniquePrograms = useMemo(
-    () => [...new Set(publishedBatches.map((row) => String(row.program ?? "").trim()).filter(Boolean))].sort(),
-    [publishedBatches],
-  )
+  const uniqueYears = useMemo(() => [...new Set(batches.map((row) => String(row.schoolYear ?? "").trim()).filter(Boolean))].sort(), [batches])
+  const uniquePrograms = useMemo(() => [...new Set(batches.map((row) => String(row.program ?? "").trim()).filter(Boolean))].sort(), [batches])
 
   const filteredBatches = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    return publishedBatches.filter((row) => {
+    return batches.filter((row) => {
       if (batchFilter !== "__" && batchFilter !== "" && String(row.batchNo ?? "") !== batchFilter) return false
       if (programFilter !== "__" && programFilter !== "" && String(row.program ?? "") !== programFilter) return false
       if (yearFilter !== "__" && yearFilter !== "" && String(row.schoolYear ?? "") !== yearFilter) return false
-      if (scheduleFilter === "scheduled") {
-        if (!payoutScheduleByBatchKey.get(getOperationalBatchKey(row))) return false
-      }
-      if (scheduleFilter === "none") {
-        if (payoutScheduleByBatchKey.get(getOperationalBatchKey(row))) return false
-      }
       if (!query) return true
       return (
         String(row.batchNo ?? "").toLowerCase().includes(query) ||
@@ -177,7 +133,7 @@ export default function Batches() {
         String(row.program ?? "").toLowerCase().includes(query)
       )
     })
-  }, [publishedBatches, batchFilter, programFilter, searchTerm, yearFilter, scheduleFilter, payoutScheduleByBatchKey])
+  }, [batches, batchFilter, programFilter, searchTerm, yearFilter])
 
   const summary = useMemo(() => {
     let publishedBatches = 0
@@ -297,7 +253,7 @@ export default function Batches() {
 
       {/* Control Filter Bar */}
       <div className="mb-4 grid min-w-0 w-full max-w-full gap-3 md:grid-cols-12 md:items-center">
-        <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 md:col-span-7 lg:col-span-8">
+        <div className="grid min-w-0 w-full max-w-full grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4 md:col-span-7 lg:col-span-8">
           <div className="relative min-w-0 w-full">
             <select
               value={batchFilter}
@@ -356,22 +312,6 @@ export default function Batches() {
           </div>
 
           <div className="relative min-w-0 w-full">
-            <select
-              value={scheduleFilter}
-              onChange={(e) => setScheduleFilter(e.target.value)}
-              className={`${selectShellClass} ${scheduleFilter === "__" ? "text-neutral-500" : "text-neutral-900"}`}
-            >
-              <option value="__" disabled hidden>
-                Payout schedule
-              </option>
-              <option value="">All batches</option>
-              <option value="scheduled">Has payout schedule</option>
-              <option value="none">No payout schedule</option>
-            </select>
-            <SlidersHorizontal className="pointer-events-none absolute top-1/2 right-2 h-4 w-4 -translate-y-1/2 text-neutral-400" />
-          </div>
-
-          <div className="relative min-w-0 w-full sm:col-span-2 lg:col-span-1">
             <select
               value={sortMode}
               onChange={(e) => setSortMode(e.target.value)}
@@ -475,7 +415,6 @@ export default function Batches() {
                 {sortedBatches.map((row, index) => {
                   const programKey = String(row.program ?? "").trim().toUpperCase()
                   const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
-                  const payoutAnnouncement = payoutScheduleByBatchKey.get(getOperationalBatchKey(row))
 
                   return (
                     <tr
@@ -493,12 +432,7 @@ export default function Batches() {
                         navigate(`/cashier/batch-info?${params.toString()}`)
                       }}
                     >
-                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>Batch {row.batchNo}</span>
-                          <PayoutScheduleBadge announcement={payoutAnnouncement} onOpenDetails={openScheduleDetails} />
-                        </div>
-                      </td>
+                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Batch {row.batchNo}</td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.program || "—"}</td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.schoolYear || "—"}</td>
                       <td className="px-4 py-3 font-medium text-emerald-800 dark:text-emerald-200">{grantees}</td>
@@ -509,8 +443,8 @@ export default function Batches() {
             </table>
             {sortedBatches.length === 0 ? (
               <div className="p-10 text-center text-sm text-slate-500">
-                {publishedBatches.length === 0
-                  ? "No published batch records found."
+                {batches.length === 0
+                  ? "No batch records found."
                   : "No batches match your current filters or search."}
               </div>
             ) : null}
@@ -520,7 +454,6 @@ export default function Batches() {
             {sortedBatches.map((row, index) => {
               const programKey = String(row.program ?? "").trim().toUpperCase()
               const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
-              const payoutAnnouncement = payoutScheduleByBatchKey.get(getOperationalBatchKey(row))
 
               return (
                 <button
@@ -567,7 +500,6 @@ export default function Batches() {
                         <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-100">
                           Grantees: {grantees}
                         </span>
-                        <PayoutScheduleBadge announcement={payoutAnnouncement} onOpenDetails={openScheduleDetails} />
                       </div>
                     </div>
                   </div>
@@ -577,20 +509,14 @@ export default function Batches() {
 
             {sortedBatches.length === 0 ? (
               <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                {publishedBatches.length === 0
-                  ? "No published batch records found."
+                {batches.length === 0
+                  ? "No batch records found."
                   : "No batches match your current filters or search."}
               </div>
             ) : null}
           </div>
         ))}
       </div>
-
-      <PayoutScheduleDetailsDialog
-        announcement={scheduleDialogAnnouncement}
-        open={scheduleDialogOpen}
-        onOpenChange={setScheduleDialogOpen}
-      />
 
     </section>
   )

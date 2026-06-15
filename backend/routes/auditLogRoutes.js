@@ -1,12 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const { getAuditLogs, getAuditLogById } = require('../controllers/auditLogController');
-const authenticate = require('../middleware/authenticate');
-const requireRole = require('../middleware/requireRole');
 
-const staffAuth = [authenticate, requireRole('osgfa', 'cashier')];
+/**
+ * @route   GET /api/audit-logs
+ * @desc    Get a list of all system audit logs (supports pagination & filtering)
+ */
+router.get('/', getAuditLogs);
 
-router.get('/', ...staffAuth, getAuditLogs);
-router.get('/:id', ...staffAuth, getAuditLogById);
+/**
+ * @route   GET /api/audit-logs/:id
+ * @desc    Get specific details of an audit log (including delta updates)
+ */
+router.get('/:id', getAuditLogById);
 
 module.exports = router;

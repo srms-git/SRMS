@@ -17,6 +17,11 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     proxy: {
+      "/api/pdf-converter": {
+        target: "http://127.0.0.1:5001",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pdf-converter/, ""),
+      },
       "/api": {
         target: "http://127.0.0.1:5000",
         changeOrigin: true,

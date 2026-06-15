@@ -74,10 +74,6 @@ async function migrateLegacyPublishedKeys() {
 
 exports.listLandingBatches = async (req, res) => {
     try {
-        if (!req.userId && req.query.published !== 'true') {
-            return res.status(401).json({ message: 'Authentication required.' });
-        }
-
         await migrateLegacyPublishedKeys();
 
         const filter = {};
