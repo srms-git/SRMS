@@ -29,6 +29,9 @@ import {
 } from "@/lib/osgfaPrograms"
 import { SemesterClaimCell } from "@/components/grantee/semester-claim-display"
 import { useLandingPagePrivacy } from "@/lib/landingPageSettings"
+import { findPayoutScheduleAnnouncementsForBatch } from "@/lib/payoutScheduleAnnouncements"
+import { PayoutScheduleAnnouncementCard } from "@/components/PayoutScheduleAnnouncement"
+import { useAnnouncementsQuery } from "@/hooks/useSrmsQueries"
 import {
   ensureSemesterClaimTimestamps,
   semesterClaimsForRow,
@@ -491,6 +494,7 @@ export default function LandingPageBatch() {
   const [loadingRecords, setLoadingRecords] = useState(false)
   const [didFetchRecords, setDidFetchRecords] = useState(false)
   const landingPrivacy = useLandingPagePrivacy()
+  const { data: announcements = [] } = useAnnouncementsQuery()
 
   const batchNo = String(params.get("batchNo") ?? "").trim()
   const program = String(params.get("program") ?? "").trim().toUpperCase()
@@ -631,6 +635,12 @@ export default function LandingPageBatch() {
     program ? `Program: ${program}` : "Program: —",
     academicYear ? `Academic year: ${academicYear}` : "Academic year: —",
   ].join(" · ")
+
+  const payoutScheduleAnnouncements = useMemo(
+    () => findPayoutScheduleAnnouncementsForBatch(announcements, { batchNo, program }),
+    [announcements, batchNo, program],
+  )
+
   const handleRecordDialogOpenChange = (open) => {
     setRecordDialogOpen(open)
     if (!open) setActiveRowKey(null)
@@ -670,6 +680,17 @@ export default function LandingPageBatch() {
       </header>
 
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {payoutScheduleAnnouncements.length > 0 ? (
+          <div className="mb-4 space-y-3">
+            {payoutScheduleAnnouncements.map((announcement) => (
+              <PayoutScheduleAnnouncementCard
+                key={announcement.id || announcement._id}
+                announcement={announcement}
+                variant="landing"
+              />
+            ))}
+          </div>
+        ) : null}
         <section className="space-y-4">
           <div className="mb-3 grid min-w-0 w-full max-w-full gap-3 max-md:grid-cols-1 md:grid-cols-12 md:items-center">
             <div className="grid min-w-0 w-full max-w-full grid-cols-4 gap-1.5 max-md:[&_select]:px-1.5 max-md:[&_select]:pr-6 max-md:[&_select]:text-[10px] md:col-span-7 md:grid-cols-2 md:gap-3 lg:col-span-8 xl:grid-cols-4">

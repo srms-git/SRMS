@@ -135,7 +135,13 @@ exports.updateAnnouncement = async (req, res) => {
             description: description?.trim(),
         };
 
-        if (req.body.type !== undefined || req.body.customType !== undefined) {
+        if (
+            req.body.type !== undefined ||
+            req.body.customType !== undefined ||
+            req.body.payoutProgram !== undefined ||
+            req.body.payoutBatchNo !== undefined ||
+            req.body.payoutDate !== undefined
+        ) {
             try {
                 Object.assign(
                     updates,
@@ -143,6 +149,9 @@ exports.updateAnnouncement = async (req, res) => {
                         {
                             type: req.body.type ?? oldRecord.type,
                             customType: req.body.customType ?? oldRecord.customType,
+                            payoutProgram: req.body.payoutProgram ?? oldRecord.payoutProgram,
+                            payoutBatchNo: req.body.payoutBatchNo ?? oldRecord.payoutBatchNo,
+                            payoutDate: req.body.payoutDate ?? oldRecord.payoutDate,
                         },
                         oldRecord.type
                     )

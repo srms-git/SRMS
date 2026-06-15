@@ -66,6 +66,24 @@ const AnnouncementSchema = new mongoose.Schema({
         type: [imageSubSchema],
         default: []
     },
+    /** Payout schedule — program code (e.g. TES, TDP) */
+    payoutProgram: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    /** Payout schedule — published batch number */
+    payoutBatchNo: {
+        type: String,
+        trim: true,
+        default: ''
+    },
+    /** Payout schedule — when payout will happen (YYYY-MM-DD) */
+    payoutDate: {
+        type: String,
+        trim: true,
+        default: ''
+    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'

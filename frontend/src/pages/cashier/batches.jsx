@@ -4,8 +4,13 @@ import { CalendarDays, GraduationCap, Layers, Search, SlidersHorizontal, TablePr
 
 import { ConnectionProblemState } from "@/components/ConnectionProblemState"
 import { buildBatchesFromGrantees } from "@/lib/granteesApi"
-import { useArchivedBatchesQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
+import { useArchivedBatchesQuery, useAnnouncementsQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
+import {
+  buildPayoutScheduleBadgeLookup,
+  normalizePayoutBatchKey,
+} from "@/lib/payoutScheduleAnnouncements"
+import { PayoutScheduleBadge } from "@/components/PayoutScheduleAnnouncement"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 import {
   BatchCardSkeleton,
@@ -75,6 +80,7 @@ export default function Batches() {
     error: archivedError,
     refetch: refetchArchived,
   } = useArchivedBatchesQuery()
+  const { data: announcements = [] } = useAnnouncementsQuery()
   const isLoading = granteesLoading || archivedLoading
   const fetchError = granteesError?.message ?? archivedError?.message ?? null
 
@@ -98,6 +104,10 @@ export default function Batches() {
   }, [modulePrefs.defaultBatchFilter, navigate])
 
   const batches = useMemo(() => buildBatchesFromGrantees(granteesRawData), [granteesRawData])
+  const publishedBatches = useMemo(
+    () => batches.filter((batch) => isBatchVisibleOnLanding(batch, landingVisibility)),
+    [batches, landingVisibility],
+  )
 
   // Count instances for each distinct operational subset card
   const granteeCountsByBatchProgram = useMemo(() => {
@@ -114,15 +124,21 @@ export default function Batches() {
   }, [granteesRawData])
 
   const uniqueBatchNos = useMemo(
-    () => [...new Set(batches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
-    [batches],
+    () => [...new Set(publishedBatches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
+    [publishedBatches],
   )
-  const uniqueYears = useMemo(() => [...new Set(batches.map((row) => String(row.schoolYear ?? "").trim()).filter(Boolean))].sort(), [batches])
-  const uniquePrograms = useMemo(() => [...new Set(batches.map((row) => String(row.program ?? "").trim()).filter(Boolean))].sort(), [batches])
+  const uniqueYears = useMemo(
+    () => [...new Set(publishedBatches.map((row) => String(row.schoolYear ?? "").trim()).filter(Boolean))].sort(),
+    [publishedBatches],
+  )
+  const uniquePrograms = useMemo(
+    () => [...new Set(publishedBatches.map((row) => String(row.program ?? "").trim()).filter(Boolean))].sort(),
+    [publishedBatches],
+  )
 
   const filteredBatches = useMemo(() => {
     const query = searchTerm.trim().toLowerCase()
-    return batches.filter((row) => {
+    return publishedBatches.filter((row) => {
       if (batchFilter !== "__" && batchFilter !== "" && String(row.batchNo ?? "") !== batchFilter) return false
       if (programFilter !== "__" && programFilter !== "" && String(row.program ?? "") !== programFilter) return false
       if (yearFilter !== "__" && yearFilter !== "" && String(row.schoolYear ?? "") !== yearFilter) return false
@@ -133,7 +149,7 @@ export default function Batches() {
         String(row.program ?? "").toLowerCase().includes(query)
       )
     })
-  }, [batches, batchFilter, programFilter, searchTerm, yearFilter])
+  }, [publishedBatches, batchFilter, programFilter, searchTerm, yearFilter])
 
   const summary = useMemo(() => {
     let publishedBatches = 0
@@ -186,6 +202,11 @@ export default function Batches() {
   }, [filteredBatches, granteeCountsByBatchProgram, sortMode])
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
+
+  const payoutBadgeKeys = useMemo(() => {
+    const lookup = buildPayoutScheduleBadgeLookup(announcements)
+    return new Set(lookup.keys())
+  }, [announcements])
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
@@ -415,6 +436,7 @@ export default function Batches() {
                 {sortedBatches.map((row, index) => {
                   const programKey = String(row.program ?? "").trim().toUpperCase()
                   const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
+                  const showPayoutBadge = payoutBadgeKeys.has(normalizePayoutBatchKey(row.batchNo, row.program))
 
                   return (
                     <tr
@@ -432,7 +454,12 @@ export default function Batches() {
                         navigate(`/cashier/batch-info?${params.toString()}`)
                       }}
                     >
-                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">Batch {row.batchNo}</td>
+                      <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
+                        <span className="inline-flex items-center gap-2">
+                          Batch {row.batchNo}
+                          {showPayoutBadge ? <PayoutScheduleBadge compact /> : null}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.program || "—"}</td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.schoolYear || "—"}</td>
                       <td className="px-4 py-3 font-medium text-emerald-800 dark:text-emerald-200">{grantees}</td>
@@ -443,8 +470,8 @@ export default function Batches() {
             </table>
             {sortedBatches.length === 0 ? (
               <div className="p-10 text-center text-sm text-slate-500">
-                {batches.length === 0
-                  ? "No batch records found."
+                {publishedBatches.length === 0
+                  ? "No published batches are available yet."
                   : "No batches match your current filters or search."}
               </div>
             ) : null}
@@ -454,6 +481,7 @@ export default function Batches() {
             {sortedBatches.map((row, index) => {
               const programKey = String(row.program ?? "").trim().toUpperCase()
               const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
+              const showPayoutBadge = payoutBadgeKeys.has(normalizePayoutBatchKey(row.batchNo, row.program))
 
               return (
                 <button
@@ -487,7 +515,10 @@ export default function Batches() {
                         {formatCreatedAtDate(row.createdAt)}
                       </p>
                       <h3 className="mt-1 text-base font-semibold leading-snug text-slate-900 dark:text-white">
-                        Batch {row.batchNo}
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          Batch {row.batchNo}
+                          {showPayoutBadge ? <PayoutScheduleBadge compact /> : null}
+                        </span>
                       </h3>
 
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -509,8 +540,8 @@ export default function Batches() {
 
             {sortedBatches.length === 0 ? (
               <div className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-500">
-                {batches.length === 0
-                  ? "No batch records found."
+                {publishedBatches.length === 0
+                  ? "No published batches are available yet."
                   : "No batches match your current filters or search."}
               </div>
             ) : null}

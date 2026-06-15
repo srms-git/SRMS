@@ -24,6 +24,11 @@ import {
 } from "@/lib/announcementDates"
 import { getAnnouncementTypeLabel } from "@/lib/announcementTypes"
 import { resolveAnnouncementImageUrls } from "@/lib/announcementImages"
+import {
+  buildPayoutScheduleBadgeLookup,
+  normalizePayoutBatchKey,
+} from "@/lib/payoutScheduleAnnouncements"
+import { PayoutScheduleBadge } from "@/components/PayoutScheduleAnnouncement"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
   getBatchLandingKey,
@@ -277,7 +282,7 @@ function getFeaturedBatchCardKey(batch, keyPrefix) {
   return `${keyPrefix}-${batch.batchNo}-${batch.program}-${batch.schoolYear}`
 }
 
-function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", privacy }) {
+function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", privacy, payoutBadgeKeys }) {
   const uniqueItems = useMemo(() => {
     const seen = new Set()
     return items.filter((batch) => {
@@ -485,6 +490,8 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
     const rawBatchLabel = String(batch.batchNo ?? "?")
     const batchLabel = privacy.maskBatchNumberInPublicList ? maskBatchNumber(rawBatchLabel) : rawBatchLabel
     const granteeLabel = privacy.hideGranteeCountInPublicList ? "Hidden" : `${batch.grantees} grantees`
+    const payoutBadgeKey = normalizePayoutBatchKey(batch.batchNo, batch.program)
+    const showPayoutBadge = payoutBadgeKeys?.has?.(payoutBadgeKey)
 
     return (
       <div
@@ -553,6 +560,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
                       {accent.label}
                     </span>
                   ) : null}
+                  {showPayoutBadge ? <PayoutScheduleBadge compact /> : null}
                   <span
                     className="rounded-full border px-1.5 py-px text-[8px] font-semibold uppercase tracking-[0.1em] sm:px-2 sm:py-0.5 sm:text-[10px] sm:tracking-[0.12em]"
                     style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
@@ -1837,6 +1845,7 @@ function BillboardCard({
 export default function LandingPage() {
   const location = useLocation()
   const [announcements, setAnnouncements] = useState([])
+  const [announcementRecords, setAnnouncementRecords] = useState([])
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
   const { programs } = useOsgfaPrograms()
   const landingPageSettings = useLandingPageSettings()
@@ -1885,14 +1894,16 @@ export default function LandingPage() {
       try {
         const response = await apiClient.get("/announcements")
         const fetched = Array.isArray(response.data) ? response.data : []
-        const activeAnnouncements = fetched
+        const activeRecords = fetched
           .filter((item) => item && isAnnouncementVisibleOnLanding(item))
           .sort((a, b) => {
             const aStart = resolveAnnouncementDates(a).startDate
             const bStart = resolveAnnouncementDates(b).startDate
             return new Date(bStart || b.createdAt || 0) - new Date(aStart || a.createdAt || 0)
           })
-          .map((item, index) => {
+        setAnnouncementRecords(activeRecords)
+        setAnnouncements(
+          activeRecords.map((item, index) => {
             const { startDate, endDate } = resolveAnnouncementDates(item)
             const id = item.id || item._id || `announcement-${index}`
             const imageUrls = resolveAnnouncementImageUrls({ ...item, id })
@@ -1906,11 +1917,12 @@ export default function LandingPage() {
               imageUrls,
               imageUrl: imageUrls[0] ?? null,
             }
-          })
-        setAnnouncements(activeAnnouncements)
+          }),
+        )
       } catch (error) {
         console.error("Failed to load landing announcements:", error)
         setAnnouncements([])
+        setAnnouncementRecords([])
       }
     }
 
@@ -1937,6 +1949,11 @@ export default function LandingPage() {
     () => buildFeaturedBatchesByProgram(publicLandingBatches),
     [publicLandingBatches],
   )
+
+  const payoutBadgeKeys = useMemo(() => {
+    const lookup = buildPayoutScheduleBadgeLookup(announcementRecords)
+    return new Set(lookup.keys())
+  }, [announcementRecords])
 
   const heroContent = (
     <div className="grid w-full items-center gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
@@ -2261,6 +2278,7 @@ export default function LandingPage() {
                       items={items}
                       scrollDirection={programLabel === "TDP" || index % 2 === 1 ? "right" : "left"}
                       privacy={landingPrivacy}
+                      payoutBadgeKeys={payoutBadgeKeys}
                     />
                   ))
                 ) : (

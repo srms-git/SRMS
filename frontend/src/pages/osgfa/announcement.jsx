@@ -68,8 +68,15 @@ import {
   getAnnouncementTypeLabel,
   isOtherAnnouncementType,
 } from "@/lib/announcementTypes"
-import { useAnnouncementsQuery } from "@/hooks/useSrmsQueries"
+import { useAnnouncementsQuery, useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { queryKeys } from "@/lib/queryKeys"
+import { buildBatchesFromGrantees } from "@/lib/granteesApi"
+import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
+import {
+  formatPayoutDateLabel,
+  isPayoutScheduleAnnouncement,
+  PAYOUT_SCHEDULE_TYPE,
+} from "@/lib/payoutScheduleAnnouncements"
 import { cn } from "@/lib/utils"
 
 const selectShellClass =
@@ -155,6 +162,9 @@ function buildAnnouncementFormData({
   active,
   imageFiles = [],
   clearExistingImages,
+  payoutProgram,
+  payoutBatchNo,
+  payoutDate,
 }) {
   const formData = new FormData()
   formData.append("title", title)
@@ -162,6 +172,11 @@ function buildAnnouncementFormData({
   formData.append("type", type)
   if (isOtherAnnouncementType(type)) {
     formData.append("customType", customType.trim())
+  }
+  if (type === PAYOUT_SCHEDULE_TYPE) {
+    formData.append("payoutProgram", payoutProgram.trim().toUpperCase())
+    formData.append("payoutBatchNo", payoutBatchNo.trim())
+    formData.append("payoutDate", payoutDate.trim())
   }
   formData.append("startDate", startDate)
   formData.append("endDate", endDate)
@@ -538,6 +553,19 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
                   {item.description}
                 </p>
               ) : null}
+              {isPayoutScheduleAnnouncement(item) ? (
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-medium text-slate-600">
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                    {String(item.payoutProgram ?? "").trim().toUpperCase() || "—"}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5">
+                    Batch {String(item.payoutBatchNo ?? "").trim() || "—"}
+                  </span>
+                  <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-900">
+                    {formatPayoutDateLabel(item.payoutDate)}
+                  </span>
+                </div>
+              ) : null}
             </div>
             {hasPhotos ? (
               <div className="mt-3 shrink-0">
@@ -568,6 +596,8 @@ export default function AnnouncementPage() {
     error: announcementsQueryError,
     refetch: loadAnnouncements,
   } = useAnnouncementsQuery()
+  const { data: granteesRawData = [] } = useGranteesQuery()
+  const landingVisibility = useLandingBatchVisibility()
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [dateRange, setDateRange] = useState("__")
@@ -578,6 +608,10 @@ export default function AnnouncementPage() {
   const [draftDescription, setDraftDescription] = useState("")
   const [draftType, setDraftType] = useState("new_batch")
   const [draftCustomType, setDraftCustomType] = useState("")
+  const [draftPayoutProgram, setDraftPayoutProgram] = useState("")
+  const [draftPayoutBatchNo, setDraftPayoutBatchNo] = useState("")
+  const [draftPayoutDate, setDraftPayoutDate] = useState("")
+  const [payoutScheduleError, setPayoutScheduleError] = useState("")
   const [typeError, setTypeError] = useState("")
   const [titleError, setTitleError] = useState("")
   const [draftStartDate, setDraftStartDate] = useState(() => getTodayDateString())
@@ -605,6 +639,45 @@ export default function AnnouncementPage() {
     [rawAnnouncements],
   )
 
+  const publishedPayoutBatches = useMemo(() => {
+    const batches = buildBatchesFromGrantees(granteesRawData).filter((batch) =>
+      isBatchVisibleOnLanding(batch, landingVisibility),
+    )
+    const seen = new Set()
+    return batches.filter((batch) => {
+      const key = `${String(batch.batchNo ?? "").trim()}|${String(batch.program ?? "").trim().toUpperCase()}`
+      if (!key || key === "|" || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+  }, [granteesRawData, landingVisibility])
+
+  const payoutProgramOptions = useMemo(
+    () =>
+      [...new Set(publishedPayoutBatches.map((batch) => String(batch.program ?? "").trim()).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [publishedPayoutBatches],
+  )
+
+  const payoutBatchOptions = useMemo(() => {
+    const program = String(draftPayoutProgram ?? "").trim().toUpperCase()
+    if (!program) return []
+    return [
+      ...new Set(
+        publishedPayoutBatches
+          .filter((batch) => String(batch.program ?? "").trim().toUpperCase() === program)
+          .map((batch) => String(batch.batchNo ?? "").trim())
+          .filter(Boolean),
+      ),
+    ].sort((a, b) => {
+      const na = Number.parseFloat(a)
+      const nb = Number.parseFloat(b)
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb
+      return a.localeCompare(b)
+    })
+  }, [draftPayoutProgram, publishedPayoutBatches])
+
   const loadError =
     announcementsQueryError?.userMessage ||
     announcementsQueryError?.response?.data?.message ||
@@ -623,6 +696,10 @@ export default function AnnouncementPage() {
     setDraftDescription("")
     setDraftType("new_batch")
     setDraftCustomType("")
+    setDraftPayoutProgram("")
+    setDraftPayoutBatchNo("")
+    setDraftPayoutDate("")
+    setPayoutScheduleError("")
     const today = getTodayDateString()
     setDraftStartDate(today)
     setDraftEndDate("")
@@ -641,6 +718,10 @@ export default function AnnouncementPage() {
     setDraftDescription(item.description)
     setDraftType(item.type || "new_batch")
     setDraftCustomType(isOtherAnnouncementType(item.type) ? String(item.customType ?? "").trim() : "")
+    setDraftPayoutProgram(String(item.payoutProgram ?? "").trim().toUpperCase())
+    setDraftPayoutBatchNo(String(item.payoutBatchNo ?? "").trim())
+    setDraftPayoutDate(String(item.payoutDate ?? "").trim())
+    setPayoutScheduleError("")
     const { startDate, endDate } = resolveAnnouncementDates(item)
     setDraftStartDate(startDate)
     setDraftEndDate(endDate)
@@ -804,6 +885,19 @@ export default function AnnouncementPage() {
       if (!firstInvalidField) firstInvalidField = field
     }
 
+    if (draftType === PAYOUT_SCHEDULE_TYPE) {
+      const program = String(draftPayoutProgram ?? "").trim()
+      const batchNo = String(draftPayoutBatchNo ?? "").trim()
+      const payoutDate = String(draftPayoutDate ?? "").trim()
+      if (!program || !batchNo || !payoutDate) {
+        setPayoutScheduleError("Please select a program, published batch number, and payout date.")
+        markInvalid("payoutSchedule")
+      } else if (!/^\d{4}-\d{2}-\d{2}$/.test(payoutDate)) {
+        setPayoutScheduleError("Please enter a valid payout date.")
+        markInvalid("payoutSchedule")
+      }
+    }
+
     if (isOtherAnnouncementType(draftType) && !draftCustomType.trim()) {
       setTypeError("Please enter a custom type. This field is required when Other is selected.")
       markInvalid("type")
@@ -860,6 +954,9 @@ export default function AnnouncementPage() {
           active: editingId ? existingActive : true,
           imageFiles,
           clearExistingImages,
+          payoutProgram: draftPayoutProgram,
+          payoutBatchNo: draftPayoutBatchNo,
+          payoutDate: draftPayoutDate,
         })
 
         let saved
@@ -1263,6 +1360,12 @@ export default function AnnouncementPage() {
                     if (!isOtherAnnouncementType(nextType)) {
                       setDraftCustomType("")
                     }
+                    if (nextType !== PAYOUT_SCHEDULE_TYPE) {
+                      setDraftPayoutProgram("")
+                      setDraftPayoutBatchNo("")
+                      setDraftPayoutDate("")
+                      setPayoutScheduleError("")
+                    }
                     setTypeError("")
                   }}
                   aria-invalid={Boolean(typeError)}
@@ -1303,6 +1406,99 @@ export default function AnnouncementPage() {
               ) : null}
               <FormFieldError id="announcement-type-error" message={typeError} />
             </div>
+
+            {draftType === PAYOUT_SCHEDULE_TYPE ? (
+              <div
+                ref={(node) => {
+                  formFieldRefs.current.payoutSchedule = node
+                }}
+                className="grid gap-2 rounded-xl border border-[#081F5C]/12 bg-[#081F5C]/[0.03] p-3 sm:p-4"
+              >
+                <p className="text-sm font-semibold text-slate-700">
+                  Payout schedule details <span className="font-normal text-red-600">*</span>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-1.5">
+                    <label htmlFor="announcement-payout-program" className="text-xs font-medium text-slate-600">
+                      Program
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="announcement-payout-program"
+                        value={draftPayoutProgram}
+                        onChange={(event) => {
+                          setDraftPayoutProgram(event.target.value)
+                          setDraftPayoutBatchNo("")
+                          setPayoutScheduleError("")
+                        }}
+                        aria-invalid={Boolean(payoutScheduleError)}
+                        className={cn(
+                          "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20",
+                          payoutScheduleError && formInputErrorClass,
+                        )}
+                      >
+                        <option value="">Select program</option>
+                        {payoutProgramOptions.map((program) => (
+                          <option key={program} value={program}>
+                            {program}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label htmlFor="announcement-payout-batch" className="text-xs font-medium text-slate-600">
+                      Published batch no.
+                    </label>
+                    <div className="relative">
+                      <select
+                        id="announcement-payout-batch"
+                        value={draftPayoutBatchNo}
+                        onChange={(event) => {
+                          setDraftPayoutBatchNo(event.target.value)
+                          setPayoutScheduleError("")
+                        }}
+                        disabled={!draftPayoutProgram}
+                        aria-invalid={Boolean(payoutScheduleError)}
+                        className={cn(
+                          "h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white px-2.5 pr-9 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400",
+                          payoutScheduleError && formInputErrorClass,
+                        )}
+                      >
+                        <option value="">{draftPayoutProgram ? "Select batch" : "Select program first"}</option>
+                        {payoutBatchOptions.map((batchNo) => (
+                          <option key={batchNo} value={batchNo}>
+                            Batch {batchNo}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+                    </div>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <label htmlFor="announcement-payout-date" className="text-xs font-medium text-slate-600">
+                      When it will happen
+                    </label>
+                    <Input
+                      id="announcement-payout-date"
+                      type="date"
+                      value={draftPayoutDate}
+                      onChange={(event) => {
+                        setDraftPayoutDate(event.target.value)
+                        setPayoutScheduleError("")
+                      }}
+                      aria-invalid={Boolean(payoutScheduleError)}
+                      className={cn("h-8", payoutScheduleError && formInputErrorClass)}
+                    />
+                  </div>
+                </div>
+                <p className="text-[11px] leading-snug text-slate-500">
+                  Only published batches are listed. A payout badge appears on the batch when this date is reached.
+                </p>
+                <FormFieldError id="announcement-payout-schedule-error" message={payoutScheduleError} />
+              </div>
+            ) : null}
 
             <div
               ref={(node) => {
