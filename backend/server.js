@@ -3,11 +3,16 @@ require('dotenv').config();
 const app = require('./app');
 const { connectDatabase } = require('./config/database');
 const { startAnnouncementMaintenanceSchedule } = require('./utils/announcementMaintenance');
+const {
+    startControllerHeartbeat,
+    stopControllerHeartbeat,
+} = require('./services/controllerIntegration');
 const PORT = Number(process.env.PORT) || 5000;
 
 let server;
 
 function shutdown(signal) {
+    stopControllerHeartbeat();
     if (!server) {
         process.exit(0);
         return;
@@ -41,6 +46,7 @@ async function start() {
         console.log(`Landing batches: http://127.0.0.1:${PORT}/api/landing-batches`);
         console.log(`Landing privacy: http://127.0.0.1:${PORT}/api/landing-batches/page-settings`);
         startAnnouncementMaintenanceSchedule();
+        startControllerHeartbeat();
     });
 
     server.on('error', (err) => {

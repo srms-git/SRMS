@@ -3,6 +3,11 @@ const cors = require('cors');
 const multer = require('multer');
 
 const requireDatabase = require('./middleware/requireDatabase');
+const controllerMaintenanceMiddleware = require('./middleware/controllerMaintenanceMiddleware');
+const {
+    getHealthSnapshot,
+    incrementRequestCount,
+} = require('./services/controllerIntegration');
 
 const granteeRoutes = require('./routes/granteeRoutes');
 const authRoutes = require('./routes/authRoutes');
@@ -31,6 +36,21 @@ app.use(
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+app.use((req, res, next) => {
+    incrementRequestCount();
+    res.on('finish', () => {
+        if (res.statusCode >= 500) {
+            incrementErrorCount();
+        }
+    });
+    next();
+});
+app.use(controllerMaintenanceMiddleware);
+
+app.get('/internal/health', (req, res) => {
+    res.json(getHealthSnapshot());
+});
 
 app.use('/api/auth', requireDatabase, authRoutes);
 app.use('/api/grantees', requireDatabase, granteeRoutes);
@@ -104,6 +124,13 @@ app.get('/api/health', (req, res) => {
 
 app.get('/', (req, res) => {
     res.send('SRMS Backend is Running!');
+});
+
+app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(err.status || 500).json({
+        error: err.message || 'Internal server error',
+    });
 });
 
 module.exports = app;
