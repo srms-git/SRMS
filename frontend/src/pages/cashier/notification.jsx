@@ -9,9 +9,11 @@ import apiClient from "@/lib/apiClient"
 import {
   CASHIER_SETTINGS_CHANGED_EVENT,
   isCashierRelevantNotification,
+  matchesPayoutScheduleNotification,
   readNotificationPreferences,
   shouldShowNotification,
 } from "@/lib/cashierSettings"
+import { buildCashierBatchInfoPath } from "@/lib/announcementBatchLink"
 import {
   NotificationCardSkeleton,
   revealItemClass,
@@ -93,6 +95,7 @@ export default function CashierNotificationPage() {
       type: normalizedType,
       createdAt: item?.createdAt || item?.updatedAt || null,
       read: Boolean(item?.read),
+      meta: item?.meta && typeof item.meta === "object" ? item.meta : null,
     }
   }, [])
 
@@ -183,6 +186,12 @@ export default function CashierNotificationPage() {
     () => notifications.find((item) => item.id === selectedNotificationId) ?? null,
     [notifications, selectedNotificationId],
   )
+
+  const selectedBatchPath = useMemo(() => {
+    const meta = selectedNotification?.meta
+    if (!meta?.batchNo || !meta?.program) return ""
+    return buildCashierBatchInfoPath(meta)
+  }, [selectedNotification])
 
   const openDetails = (item) => {
     setSelectedNotificationId(item.id)
@@ -484,6 +493,17 @@ export default function CashierNotificationPage() {
           ) : null}
 
           <DialogFooter className="mt-2 sm:justify-end">
+            {selectedBatchPath && matchesPayoutScheduleNotification(selectedNotification) ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  setDetailsOpen(false)
+                  navigate(selectedBatchPath)
+                }}
+              >
+                View batch
+              </Button>
+            ) : null}
             <Button type="button" variant="outline" onClick={() => setDetailsOpen(false)}>
               Close
             </Button>

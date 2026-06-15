@@ -35,6 +35,26 @@ const extraOrigins = String(process.env.CORS_ORIGINS || '')
     .filter(Boolean);
 const allowedOrigins = new Set([frontendOrigin, ...extraOrigins]);
 
+function isAllowedOrigin(origin) {
+    if (!origin || allowedOrigins.has(origin)) {
+        return true;
+    }
+    if (process.env.NODE_ENV !== 'production') {
+        try {
+            const { hostname, protocol } = new URL(origin);
+            if (
+                (hostname === 'localhost' || hostname === '127.0.0.1') &&
+                (protocol === 'http:' || protocol === 'https:')
+            ) {
+                return true;
+            }
+        } catch {
+            // Ignore malformed origin values.
+        }
+    }
+    return false;
+}
+
 app.set('trust proxy', 1);
 app.set('query parser', 'simple');
 app.use(helmet({
@@ -44,7 +64,7 @@ app.use(mongoSanitize());
 app.use(
     cors({
         origin(origin, callback) {
-            if (!origin || allowedOrigins.has(origin)) {
+            if (isAllowedOrigin(origin)) {
                 return callback(null, true);
             }
             return callback(new Error('Not allowed by CORS'));

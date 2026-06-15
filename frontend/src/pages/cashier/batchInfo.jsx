@@ -26,6 +26,7 @@ import {
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, XAxis, YAxis } from "recharts"
 
 import { ConnectionProblemState } from "@/components/ConnectionProblemState"
+import { PayoutSchedulePanel } from "@/components/PayoutScheduleBadge"
 import { escapeHtml } from "@/lib/escapeHtml"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import {
@@ -48,7 +49,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
-import { useBatchGranteesRecords } from "@/hooks/useSrmsQueries"
+import { useBatchGranteesRecords, useAnnouncementsQuery } from "@/hooks/useSrmsQueries"
+import { findActiveAnnouncementForBatch } from "@/lib/announcementBatchLink"
+import { getTodayDateString } from "@/lib/announcementDates"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
 import {
@@ -1673,6 +1676,16 @@ export default function CashierBatchInfo() {
     batchNo,
     academicYear,
   })
+  const { data: rawAnnouncements = [] } = useAnnouncementsQuery()
+  const payoutScheduleAnnouncement = useMemo(
+    () =>
+      findActiveAnnouncementForBatch(
+        rawAnnouncements,
+        { batchNo, program, schoolYear: academicYear },
+        { type: "payout_schedule", today: getTodayDateString() },
+      ),
+    [rawAnnouncements, batchNo, program, academicYear],
+  )
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
@@ -2090,6 +2103,10 @@ export default function CashierBatchInfo() {
             </div>
           </div>
         </div>
+
+        {payoutScheduleAnnouncement ? (
+          <PayoutSchedulePanel announcement={payoutScheduleAnnouncement} />
+        ) : null}
 
         {fetchError ? (
           <ConnectionProblemState

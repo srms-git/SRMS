@@ -1,3 +1,5 @@
+const { resolveAnnouncementBatchLinkPayload } = require('./announcementBatchLink');
+
 const KNOWN_TYPES = new Set([
     'new_batch',
     'requirement_schedule',
@@ -29,10 +31,15 @@ function resolveAnnouncementTypePayload(body, fallbackType = 'new_batch') {
             error.statusCode = 400;
             throw error;
         }
-        return { type: 'other', customType };
+        return {
+            type: 'other',
+            customType,
+            ...resolveAnnouncementBatchLinkPayload({ type: 'other' }, 'other'),
+        };
     }
 
-    return { type, customType: '' };
+    const batchFields = resolveAnnouncementBatchLinkPayload(body, type);
+    return { type, customType: '', ...batchFields };
 }
 
 function getAnnouncementTypeLabel(record) {

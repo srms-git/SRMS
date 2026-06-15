@@ -44,7 +44,7 @@ import {
 import { cn } from "@/lib/utils"
 
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 
 function academicYearOptions() {
@@ -164,6 +164,7 @@ function AlertModal({ open, onOpenChange, variant = "info", title, message }) {
             </span>
             <span className="min-w-0">{meta.title}</span>
           </DialogTitle>
+          <DialogDescription className="sr-only">{message || meta.title}</DialogDescription>
         </DialogHeader>
 
         <div className="py-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{message || "—"}</div>
@@ -1377,6 +1378,9 @@ export default function AddGrantees() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Confirm adding batch grantees</DialogTitle>
+            <DialogDescription>
+              Review the batch details below before saving grantees to the system.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3 text-sm text-slate-700 dark:text-slate-300">

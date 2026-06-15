@@ -762,6 +762,25 @@ export default function CashierSetting() {
                       }
                     />
                   </label>
+                  <label className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm">
+                    <span>Notify when a payout schedule is posted</span>
+                    <input
+                      type="checkbox"
+                      checked={settings.notifications.payoutScheduleAlert}
+                      onChange={(event) =>
+                        saveSettings(
+                          (prev) => ({
+                            ...prev,
+                            notifications: {
+                              ...prev.notifications,
+                              payoutScheduleAlert: event.target.checked,
+                            },
+                          }),
+                          "Notification preferences saved.",
+                        )
+                      }
+                    />
+                  </label>
                 </div>
               </section>
             )}

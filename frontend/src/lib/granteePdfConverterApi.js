@@ -16,6 +16,9 @@ export function getPdfConverterBaseUrl() {
 
 function buildPdfConverterUnavailableMessage(base, status) {
   const usingDefaultLocalProxy = base === "/api/pdf-converter"
+  if (status === 502 && usingDefaultLocalProxy) {
+    return "PDF converter is not running on port 5001. Restart with npm run dev from the frontend folder (starts frontend, API, and PDF services). If it still fails, run: python -m pip install -r backend/requirements.txt"
+  }
   if (status === 404 && usingDefaultLocalProxy) {
     return "PDF converter service is not available in production. Set VITE_PDF_CONVERTER_URL in your Vercel project to the deployed Python converter API URL."
   }

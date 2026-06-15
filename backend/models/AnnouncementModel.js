@@ -38,6 +38,39 @@ const AnnouncementSchema = new mongoose.Schema({
         maxlength: 80,
         default: ''
     },
+    linkedBatchNo: {
+        type: String,
+        trim: true,
+        default: '',
+    },
+    linkedProgram: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: '',
+    },
+    linkedAcademicYear: {
+        type: String,
+        trim: true,
+        default: '',
+    },
+    scheduleDate: {
+        type: String,
+        trim: true,
+        default: '',
+    },
+    scheduleTime: {
+        type: String,
+        trim: true,
+        maxlength: 120,
+        default: '',
+    },
+    scheduleLocation: {
+        type: String,
+        trim: true,
+        maxlength: 200,
+        default: '',
+    },
     startDate: {
         type: String,
         required: true,

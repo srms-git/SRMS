@@ -53,9 +53,13 @@ exports.markAllAsRead = async (req, res) => {
 };
 
 // 4. Utility method for internal backend use across controllers (e.g., when a batch is archived or created)
-exports.createInternalNotification = async (title, message, type, recipientId = null) => {
+exports.createInternalNotification = async (title, message, type, recipientId = null, meta = null) => {
     try {
-        await Notification.create({ title, message, type, recipientId });
+        const payload = { title, message, type, recipientId };
+        if (meta && typeof meta === 'object') {
+            payload.meta = meta;
+        }
+        await Notification.create(payload);
         return true;
     } catch (error) {
         console.error('Failed to dispatch background system notification trace:', error);

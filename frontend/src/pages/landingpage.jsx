@@ -17,11 +17,14 @@ import leadershipSectionBackground from "@/assets/sec1background.jpg"
 import orgLogo from "@/assets/orgLogo.png"
 import systemLogo from "@/assets/systemLogo.png"
 import apiClient from "@/lib/apiClient"
+import { PayoutScheduleBadge, PayoutScheduleDetailsDialog } from "@/components/PayoutScheduleBadge"
 import {
   formatAnnouncementDurationLabel,
+  getTodayDateString,
   isAnnouncementVisibleOnLanding,
   resolveAnnouncementDates,
 } from "@/lib/announcementDates"
+import { buildPayoutScheduleByBatchKey, getOperationalBatchKey } from "@/lib/announcementBatchLink"
 import { getAnnouncementTypeLabel } from "@/lib/announcementTypes"
 import { resolveAnnouncementImageUrls } from "@/lib/announcementImages"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
@@ -277,7 +280,14 @@ function getFeaturedBatchCardKey(batch, keyPrefix) {
   return `${keyPrefix}-${batch.batchNo}-${batch.program}-${batch.schoolYear}`
 }
 
-function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", privacy }) {
+function FeaturedBatchScroller({
+  programLabel,
+  items,
+  scrollDirection = "left",
+  privacy,
+  payoutScheduleByBatchKey,
+  onOpenScheduleDetails,
+}) {
   const uniqueItems = useMemo(() => {
     const seen = new Set()
     return items.filter((batch) => {
@@ -485,6 +495,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
     const rawBatchLabel = String(batch.batchNo ?? "?")
     const batchLabel = privacy.maskBatchNumberInPublicList ? maskBatchNumber(rawBatchLabel) : rawBatchLabel
     const granteeLabel = privacy.hideGranteeCountInPublicList ? "Hidden" : `${batch.grantees} grantees`
+    const payoutAnnouncement = payoutScheduleByBatchKey?.get(getOperationalBatchKey(batch)) ?? null
 
     return (
       <div
@@ -591,6 +602,13 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
                     <span className="size-1 shrink-0 rounded-full bg-white/90 sm:size-1.5" aria-hidden />
                     <span className="truncate">{granteeLabel}</span>
                   </span>
+                  {payoutAnnouncement ? (
+                    <PayoutScheduleBadge
+                      announcement={payoutAnnouncement}
+                      onOpenDetails={onOpenScheduleDetails}
+                      className="col-span-2 justify-center sm:col-span-1 sm:justify-start"
+                    />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1837,6 +1855,9 @@ function BillboardCard({
 export default function LandingPage() {
   const location = useLocation()
   const [announcements, setAnnouncements] = useState([])
+  const [announcementRecords, setAnnouncementRecords] = useState([])
+  const [scheduleDialogAnnouncement, setScheduleDialogAnnouncement] = useState(null)
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
   const { programs } = useOsgfaPrograms()
   const landingPageSettings = useLandingPageSettings()
@@ -1885,8 +1906,8 @@ export default function LandingPage() {
       try {
         const response = await apiClient.get("/announcements")
         const fetched = Array.isArray(response.data) ? response.data : []
-        const activeAnnouncements = fetched
-          .filter((item) => item && isAnnouncementVisibleOnLanding(item))
+        const activeAnnouncementRecords = fetched.filter((item) => item && isAnnouncementVisibleOnLanding(item))
+        const activeAnnouncements = activeAnnouncementRecords
           .sort((a, b) => {
             const aStart = resolveAnnouncementDates(a).startDate
             const bStart = resolveAnnouncementDates(b).startDate
@@ -1907,9 +1928,11 @@ export default function LandingPage() {
               imageUrl: imageUrls[0] ?? null,
             }
           })
+        setAnnouncementRecords(activeAnnouncementRecords)
         setAnnouncements(activeAnnouncements)
       } catch (error) {
         console.error("Failed to load landing announcements:", error)
+        setAnnouncementRecords([])
         setAnnouncements([])
       }
     }
@@ -1937,6 +1960,16 @@ export default function LandingPage() {
     () => buildFeaturedBatchesByProgram(publicLandingBatches),
     [publicLandingBatches],
   )
+
+  const payoutScheduleByBatchKey = useMemo(
+    () => buildPayoutScheduleByBatchKey(announcementRecords, getTodayDateString()),
+    [announcementRecords],
+  )
+
+  const openScheduleDetails = useCallback((announcement) => {
+    setScheduleDialogAnnouncement(announcement)
+    setScheduleDialogOpen(true)
+  }, [])
 
   const heroContent = (
     <div className="grid w-full items-center gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
@@ -2190,7 +2223,7 @@ export default function LandingPage() {
             </div>
             <div className="grid w-full grid-cols-1 items-stretch gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,19rem)] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,21rem)] xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
               <BillboardCard
-                title="Announcements"
+                title="Bulletin"
                 subtitle="Official notices"
                 items={announcements}
                 slideAriaLabelPrefix="announcement"
@@ -2261,6 +2294,8 @@ export default function LandingPage() {
                       items={items}
                       scrollDirection={programLabel === "TDP" || index % 2 === 1 ? "right" : "left"}
                       privacy={landingPrivacy}
+                      payoutScheduleByBatchKey={payoutScheduleByBatchKey}
+                      onOpenScheduleDetails={openScheduleDetails}
                     />
                   ))
                 ) : (
@@ -2452,6 +2487,12 @@ export default function LandingPage() {
           </p>
         </div>
       </footer>
+
+      <PayoutScheduleDetailsDialog
+        announcement={scheduleDialogAnnouncement}
+        open={scheduleDialogOpen}
+        onOpenChange={setScheduleDialogOpen}
+      />
     </div>
   )
 }

@@ -9,6 +9,10 @@ const {
     formatAnnouncementResponse,
 } = require('../utils/announcementDates');
 const { resolveAnnouncementTypePayload } = require('../utils/announcementTypes');
+const {
+    buildPayoutScheduleNotificationMessage,
+    formatLinkedBatchLabel,
+} = require('../utils/announcementBatchLink');
 const { applyActiveState } = require('../utils/announcementMaintenance');
 const { processUploadedAnnouncementImages } = require('../services/announcementImageProcessing');
 const { MAX_ANNOUNCEMENT_IMAGE_COUNT } = require('../middleware/announcementUpload');
@@ -40,6 +44,34 @@ function stripImageBinary(doc) {
         obj.images = obj.images.map(({ data, ...meta }) => meta);
     }
     return obj;
+}
+
+async function notifyCashierPayoutSchedule(announcement, actionLabel = 'posted') {
+    if (!announcement || announcement.type !== 'payout_schedule' || announcement.active === false) {
+        return;
+    }
+
+    const batchLabel = formatLinkedBatchLabel(announcement);
+    if (!batchLabel) return;
+
+    const title =
+        actionLabel === 'updated'
+            ? `Payout schedule updated — ${batchLabel}`
+            : `Payout schedule posted — ${batchLabel}`;
+
+    await createInternalNotification(
+        title,
+        buildPayoutScheduleNotificationMessage(announcement),
+        'reminder',
+        null,
+        {
+            batchNo: announcement.linkedBatchNo,
+            program: announcement.linkedProgram,
+            academicYear: announcement.linkedAcademicYear,
+            announcementId: String(announcement._id || announcement.id || ''),
+            kind: 'payout_schedule',
+        },
+    );
 }
 
 // 1. Fetch all announcements
@@ -102,6 +134,8 @@ exports.createAnnouncement = async (req, res) => {
             'announcement'
         );
 
+        await notifyCashierPayoutSchedule(newAnnouncement);
+
         logActivity({
             userId: req.user?.id || req.userId || null,
             action: 'CREATE_ANNOUNCEMENT',
@@ -135,7 +169,16 @@ exports.updateAnnouncement = async (req, res) => {
             description: description?.trim(),
         };
 
-        if (req.body.type !== undefined || req.body.customType !== undefined) {
+        if (
+            req.body.type !== undefined ||
+            req.body.customType !== undefined ||
+            req.body.linkedBatchNo !== undefined ||
+            req.body.linkedProgram !== undefined ||
+            req.body.linkedAcademicYear !== undefined ||
+            req.body.scheduleDate !== undefined ||
+            req.body.scheduleTime !== undefined ||
+            req.body.scheduleLocation !== undefined
+        ) {
             try {
                 Object.assign(
                     updates,
@@ -143,6 +186,12 @@ exports.updateAnnouncement = async (req, res) => {
                         {
                             type: req.body.type ?? oldRecord.type,
                             customType: req.body.customType ?? oldRecord.customType,
+                            linkedBatchNo: req.body.linkedBatchNo ?? oldRecord.linkedBatchNo,
+                            linkedProgram: req.body.linkedProgram ?? oldRecord.linkedProgram,
+                            linkedAcademicYear: req.body.linkedAcademicYear ?? oldRecord.linkedAcademicYear,
+                            scheduleDate: req.body.scheduleDate ?? oldRecord.scheduleDate,
+                            scheduleTime: req.body.scheduleTime ?? oldRecord.scheduleTime,
+                            scheduleLocation: req.body.scheduleLocation ?? oldRecord.scheduleLocation,
                         },
                         oldRecord.type
                     )
@@ -198,6 +247,8 @@ exports.updateAnnouncement = async (req, res) => {
             `The details for this notice have been modified. Review the announcements board for up-to-date adjustments.`,
             'announcement'
         );
+
+        await notifyCashierPayoutSchedule(updatedRecord, 'updated');
 
         logActivity({
             userId: req.user?.id || req.userId || null,
@@ -260,6 +311,7 @@ exports.toggleAnnouncementStatus = async (req, res) => {
                 `An update regarding ${record.title.toLowerCase()} is active and visible on your dashboard charts.`,
                 'announcement'
             );
+            await notifyCashierPayoutSchedule(record);
         }
 
         logActivity({
