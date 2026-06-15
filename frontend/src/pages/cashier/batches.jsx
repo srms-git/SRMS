@@ -8,7 +8,7 @@ import { useArchivedBatchesQuery, useAnnouncementsQuery, useGranteesQuery } from
 import { isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import {
   buildPayoutScheduleBadgeLookup,
-  normalizePayoutBatchKey,
+  getPayoutIndicatorForBatch,
 } from "@/lib/payoutScheduleAnnouncements"
 import { PayoutScheduleBadge } from "@/components/PayoutScheduleAnnouncement"
 import { useCashierModuleSettings } from "@/hooks/useCashierModuleSettings"
@@ -203,10 +203,7 @@ export default function Batches() {
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
-  const payoutBadgeKeys = useMemo(() => {
-    const lookup = buildPayoutScheduleBadgeLookup(announcements)
-    return new Set(lookup.keys())
-  }, [announcements])
+  const payoutBadgeLookup = useMemo(() => buildPayoutScheduleBadgeLookup(announcements), [announcements])
 
   return (
     <section className="w-full min-w-0 max-w-full space-y-4">
@@ -436,7 +433,7 @@ export default function Batches() {
                 {sortedBatches.map((row, index) => {
                   const programKey = String(row.program ?? "").trim().toUpperCase()
                   const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
-                  const showPayoutBadge = payoutBadgeKeys.has(normalizePayoutBatchKey(row.batchNo, row.program))
+                  const payoutIndicator = getPayoutIndicatorForBatch(payoutBadgeLookup, row)
 
                   return (
                     <tr
@@ -455,9 +452,11 @@ export default function Batches() {
                       }}
                     >
                       <td className="px-4 py-3 font-semibold text-slate-900 dark:text-white">
-                        <span className="inline-flex items-center gap-2">
+                        <span className="inline-flex flex-wrap items-center gap-2">
                           Batch {row.batchNo}
-                          {showPayoutBadge ? <PayoutScheduleBadge compact /> : null}
+                          {payoutIndicator ? (
+                            <PayoutScheduleBadge status={payoutIndicator.status} compact />
+                          ) : null}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">{row.program || "—"}</td>
@@ -481,7 +480,7 @@ export default function Batches() {
             {sortedBatches.map((row, index) => {
               const programKey = String(row.program ?? "").trim().toUpperCase()
               const grantees = granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`) ?? 0
-              const showPayoutBadge = payoutBadgeKeys.has(normalizePayoutBatchKey(row.batchNo, row.program))
+              const payoutIndicator = getPayoutIndicatorForBatch(payoutBadgeLookup, row)
 
               return (
                 <button
@@ -515,10 +514,7 @@ export default function Batches() {
                         {formatCreatedAtDate(row.createdAt)}
                       </p>
                       <h3 className="mt-1 text-base font-semibold leading-snug text-slate-900 dark:text-white">
-                        <span className="inline-flex flex-wrap items-center gap-2">
-                          Batch {row.batchNo}
-                          {showPayoutBadge ? <PayoutScheduleBadge compact /> : null}
-                        </span>
+                        Batch {row.batchNo}
                       </h3>
 
                       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -531,6 +527,9 @@ export default function Batches() {
                         <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-900 dark:border-emerald-500/35 dark:bg-emerald-500/12 dark:text-emerald-100">
                           Grantees: {grantees}
                         </span>
+                        {payoutIndicator ? (
+                          <PayoutScheduleBadge status={payoutIndicator.status} />
+                        ) : null}
                       </div>
                     </div>
                   </div>

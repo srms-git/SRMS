@@ -26,7 +26,7 @@ import { getAnnouncementTypeLabel } from "@/lib/announcementTypes"
 import { resolveAnnouncementImageUrls } from "@/lib/announcementImages"
 import {
   buildPayoutScheduleBadgeLookup,
-  normalizePayoutBatchKey,
+  getPayoutIndicatorForBatch,
 } from "@/lib/payoutScheduleAnnouncements"
 import { PayoutScheduleBadge } from "@/components/PayoutScheduleAnnouncement"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
@@ -282,7 +282,7 @@ function getFeaturedBatchCardKey(batch, keyPrefix) {
   return `${keyPrefix}-${batch.batchNo}-${batch.program}-${batch.schoolYear}`
 }
 
-function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", privacy, payoutBadgeKeys }) {
+function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", privacy, payoutBadgeLookup }) {
   const uniqueItems = useMemo(() => {
     const seen = new Set()
     return items.filter((batch) => {
@@ -490,8 +490,7 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
     const rawBatchLabel = String(batch.batchNo ?? "?")
     const batchLabel = privacy.maskBatchNumberInPublicList ? maskBatchNumber(rawBatchLabel) : rawBatchLabel
     const granteeLabel = privacy.hideGranteeCountInPublicList ? "Hidden" : `${batch.grantees} grantees`
-    const payoutBadgeKey = normalizePayoutBatchKey(batch.batchNo, batch.program)
-    const showPayoutBadge = payoutBadgeKeys?.has?.(payoutBadgeKey)
+    const payoutIndicator = getPayoutIndicatorForBatch(payoutBadgeLookup, batch)
 
     return (
       <div
@@ -560,7 +559,6 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
                       {accent.label}
                     </span>
                   ) : null}
-                  {showPayoutBadge ? <PayoutScheduleBadge compact /> : null}
                   <span
                     className="rounded-full border px-1.5 py-px text-[8px] font-semibold uppercase tracking-[0.1em] sm:px-2 sm:py-0.5 sm:text-[10px] sm:tracking-[0.12em]"
                     style={{ borderColor: borderBvSoft, color: textBodyOnLight }}
@@ -599,6 +597,9 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
                     <span className="size-1 shrink-0 rounded-full bg-white/90 sm:size-1.5" aria-hidden />
                     <span className="truncate">{granteeLabel}</span>
                   </span>
+                  {payoutIndicator ? (
+                    <PayoutScheduleBadge status={payoutIndicator.status} compact />
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -1950,10 +1951,10 @@ export default function LandingPage() {
     [publicLandingBatches],
   )
 
-  const payoutBadgeKeys = useMemo(() => {
-    const lookup = buildPayoutScheduleBadgeLookup(announcementRecords)
-    return new Set(lookup.keys())
-  }, [announcementRecords])
+  const payoutBadgeLookup = useMemo(
+    () => buildPayoutScheduleBadgeLookup(announcementRecords),
+    [announcementRecords],
+  )
 
   const heroContent = (
     <div className="grid w-full items-center gap-6 sm:gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-14 xl:gap-16">
@@ -2207,7 +2208,7 @@ export default function LandingPage() {
             </div>
             <div className="grid w-full grid-cols-1 items-stretch gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,19rem)] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,21rem)] xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
               <BillboardCard
-                title="Announcements"
+                title="Bulletin"
                 subtitle="Official notices"
                 items={announcements}
                 slideAriaLabelPrefix="announcement"
@@ -2278,7 +2279,7 @@ export default function LandingPage() {
                       items={items}
                       scrollDirection={programLabel === "TDP" || index % 2 === 1 ? "right" : "left"}
                       privacy={landingPrivacy}
-                      payoutBadgeKeys={payoutBadgeKeys}
+                      payoutBadgeLookup={payoutBadgeLookup}
                     />
                   ))
                 ) : (

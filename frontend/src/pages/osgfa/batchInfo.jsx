@@ -49,6 +49,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { findPayoutScheduleAnnouncementsForBatch } from "@/lib/payoutScheduleAnnouncements"
+import { PayoutScheduleAnnouncementCard } from "@/components/PayoutScheduleAnnouncement"
 import {
   ChartAreaSkeleton,
   ChartDonutSkeleton,
@@ -58,7 +60,7 @@ import {
   revealItemStyle,
   useContentReveal,
 } from "@/lib/osgfaContentReveal"
-import { useBatchGranteesRecords } from "@/hooks/useSrmsQueries"
+import { useBatchGranteesRecords, useAnnouncementsQuery } from "@/hooks/useSrmsQueries"
 import { useOsgfaPrivacySettings } from "@/hooks/useOsgfaPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
 import {
@@ -2039,6 +2041,7 @@ export default function BatchInfo() {
     batchNo,
     academicYear,
   })
+  const { data: announcements = [] } = useAnnouncementsQuery()
   const [isSaving, setIsSaving] = useState(false)
 
   const scholarshipProgramCodes = useMemo(() => [...buildActiveProgramCodeSet(programs)], [programs])
@@ -2142,6 +2145,11 @@ export default function BatchInfo() {
   ]
     .filter(Boolean)
     .join(" · ")
+
+  const payoutScheduleAnnouncements = useMemo(
+    () => findPayoutScheduleAnnouncementsForBatch(announcements, { batchNo, program }),
+    [announcements, batchNo, program],
+  )
 
   const exportRows = useMemo(
     () =>
@@ -2798,6 +2806,17 @@ export default function BatchInfo() {
             subject="batch"
             className="mb-3"
           />
+        ) : null}
+
+        {payoutScheduleAnnouncements.length > 0 ? (
+          <div className="mb-4 space-y-3">
+            {payoutScheduleAnnouncements.map((announcement) => (
+              <PayoutScheduleAnnouncementCard
+                key={announcement.id || announcement._id}
+                announcement={announcement}
+              />
+            ))}
+          </div>
         ) : null}
 
         <section className="space-y-4">

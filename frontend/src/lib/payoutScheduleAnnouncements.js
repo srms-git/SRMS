@@ -6,6 +6,11 @@ import {
 
 export const PAYOUT_SCHEDULE_TYPE = "payout_schedule"
 
+export const PAYOUT_INDICATOR_STATUS = {
+  SCHEDULED: "scheduled",
+  READY: "ready",
+}
+
 export function isPayoutScheduleAnnouncement(item) {
   return String(item?.type ?? "").toLowerCase() === PAYOUT_SCHEDULE_TYPE
 }
@@ -33,6 +38,13 @@ export function isPayoutDateMet(payoutDate, today = getTodayDateString()) {
   return today >= payoutDate.trim()
 }
 
+export function getPayoutIndicatorStatus(announcement, today = getTodayDateString()) {
+  if (!isPayoutDateSet(announcement?.payoutDate)) return null
+  return isPayoutDateMet(announcement.payoutDate, today)
+    ? PAYOUT_INDICATOR_STATUS.READY
+    : PAYOUT_INDICATOR_STATUS.SCHEDULED
+}
+
 export function isActivePayoutScheduleAnnouncement(announcement, today = getTodayDateString()) {
   if (!isPayoutScheduleAnnouncement(announcement)) return false
   return isAnnouncementVisibleOnLanding(announcement, today)
@@ -41,7 +53,7 @@ export function isActivePayoutScheduleAnnouncement(announcement, today = getToda
 export function shouldShowPayoutScheduleBadge(announcement, batch, today = getTodayDateString()) {
   if (!isActivePayoutScheduleAnnouncement(announcement, today)) return false
   if (!announcementMatchesBatch(announcement, batch)) return false
-  return isPayoutDateMet(announcement.payoutDate, today)
+  return isPayoutDateSet(announcement.payoutDate)
 }
 
 export function findPayoutScheduleAnnouncementsForBatch(announcements, batch, { activeOnly = true, today = getTodayDateString() } = {}) {
@@ -65,13 +77,25 @@ export function buildPayoutScheduleBadgeLookup(announcements, today = getTodayDa
   const lookup = new Map()
   for (const item of announcements ?? []) {
     const record = normalizeAnnouncementRecord(item)
-    const batch = { batchNo: record.payoutBatchNo, program: record.payoutProgram }
-    if (!shouldShowPayoutScheduleBadge(record, batch, today)) continue
+    if (!shouldShowPayoutScheduleBadge(record, { batchNo: record.payoutBatchNo, program: record.payoutProgram }, today)) {
+      continue
+    }
     const key = normalizePayoutBatchKey(record.payoutBatchNo, record.payoutProgram)
     if (!key) continue
-    lookup.set(key, record)
+    const status = getPayoutIndicatorStatus(record, today)
+    if (!status) continue
+    const existing = lookup.get(key)
+    if (!existing || (status === PAYOUT_INDICATOR_STATUS.READY && existing.status === PAYOUT_INDICATOR_STATUS.SCHEDULED)) {
+      lookup.set(key, { record, status })
+    }
   }
   return lookup
+}
+
+export function getPayoutIndicatorForBatch(lookup, batch) {
+  const key = normalizePayoutBatchKey(batch?.batchNo, batch?.program)
+  if (!key) return null
+  return lookup.get(key) ?? null
 }
 
 export function formatPayoutDateLabel(isoDate) {

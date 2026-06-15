@@ -40,7 +40,12 @@ import {
   isGranteeRecordActive,
   updateBatchMetadata,
 } from "@/lib/granteesApi"
-import { useArchivedBatchesQuery, useGranteesQuery, useInvalidateGranteeCaches } from "@/hooks/useSrmsQueries"
+import { useArchivedBatchesQuery, useAnnouncementsQuery, useGranteesQuery, useInvalidateGranteeCaches } from "@/hooks/useSrmsQueries"
+import {
+  buildPayoutScheduleBadgeLookup,
+  getPayoutIndicatorForBatch,
+} from "@/lib/payoutScheduleAnnouncements"
+import { PayoutScheduleBadge } from "@/components/PayoutScheduleAnnouncement"
 import {
   isBatchVisibleOnLanding,
   renameLandingBatchVisibility,
@@ -228,6 +233,7 @@ export default function Batches() {
     error: archivedError,
     refetch: refetchArchived,
   } = useArchivedBatchesQuery()
+  const { data: announcements = [] } = useAnnouncementsQuery()
   const isLoading = granteesLoading || archivedLoading
   const fetchError =
     granteesError?.message ??
@@ -429,6 +435,8 @@ export default function Batches() {
     })
     return rows
   }, [filteredBatches, granteeCountsByBatchProgram, sortMode])
+
+  const payoutBadgeLookup = useMemo(() => buildPayoutScheduleBadgeLookup(announcements), [announcements])
 
   const openBatchEdit = (row) => {
     const { fromYear, toYear } = parseAcademicYear(row.schoolYear)
@@ -889,6 +897,7 @@ export default function Batches() {
               ?? granteeCountsByBatchProgram.get(`${row.batchNo}|${programKey}`)
               ?? 0
             const visibleOnLanding = isBatchVisibleOnLanding(row, landingVisibility)
+            const payoutIndicator = getPayoutIndicatorForBatch(payoutBadgeLookup, row)
 
             return (
               <div
@@ -982,6 +991,9 @@ export default function Batches() {
                         >
                           {visibleOnLanding ? "Published" : "Hidden"}
                         </span>
+                        {payoutIndicator ? (
+                          <PayoutScheduleBadge status={payoutIndicator.status} />
+                        ) : null}
                       </div>
                     </div>
                   </div>
