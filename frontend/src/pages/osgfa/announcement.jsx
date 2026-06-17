@@ -18,6 +18,7 @@ import {
   SearchX,
   SlidersHorizontal,
   Trash2,
+  TriangleAlert,
   UploadCloud,
   X,
 } from "lucide-react"
@@ -64,6 +65,16 @@ import {
   revealItemStyle,
   useContentReveal,
 } from "@/lib/osgfaContentReveal"
+import {
+  CONTENT_KIND_BULLETIN,
+  CONTENT_KIND_FEATURED_STORY,
+  FEATURED_STORY_CUSTOM_TYPE,
+  MAX_FEATURED_STORIES_WITH_IMAGES,
+  MAX_FEATURED_STORY_IMAGES,
+  countFeaturedStoriesWithImages,
+  isFeaturedStoryAnnouncement,
+  resolveAnnouncementContentKind,
+} from "@/lib/announcementContentKinds"
 import {
   ANNOUNCEMENT_TYPE_FILTER_OPTIONS,
   getAnnouncementTypeLabel,
@@ -158,6 +169,7 @@ function buildAnnouncementFormData({
   description,
   type,
   customType,
+  contentKind,
   startDate,
   endDate,
   active,
@@ -171,6 +183,7 @@ function buildAnnouncementFormData({
   formData.append("title", title)
   formData.append("description", description)
   formData.append("type", type)
+  formData.append("contentKind", contentKind || CONTENT_KIND_BULLETIN)
   if (isOtherAnnouncementType(type)) {
     formData.append("customType", customType.trim())
   }
@@ -306,25 +319,6 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
       </div>
     </div>
   )
-}
-
-const CONTENT_KIND_BULLETIN = "bulletin"
-const CONTENT_KIND_FEATURED_STORY = "featured_story"
-const FEATURED_STORY_CUSTOM_TYPE = "Featured story"
-
-function isFeaturedStoryAnnouncement(item) {
-  if (!item) return false
-  if (item.contentKind === CONTENT_KIND_FEATURED_STORY) return true
-  return (
-    isOtherAnnouncementType(item.type) &&
-    String(item.customType ?? "")
-      .trim()
-      .toLowerCase() === FEATURED_STORY_CUSTOM_TYPE.toLowerCase()
-  )
-}
-
-function resolveAnnouncementContentKind(item) {
-  return isFeaturedStoryAnnouncement(item) ? CONTENT_KIND_FEATURED_STORY : CONTENT_KIND_BULLETIN
 }
 
 const CREATE_CONTENT_OPTIONS = [
@@ -802,6 +796,7 @@ export default function AnnouncementPage() {
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
   const [isConfirming, setIsConfirming] = useState(false)
+  const [featuredStoryLimitOpen, setFeaturedStoryLimitOpen] = useState(false)
   const normalizeAnnouncement = (item) => normalizeAnnouncementImages(normalizeAnnouncementRecord(item))
 
   const minimumEndDate = useMemo(
@@ -813,6 +808,15 @@ export default function AnnouncementPage() {
     () => rawAnnouncements.map(normalizeAnnouncement),
     [rawAnnouncements],
   )
+
+  const featuredStoriesWithImagesCount = useMemo(
+    () => countFeaturedStoriesWithImages(announcements),
+    [announcements],
+  )
+
+  const isFeaturedStoryDraft = draftContentKind === CONTENT_KIND_FEATURED_STORY
+
+  const draftMaxImages = isFeaturedStoryDraft ? MAX_FEATURED_STORY_IMAGES : MAX_ANNOUNCEMENT_IMAGES
 
   const publishedPayoutBatches = useMemo(() => {
     const batches = buildBatchesFromGrantees(granteesRawData).filter((batch) =>
@@ -928,14 +932,29 @@ export default function AnnouncementPage() {
 
     try {
       setImageError("")
-      const availableSlots = MAX_ANNOUNCEMENT_IMAGES - draftImages.length
+
+      if (isFeaturedStoryDraft) {
+        const slotsUsed = countFeaturedStoriesWithImages(announcements, editingId)
+        const editingHadImages = Boolean(
+          editingId && announcements.find((a) => a.id === editingId)?.imageUrls?.length,
+        )
+        if (slotsUsed >= MAX_FEATURED_STORIES_WITH_IMAGES && !editingHadImages) {
+          setImageError(
+            `Featured story limit reached. Delete an existing featured story with pictures to free space before adding pictures here.`,
+          )
+          focusAnnouncementFormField(formFieldRefs, "images")
+          return
+        }
+      }
+
+      const availableSlots = draftMaxImages - draftImages.length
       if (availableSlots <= 0) {
-        throw new Error(`You can upload up to ${MAX_ANNOUNCEMENT_IMAGES} pictures per bulletin.`)
+        throw new Error(`You can upload up to ${draftMaxImages} pictures per ${isFeaturedStoryDraft ? "featured story" : "bulletin"}.`)
       }
 
       const nextFiles = selectedFiles.slice(0, availableSlots)
       if (selectedFiles.length > availableSlots) {
-        setImageError(`Only ${availableSlots} more picture${availableSlots === 1 ? "" : "s"} can be added (max ${MAX_ANNOUNCEMENT_IMAGES}).`)
+        setImageError(`Only ${availableSlots} more picture${availableSlots === 1 ? "" : "s"} can be added (max ${draftMaxImages}).`)
       }
 
       const fileErrors = []
@@ -1063,6 +1082,18 @@ export default function AnnouncementPage() {
       if (!firstInvalidField) firstInvalidField = field
     }
 
+    if (
+      !isFeaturedStoryDraft &&
+      isOtherAnnouncementType(draftType) &&
+      !draftCustomType.trim()
+    ) {
+      setTypeError("Please enter a custom type. This field is required when Other is selected.")
+      markInvalid("type")
+    }
+
+    const existingRecord = editingId ? announcements.find((a) => a.id === editingId) : null
+    const hadImages = Boolean(existingRecord?.imageUrls?.length)
+
     if (draftType === PAYOUT_SCHEDULE_TYPE) {
       const program = String(draftPayoutProgram ?? "").trim()
       const batchNo = String(draftPayoutBatchNo ?? "").trim()
@@ -1074,15 +1105,6 @@ export default function AnnouncementPage() {
         setPayoutScheduleError("Please enter a valid payout date.")
         markInvalid("payoutSchedule")
       }
-    }
-
-    if (
-      !isFeaturedStoryDraft &&
-      isOtherAnnouncementType(draftType) &&
-      !draftCustomType.trim()
-    ) {
-      setTypeError("Please enter a custom type. This field is required when Other is selected.")
-      markInvalid("type")
     }
 
     if (!String(draftStartDate ?? "").trim()) {
@@ -1101,14 +1123,22 @@ export default function AnnouncementPage() {
       markInvalid("title")
     }
 
+    if (isFeaturedStoryDraft && draftImages.length > 0) {
+      const slotsUsed = countFeaturedStoriesWithImages(announcements, editingId)
+      if (slotsUsed >= MAX_FEATURED_STORIES_WITH_IMAGES && (!editingId || !hadImages)) {
+        setImageError(
+          `Featured story limit reached. You can have up to ${MAX_FEATURED_STORIES_WITH_IMAGES} featured stories with pictures (active or inactive). Delete an existing featured story with pictures to free space before adding pictures to this one.`,
+        )
+        markInvalid("images")
+      }
+    }
+
     if (firstInvalidField) {
       focusAnnouncementFormField(formFieldRefs, firstInvalidField)
       return
     }
 
-    const existingActive = editingId ? announcements.find((a) => a.id === editingId)?.active ?? true : true
-    const existingRecord = editingId ? announcements.find((a) => a.id === editingId) : null
-    const hadImages = Boolean(existingRecord?.imageUrls?.length)
+    const existingActive = existingRecord?.active ?? true
 
     const submit = async () => {
       try {
@@ -1134,6 +1164,7 @@ export default function AnnouncementPage() {
           description,
           type: resolvedType,
           customType: resolvedCustomType,
+          contentKind: draftContentKind,
           startDate: draftStartDate,
           endDate: draftEndDate,
           active: editingId ? existingActive : true,
@@ -1227,6 +1258,12 @@ export default function AnnouncementPage() {
   }
 
   const openCreateDialog = (contentKind = CONTENT_KIND_BULLETIN) => {
+    if (contentKind === CONTENT_KIND_FEATURED_STORY) {
+      if (featuredStoriesWithImagesCount >= MAX_FEATURED_STORIES_WITH_IMAGES) {
+        setFeaturedStoryLimitOpen(true)
+        return
+      }
+    }
     resetDraft()
     setDraftContentKind(contentKind)
     if (contentKind === CONTENT_KIND_FEATURED_STORY) {
@@ -1236,7 +1273,13 @@ export default function AnnouncementPage() {
     setDialogOpen(true)
   }
 
-  const isFeaturedStoryDraft = draftContentKind === CONTENT_KIND_FEATURED_STORY
+  const featuredStoriesWithImages = useMemo(
+    () =>
+      announcements.filter(
+        (item) => isFeaturedStoryAnnouncement(item) && (item.imageUrls?.length ?? 0) > 0,
+      ),
+    [announcements],
+  )
 
   const stats = useMemo(
     () => ({
@@ -1813,7 +1856,10 @@ export default function AnnouncementPage() {
                   Pictures
                 </label>
                 <span className="text-xs text-slate-500">
-                  Optional · up to {MAX_ANNOUNCEMENT_IMAGES} · max {MAX_ANNOUNCEMENT_IMAGE_MB} MB each
+                  Optional · up to {draftMaxImages} · max {MAX_ANNOUNCEMENT_IMAGE_MB} MB each
+                  {isFeaturedStoryDraft
+                    ? ` · ${featuredStoriesWithImagesCount}/${MAX_FEATURED_STORIES_WITH_IMAGES} featured stories with pictures`
+                    : ""}
                 </span>
               </div>
 
@@ -1841,7 +1887,7 @@ export default function AnnouncementPage() {
                 </div>
               ) : null}
 
-              {draftImages.length < MAX_ANNOUNCEMENT_IMAGES ? (
+              {draftImages.length < draftMaxImages ? (
                 <label
                   htmlFor="announcement-images"
                   className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-white px-3 py-3 transition hover:border-[#081F5C]/35 hover:bg-[#081F5C]/[0.03] sm:px-4"
@@ -1855,7 +1901,7 @@ export default function AnnouncementPage() {
                       {draftImages.length > 0 ? "Add more pictures" : "Upload pictures"}
                     </p>
                     <p className="mt-0.5 text-xs text-slate-500">
-                      {draftImages.length}/{MAX_ANNOUNCEMENT_IMAGES} selected · JPEG, PNG, WebP, GIF
+                      {draftImages.length}/{draftMaxImages} selected · JPEG, PNG, WebP, GIF
                     </p>
                   </div>
                   <span className="hidden shrink-0 rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 sm:inline">
@@ -1864,7 +1910,7 @@ export default function AnnouncementPage() {
                 </label>
               ) : (
                 <p className="text-xs font-medium text-slate-500">
-                  Maximum of {MAX_ANNOUNCEMENT_IMAGES} pictures reached.
+                  Maximum of {draftMaxImages} pictures reached.
                 </p>
               )}
 
@@ -1981,6 +2027,50 @@ export default function AnnouncementPage() {
           </AlertDialogContent>
         </AlertDialog>
       ) : null}
+
+      <AlertDialog open={featuredStoryLimitOpen} onOpenChange={setFeaturedStoryLimitOpen}>
+        <AlertDialogContent
+          size="sm"
+          className="flex max-h-[min(90vh,32rem)] w-[calc(100vw-2rem)] max-w-2xl flex-col overflow-hidden p-0"
+        >
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-5 pb-4">
+            <AlertDialogHeader className="w-full min-w-0 gap-2 place-items-start text-left">
+              <AlertDialogTitle className="flex w-full items-center gap-2.5 text-left">
+                <TriangleAlert className="size-5 shrink-0 text-yellow-500" strokeWidth={2.25} aria-hidden />
+                <span>Featured story limit reached</span>
+              </AlertDialogTitle>
+              <AlertDialogDescription className="w-full min-w-0 text-left text-pretty leading-relaxed">
+                You already have {MAX_FEATURED_STORIES_WITH_IMAGES} featured{" "}
+                {MAX_FEATURED_STORIES_WITH_IMAGES === 1 ? "story" : "stories"} with pictures (active or inactive).
+                To save storage space, delete an existing featured story that includes pictures before creating
+                another one.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            {featuredStoriesWithImages.length > 0 ? (
+              <ul className="mt-4 max-h-36 w-full min-w-0 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2.5">
+                {featuredStoriesWithImages.map((item) => (
+                  <li key={item.id} className="min-w-0 break-words text-xs font-medium text-slate-700">
+                    <span className="block">{item.title || "Untitled featured story"}</span>
+                    <span className="font-normal text-slate-500">
+                      {item.imageUrls?.length ?? 0} picture
+                      {(item.imageUrls?.length ?? 0) === 1 ? "" : "s"}
+                      {item.active === false ? " · inactive" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <AlertDialogFooter className="!mx-0 !mb-0 mt-0 shrink-0 !flex !flex-row !justify-center !gap-0 border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+            <AlertDialogAction
+              className="w-[13rem] max-w-full"
+              onClick={() => setFeaturedStoryLimitOpen(false)}
+            >
+              Got it
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }

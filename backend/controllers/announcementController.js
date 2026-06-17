@@ -9,6 +9,7 @@ const {
     formatAnnouncementResponse,
 } = require('../utils/announcementDates');
 const { resolveAnnouncementTypePayload } = require('../utils/announcementTypes');
+const { resolveContentKind, isFeaturedStoryRecord, MAX_FEATURED_STORY_IMAGES, MAX_FEATURED_STORIES_WITH_IMAGES, countFeaturedStoriesWithImages } = require('../utils/announcementContentKinds');
 const { applyActiveState } = require('../utils/announcementMaintenance');
 const { processUploadedAnnouncementImages } = require('../services/announcementImageProcessing');
 const { MAX_ANNOUNCEMENT_IMAGE_COUNT } = require('../middleware/announcementUpload');
@@ -73,10 +74,30 @@ exports.createAnnouncement = async (req, res) => {
         }
 
         const isActive = parseBoolean(active, true);
+        const contentKind = resolveContentKind(req.body, typeFields);
+        const isFeaturedStory = contentKind === 'featured_story';
+        const incomingImageCount = Array.isArray(req.files) ? req.files.length : 0;
+
+        if (isFeaturedStory && incomingImageCount > MAX_FEATURED_STORY_IMAGES) {
+            return res.status(400).json({
+                message: `Upload restriction exceeded. A maximum of ${MAX_FEATURED_STORY_IMAGES} images are allowed per featured story.`,
+            });
+        }
+
+        if (isFeaturedStory && incomingImageCount > 0) {
+            const existingWithImages = await countFeaturedStoriesWithImages(Announcement);
+            if (existingWithImages >= MAX_FEATURED_STORIES_WITH_IMAGES) {
+                return res.status(400).json({
+                    message: `Featured story limit reached. You can have up to ${MAX_FEATURED_STORIES_WITH_IMAGES} featured stories with pictures (active or inactive). Delete an existing featured story with pictures to free space before creating another.`,
+                });
+            }
+        }
+
         const announcementData = {
             title: title.trim(),
             description: (description || '').trim(),
             ...typeFields,
+            contentKind,
             ...duration,
             active: isActive,
             inactiveAt: isActive ? null : new Date(),
@@ -160,6 +181,16 @@ exports.updateAnnouncement = async (req, res) => {
                 return res.status(validationError.statusCode || 400).json({ message: validationError.message });
             }
         }
+        if (
+            req.body.contentKind !== undefined ||
+            req.body.type !== undefined ||
+            req.body.customType !== undefined
+        ) {
+            updates.contentKind = resolveContentKind(req.body, {
+                type: updates.type ?? oldRecord.type,
+                customType: updates.customType ?? oldRecord.customType,
+            });
+        }
         if (startDate !== undefined || endDate !== undefined || date !== undefined) {
             try {
                 const duration = parseAnnouncementDuration({
@@ -183,6 +214,31 @@ exports.updateAnnouncement = async (req, res) => {
         }
 
         if (req.files && Array.isArray(req.files)) {
+            const resolvedContentKind = updates.contentKind ?? oldRecord.contentKind;
+            const isFeaturedStory = isFeaturedStoryRecord({ ...oldRecord.toObject(), contentKind: resolvedContentKind });
+
+            if (isFeaturedStory && req.files.length > MAX_FEATURED_STORY_IMAGES) {
+                return res.status(400).json({
+                    message: `Upload restriction exceeded. A maximum of ${MAX_FEATURED_STORY_IMAGES} images are allowed per featured story.`,
+                });
+            }
+
+            const willHaveImages =
+                req.files.length > 0 ||
+                (clearExistingImages !== 'true' && Array.isArray(oldRecord.images) && oldRecord.images.length > 0);
+
+            if (isFeaturedStory && willHaveImages && req.files.length > 0) {
+                const hadImages = Array.isArray(oldRecord.images) && oldRecord.images.length > 0;
+                if (!hadImages) {
+                    const existingWithImages = await countFeaturedStoriesWithImages(Announcement, id);
+                    if (existingWithImages >= MAX_FEATURED_STORIES_WITH_IMAGES) {
+                        return res.status(400).json({
+                            message: `Featured story limit reached. You can have up to ${MAX_FEATURED_STORIES_WITH_IMAGES} featured stories with pictures (active or inactive). Delete an existing featured story with pictures to free space before adding pictures.`,
+                        });
+                    }
+                }
+            }
+
             if (req.files.length > MAX_ANNOUNCEMENT_IMAGE_COUNT) {
                 return res.status(400).json({
                     message: `Upload restriction exceeded. A maximum of ${MAX_ANNOUNCEMENT_IMAGE_COUNT} images are allowed per announcement.`,

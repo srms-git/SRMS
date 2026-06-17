@@ -62,6 +62,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -241,6 +242,7 @@ export default function Osgfa() {
   } = useOsgfaPrograms()
   const [programsOpen, setProgramsOpen] = useState(isProgramsGroupActive)
   const [addProgramWarningOpen, setAddProgramWarningOpen] = useState(false)
+  const [addProgramWarningAcknowledged, setAddProgramWarningAcknowledged] = useState(false)
   const [addProgramOpen, setAddProgramOpen] = useState(false)
   const [newProgramCode, setNewProgramCode] = useState("")
   const [newProgramFullName, setNewProgramFullName] = useState("")
@@ -380,6 +382,7 @@ export default function Osgfa() {
 
   const handleAddProgramWarningOpenChange = (open) => {
     setAddProgramWarningOpen(open)
+    if (!open) setAddProgramWarningAcknowledged(false)
   }
 
   const proceedToAddProgram = () => {
@@ -1443,70 +1446,107 @@ export default function Osgfa() {
       </Dialog>
 
       <AlertDialog open={addProgramWarningOpen} onOpenChange={handleAddProgramWarningOpenChange}>
-        <AlertDialogContent className="!w-[min(calc(100vw-1.5rem),52rem)] !max-w-none gap-0 overflow-hidden rounded-2xl border border-[#081F5C]/14 bg-white p-0 shadow-[0_28px_56px_-16px_rgba(8,31,92,0.22)] duration-300 ease-out data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[size=default]:!max-w-none data-[size=default]:sm:!max-w-none dark:border-[#081F5C]/25 dark:bg-slate-950">
+        <AlertDialogContent className="!w-[min(calc(100vw-1.5rem),36rem)] !max-w-none gap-0 overflow-hidden rounded-2xl border border-[#081F5C]/14 bg-white p-0 shadow-[0_28px_56px_-16px_rgba(8,31,92,0.22)] duration-300 ease-out data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[size=default]:!max-w-none data-[size=default]:sm:!max-w-none dark:border-[#081F5C]/25 dark:bg-slate-950">
           <div className={programDialogAccentClass} aria-hidden />
           <div className="px-6 py-6 sm:px-8 sm:py-7">
-            <AlertDialogHeader className="mb-5 space-y-0 text-left sm:place-items-start">
-              <div className="flex w-full items-center gap-3.5">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
+            <AlertDialogHeader className="mb-5 space-y-3 text-left sm:place-items-start">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#081F5C]/70 dark:text-blue-300/80">
+                Step 1 of 2 · Review requirements
+              </p>
+              <div className="flex w-full items-start gap-3.5">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200">
                   <AlertTriangle className="size-5" aria-hidden />
                 </span>
-                <div className="min-w-0 flex-1">
-                  <AlertDialogTitle className="text-base font-semibold text-[#081F5C] sm:text-[17px] dark:text-blue-100">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <AlertDialogTitle className="text-lg font-semibold tracking-tight text-[#081F5C] dark:text-blue-100">
                     Before you add a program
                   </AlertDialogTitle>
-                  <AlertDialogDescription className="mt-1 text-sm leading-relaxed text-muted-foreground">
-                    Review both requirements below — they cannot be undone later.
+                  <AlertDialogDescription className="text-sm leading-relaxed text-muted-foreground">
+                    New programs are permanent and must follow UniFAST import rules. Read both points below before continuing.
                   </AlertDialogDescription>
                 </div>
               </div>
             </AlertDialogHeader>
 
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div className="flex gap-3.5 rounded-xl border border-slate-200/90 bg-slate-50/80 px-5 py-5 dark:border-white/10 dark:bg-slate-900/50">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700 shadow-sm dark:bg-slate-800 dark:text-slate-200">
-                  <Lock className="size-4" aria-hidden />
+            <ol className="space-y-3" aria-label="Program requirements">
+              <li className="flex gap-3.5 rounded-xl border border-slate-200/90 bg-slate-50/90 p-4 dark:border-white/10 dark:bg-slate-900/50">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-bold text-[#081F5C] shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-blue-100 dark:ring-white/10">
+                  1
                 </span>
-                <div className="min-w-0 text-sm leading-relaxed">
-                  <p className="font-semibold text-[#081F5C] dark:text-blue-100">Permanent — cannot be removed</p>
-                  <p className="mt-1.5 text-slate-600 dark:text-slate-300">
-                    Saved programs stay in the system forever. Deactivation hides them but does not delete them.
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2">
+                    <Lock className="mt-0.5 size-4 shrink-0 text-slate-600 dark:text-slate-300" aria-hidden />
+                    <div className="min-w-0 text-sm leading-relaxed">
+                      <p className="font-semibold text-[#081F5C] dark:text-blue-100">Programs cannot be deleted</p>
+                      <p className="mt-1 text-slate-600 dark:text-slate-300">
+                        Once saved, a program stays in the system. You can deactivate it to hide it from Batches and the sidebar, but records remain.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </li>
 
-              <div className="flex gap-3.5 rounded-xl border-2 border-amber-300/90 bg-amber-50 px-5 py-5 dark:border-amber-500/40 dark:bg-amber-950/35">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-800 dark:bg-amber-500/25 dark:text-amber-100">
-                  <FileSpreadsheet className="size-4" aria-hidden />
+              <li className="flex gap-3.5 rounded-xl border border-amber-200/90 bg-amber-50/90 p-4 dark:border-amber-500/35 dark:bg-amber-950/35">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-xs font-bold text-amber-900 dark:bg-amber-500/25 dark:text-amber-50">
+                  2
                 </span>
-                <div className="min-w-0 text-sm leading-relaxed">
-                  <p className="font-bold uppercase tracking-wide text-amber-900 dark:text-amber-100">
-                    Unifast format required
-                  </p>
-                  <p className="mt-1.5 text-amber-950/90 dark:text-amber-100/90">
-                    Must match the <strong className="font-bold uppercase">Unifast format</strong> (same as <strong>TES</strong>/<strong>TDP</strong>). Other formats will fail on imports and grantee records.
-                  </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start gap-2">
+                    <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-amber-800 dark:text-amber-200" aria-hidden />
+                    <div className="min-w-0 text-sm leading-relaxed">
+                      <p className="font-semibold text-amber-950 dark:text-amber-100">UniFAST format is required</p>
+                      <p className="mt-1 text-amber-950/85 dark:text-amber-100/90">
+                        Use the same spreadsheet layout as existing programs such as{" "}
+                        <span className="font-medium">TES</span> or <span className="font-medium">TDP</span>.
+                        Other formats will fail on imports and grantee records.
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </li>
+            </ol>
 
-            <AlertDialogFooter className="!-mx-0 !-mb-0 mt-6 !border-0 !bg-transparent !p-0 pt-5 flex-col gap-3.5 border-t border-slate-200/70 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
-              <p className="text-left text-sm leading-relaxed text-muted-foreground sm:max-w-[55%]">
-                <span className="font-medium text-foreground">Not sure?</span>{" "}
-                Compare with a TES/TDP template or confirm with your coordinator.
+            <label
+              htmlFor="add-program-warning-ack"
+              className={cn(
+                "mt-5 flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3.5 transition-colors",
+                addProgramWarningAcknowledged
+                  ? "border-[#081F5C]/25 bg-[#081F5C]/5 dark:border-blue-500/30 dark:bg-blue-950/30"
+                  : "border-slate-200/90 bg-white hover:border-slate-300 dark:border-white/10 dark:bg-slate-900/40 dark:hover:border-white/20",
+              )}
+            >
+              <Checkbox
+                id="add-program-warning-ack"
+                checked={addProgramWarningAcknowledged}
+                onCheckedChange={(checked) => setAddProgramWarningAcknowledged(checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                I understand that programs are permanent and must follow the UniFAST format before I add one.
+              </span>
+            </label>
+
+            <AlertDialogFooter className="!-mx-0 !-mb-0 mt-5 !border-0 !bg-transparent !p-0 flex-col gap-3 border-t border-slate-200/70 pt-5 sm:flex-row sm:items-center sm:justify-between dark:border-white/10">
+              <p className="text-left text-xs leading-relaxed text-muted-foreground sm:max-w-[52%]">
+                Not sure? Compare with a TES/TDP template or confirm with your coordinator first.
               </p>
               <div className="flex w-full shrink-0 flex-col-reverse gap-2.5 sm:w-auto sm:flex-row">
                 <AlertDialogCancel variant="outline" className={cn(programDialogCancelClass, "h-10 px-5")}>
                   Cancel
                 </AlertDialogCancel>
                 <AlertDialogAction
-                  className={cn(programDialogSaveClass, "h-10 px-5")}
+                  className={cn(
+                    programDialogSaveClass,
+                    "h-10 gap-1.5 px-5 disabled:pointer-events-none disabled:opacity-45",
+                  )}
+                  disabled={!addProgramWarningAcknowledged}
                   onClick={(event) => {
                     event.preventDefault()
                     proceedToAddProgram()
                   }}
                 >
-                  I understand, proceed
+                  Continue to details
+                  <ChevronRight className="size-4" aria-hidden />
                 </AlertDialogAction>
               </div>
             </AlertDialogFooter>
@@ -1519,6 +1559,9 @@ export default function Osgfa() {
           <div className={programDialogAccentClass} aria-hidden />
           <div className={programDialogBodyClass}>
             <DialogHeader className="space-y-4 text-left">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-[#081F5C]/70 dark:text-blue-300/80">
+                Step 2 of 2 · Program details
+              </p>
               <div className="flex flex-wrap items-start gap-4">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-[#04133d] via-[#081F5C] to-[#1447a6] text-sm font-bold tracking-wide text-white shadow-md">
                   {(newProgramCode || "—").slice(0, 4)}
@@ -1536,13 +1579,24 @@ export default function Osgfa() {
                     ) : null}
                   </div>
                   <DialogDescription className="max-w-prose text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                    Register a scholarship program for the sidebar workspace. You can add up to {maxPrograms} programs while load testing is in progress.
+                    Enter the short name and full title for this scholarship program. You can set document requirements after it is created.
                   </DialogDescription>
                 </div>
               </div>
             </DialogHeader>
 
             <form className="space-y-6" onSubmit={handleAddProgramSubmit}>
+              <div
+                role="note"
+                className="flex gap-2.5 rounded-xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-50"
+              >
+                <FileSpreadsheet className="mt-0.5 size-4 shrink-0 text-amber-800 dark:text-amber-200" aria-hidden />
+                <p className="leading-relaxed">
+                  Imports and grantee records for this program must use the{" "}
+                  <span className="font-medium">UniFAST format</span> (same layout as TES/TDP).
+                </p>
+              </div>
+
               <section className={cn(programSectionClass, "transition-opacity duration-300 ease-out")}>
                 <p className={programSectionTitleClass}>
                   <span className="h-5 w-1 rounded-full bg-[#081F5C] dark:bg-blue-400" aria-hidden />

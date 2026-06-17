@@ -84,6 +84,11 @@ const AnnouncementSchema = new mongoose.Schema({
         trim: true,
         default: ''
     },
+    contentKind: {
+        type: String,
+        enum: ['bulletin', 'featured_story'],
+        default: 'bulletin'
+    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
@@ -93,6 +98,7 @@ const AnnouncementSchema = new mongoose.Schema({
 });
 
 AnnouncementSchema.index({ type: 1 });
+AnnouncementSchema.index({ contentKind: 1 });
 AnnouncementSchema.index({ startDate: -1 });
 AnnouncementSchema.index({ endDate: 1, active: 1 });
 AnnouncementSchema.index({ active: 1, inactiveAt: 1 });

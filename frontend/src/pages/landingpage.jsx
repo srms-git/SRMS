@@ -25,6 +25,10 @@ import {
 import { getAnnouncementTypeLabel } from "@/lib/announcementTypes"
 import { resolveAnnouncementImageUrls } from "@/lib/announcementImages"
 import {
+  FEATURED_STORY_CUSTOM_TYPE,
+  partitionAnnouncementsByContentKind,
+} from "@/lib/announcementContentKinds"
+import {
   buildPayoutScheduleBadgeLookup,
   getPayoutIndicatorForBatch,
 } from "@/lib/payoutScheduleAnnouncements"
@@ -648,6 +652,9 @@ function FeaturedBatchScroller({ programLabel, items, scrollDirection = "left", 
 }
 
 const ANNOUNCEMENT_ROTATE_MS = 6000
+const BILLBOARD_CONTENT_HEIGHT = "h-[260px] sm:h-[300px] lg:h-[340px]"
+const BILLBOARD_HIDDEN_SCROLLBAR_CLASS =
+  "overflow-y-auto overscroll-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
 /** Min wheel delta before advancing one slide (groups trackpad ticks into one step). */
 const ABOUT_WHEEL_THRESHOLD = 85
 /** Cooldown after each slide change — prevents double navigation per scroll. */
@@ -1423,37 +1430,65 @@ function FacebookPageEmbed({ pageUrl }) {
   )
 }
 
-function BillboardAnnouncementSlide({ item, compact = false, variant = "text-only", children }) {
+function mapRecordToBillboardItem(item, index, { isFeatured = false } = {}) {
+  const { startDate, endDate } = resolveAnnouncementDates(item)
+  const id = item.id || item._id || `announcement-${index}`
+  const imageUrls = resolveAnnouncementImageUrls({ ...item, id })
+  const durationLabel = formatAnnouncementDurationLabel(startDate, endDate)
+
+  return {
+    id,
+    tag: isFeatured ? FEATURED_STORY_CUSTOM_TYPE : getAnnouncementTypeLabel(item),
+    dateIso: startDate || "",
+    dateLabel: isFeatured ? `Spotlight · ${durationLabel}` : durationLabel,
+    title: item.title || (isFeatured ? "Untitled story" : "Untitled bulletin"),
+    message: item.description || "",
+    imageUrls,
+    imageUrl: imageUrls[0] ?? null,
+    isFeatured,
+  }
+}
+
+function BillboardAnnouncementSlide({ item, compact = false, variant = "text-only", slideMode = "bulletin", children }) {
   const [expanded, setExpanded] = useState(false)
   const [isTruncated, setIsTruncated] = useState(false)
   const [lockedImageHeight, setLockedImageHeight] = useState(null)
   const messageRef = useRef(null)
   const imageWrapRef = useRef(null)
 
+  const isFeatured = slideMode === "featured" || item?.isFeatured
   const message = String(item.message ?? "").trim()
   const hasMessage = Boolean(message)
   const isTextOnly = variant === "text-only"
-  const isSingleImage = variant === "single-image"
   const hasImages = Boolean(children)
 
-  const messageLineClamp = isTextOnly ? "line-clamp-4 sm:line-clamp-5" : "line-clamp-2"
+  const messageLineClamp =
+    isFeatured && isTextOnly
+      ? "line-clamp-4 sm:line-clamp-5"
+      : isTextOnly
+        ? "line-clamp-3 sm:line-clamp-4"
+        : "line-clamp-2"
   const messageTextClass = isTextOnly
-    ? "text-sm sm:text-base"
+    ? isFeatured
+      ? "text-sm sm:text-base"
+      : "text-sm sm:text-base"
     : compact
       ? "text-[11px]"
       : "text-xs sm:text-sm"
-  const titleClass = isTextOnly
+  const titleClass = isFeatured
     ? compact
-      ? "text-lg sm:text-xl"
-      : "text-xl sm:text-2xl"
-    : compact
-      ? "text-sm sm:text-base"
-      : "text-base sm:text-lg"
-  const headerPadClass = isSingleImage
-    ? "space-y-1 px-3 pt-3 pb-1.5 sm:px-4 sm:pt-3.5 sm:pb-2"
+      ? "text-xl sm:text-2xl"
+      : "text-2xl sm:text-3xl"
     : isTextOnly
-      ? ""
-      : "space-y-1 px-1 pb-0.5 sm:pb-1"
+      ? compact
+        ? "text-lg sm:text-xl"
+        : "text-xl sm:text-2xl"
+      : compact
+        ? "text-sm sm:text-base"
+        : "text-base sm:text-lg"
+  const headerPadClass = isTextOnly
+    ? ""
+    : "space-y-1.5 pb-2 sm:pb-2.5"
   const actionClassName = cn("font-semibold underline-offset-2 transition hover:underline", messageTextClass)
 
   useLayoutEffect(() => {
@@ -1508,25 +1543,22 @@ function BillboardAnnouncementSlide({ item, compact = false, variant = "text-onl
       key={item.id}
       className={cn(
         "relative flex h-full min-h-0 w-full flex-col text-center",
-        expanded
-          ? "overflow-y-auto overscroll-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5"
-          : "overflow-hidden",
-        isTextOnly && !expanded && "justify-center",
+        expanded ? BILLBOARD_HIDDEN_SCROLLBAR_CLASS : "overflow-hidden",
+        !expanded && isTextOnly && "justify-center",
+        expanded && "justify-start",
       )}
     >
       <div
         className={cn(
-          "w-full",
-          !expanded && hasImages && "flex h-full min-h-0 flex-col",
-          !expanded && isTextOnly && "px-1",
-          expanded && isTextOnly && "px-3 py-3 sm:px-4 sm:py-4",
+          "flex w-full min-h-0 flex-col",
+          hasImages && !expanded && "h-full flex-1",
         )}
       >
         <div
           className={cn(
             headerPadClass,
             "shrink-0",
-            !expanded && isTextOnly && "mb-2",
+            !expanded && isTextOnly && !hasImages && "mb-2",
           )}
         >
           <div className="flex flex-wrap items-center justify-center gap-1.5">
@@ -1589,7 +1621,7 @@ function BillboardAnnouncementSlide({ item, compact = false, variant = "text-onl
               </p>
               {isTruncated && !expanded ? (
                 <span className="absolute right-0 bottom-0 left-0 flex justify-end">
-                  <span className="inline-flex max-w-full items-baseline bg-gradient-to-l from-white from-55% via-white/95 to-transparent pl-6 sm:pl-8">
+                  <span className="inline-flex max-w-full items-baseline bg-gradient-to-l from-[#eef2ff] from-55% via-[#eef2ff]/95 to-transparent pl-6 sm:pl-8">
                     <span className={messageTextClass} style={{ color: textBodyOnLight }} aria-hidden>
                       …{" "}
                     </span>
@@ -1619,12 +1651,8 @@ function BillboardAnnouncementSlide({ item, compact = false, variant = "text-onl
           <div
             ref={imageWrapRef}
             className={cn(
-              "relative w-full",
-              !expanded && "min-h-0 flex-1 shrink-0",
-              expanded && "shrink-0",
-              variant === "multi-image" &&
-                "mt-2.5 flex items-stretch justify-center px-1.5 pb-1.5 sm:mt-3 sm:px-2 sm:pb-2",
-              variant === "single-image" && "px-2.5 pb-2.5 sm:px-3 sm:pb-3",
+              "relative w-full min-h-0 overflow-hidden pt-0.5",
+              expanded ? "shrink-0" : "flex-1",
             )}
             style={imageWrapStyle}
           >
@@ -1643,6 +1671,8 @@ function BillboardCard({
   children,
   className = "",
   compact = false,
+  theme = "navy",
+  slideMode = "bulletin",
   slideAriaLabelPrefix = "slide",
   emptyMessage = "",
 }) {
@@ -1650,6 +1680,10 @@ function BillboardCard({
   const [paused, setPaused] = useState(false)
 
   const hasCarousel = items.length > 0
+  const frameGradient = gradientNavyButton
+  const headerGradient = gradientNavyBlue
+  const activeDotColor = navyBright
+  const inactiveDotColor = "rgba(8, 31, 92, 0.2)"
 
   useEffect(() => {
     if (!hasCarousel || items.length <= 1 || paused) return undefined
@@ -1662,7 +1696,7 @@ function BillboardCard({
   if (!hasCarousel && !children && !emptyMessage) return null
 
   const current = hasCarousel ? items[activeIndex] : null
-  const isSingleImageSlide = (current?.imageUrls?.length ?? 0) === 1
+  const currentHasImages = (current?.imageUrls?.length ?? 0) > 0
 
   const goTo = (index) => {
     if (!hasCarousel) return
@@ -1670,18 +1704,13 @@ function BillboardCard({
   }
 
   const isEmbed = Boolean(children)
-  const hasSlideImages = items.some((item) => item.imageUrls?.length > 0)
   const contentPadding = isEmbed
     ? "p-0"
-    : isSingleImageSlide
-      ? "p-0"
-      : hasSlideImages
-        ? compact
-          ? "px-3 py-3 sm:px-4 sm:py-3"
-          : "px-4 py-3 sm:px-5 sm:py-3"
-        : compact
-          ? "px-4 py-10 sm:px-5 sm:py-12"
-          : "px-5 py-10 sm:px-8 sm:py-12"
+    : currentHasImages
+      ? "px-4 py-2.5 sm:px-5 sm:py-3"
+      : compact
+        ? "px-4 py-4 sm:px-5 sm:py-5"
+        : "px-4 py-4 sm:px-6 sm:py-5"
 
   return (
     <div
@@ -1695,15 +1724,18 @@ function BillboardCard({
     >
       <div
         className="flex h-full min-h-0 flex-1 flex-col rounded-[1.35rem] p-[3px] shadow-2xl shadow-slate-900/20"
-        style={{ backgroundImage: gradientNavyButton }}
+        style={{ backgroundImage: frameGradient }}
       >
         <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-[1.2rem] bg-white">
           <div
             className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-2.5 sm:px-5"
-            style={{ borderColor: borderNavySoft, backgroundImage: gradientNavyBlue }}
+            style={{ borderColor: borderNavySoft, backgroundImage: headerGradient }}
           >
             <div className="flex min-w-0 items-center gap-2">
-              <span className="size-2 shrink-0 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]" aria-hidden />
+              <span
+                className="size-2 shrink-0 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"
+                aria-hidden
+              />
               <p
                 className={`truncate font-bold uppercase tracking-[0.22em] text-white ${compact ? "text-[10px]" : "text-[11px] sm:text-xs"}`}
               >
@@ -1718,17 +1750,19 @@ function BillboardCard({
           </div>
 
           <div
-            className={`relative flex flex-col ${
+            className={cn(
+              "relative flex min-h-0 flex-col overflow-hidden",
               isEmbed
-                ? "min-h-[280px] flex-1 overflow-hidden sm:min-h-[320px] lg:min-h-[360px]"
-                : "h-[280px] overflow-hidden sm:h-[320px] lg:h-[360px]"
-            } ${contentPadding}`}
+                ? "min-h-[280px] flex-1 sm:min-h-[320px] lg:min-h-[360px]"
+                : BILLBOARD_CONTENT_HEIGHT,
+              contentPadding,
+            )}
             style={{
               backgroundImage: isEmbed ? undefined : `linear-gradient(180deg, #ffffff 0%, ${bvIce} 100%)`,
               backgroundColor: isEmbed ? "#ffffff" : undefined,
             }}
           >
-            {!isEmbed && !isSingleImageSlide ? (
+            {!isEmbed && !currentHasImages ? (
               <div
                 className="pointer-events-none absolute inset-0 opacity-[0.07]"
                 style={{
@@ -1768,34 +1802,32 @@ function BillboardCard({
                 </p>
               </div>
             ) : current.imageUrls?.length > 0 ? (
-              <BillboardAnnouncementSlide
-                item={current}
-                compact={compact}
-                variant={current.imageUrls.length === 1 ? "single-image" : "multi-image"}
-              >
-                <AnnouncementImageGallery
-                  urls={current.imageUrls}
-                  maxVisible={current.imageUrls.length === 1 ? 1 : 3}
-                  compact
-                  layout="strip"
-                  singleLarge={current.imageUrls.length === 1}
-                  borderless={current.imageUrls.length > 1}
-                  className={current.imageUrls.length === 1 ? "h-full w-full" : "w-full"}
-                  stripHeightClass={
-                    current.imageUrls.length === 1
-                      ? undefined
-                      : "h-full min-h-[7.5rem] max-h-[10.5rem] sm:max-h-[11.5rem]"
-                  }
-                />
-              </BillboardAnnouncementSlide>
+              <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+                <BillboardAnnouncementSlide
+                  item={current}
+                  compact={compact}
+                  slideMode={slideMode}
+                  variant={current.imageUrls.length === 1 ? "single-image" : "multi-image"}
+                >
+                  <AnnouncementImageGallery
+                    urls={current.imageUrls}
+                    maxVisible={3}
+                    compact
+                    variant="feed"
+                    stripHeightClass="h-full min-h-0"
+                  />
+                </BillboardAnnouncementSlide>
+              </div>
             ) : (
-              <BillboardAnnouncementSlide item={current} compact={compact} variant="text-only" />
+              <div className="relative flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden">
+                <BillboardAnnouncementSlide item={current} compact={compact} slideMode={slideMode} variant="text-only" />
+              </div>
             )}
           </div>
 
           {hasCarousel && items.length > 1 ? (
             <div
-              className={`flex shrink-0 flex-wrap items-center justify-between gap-3 border-t px-4 py-3 ${compact ? "sm:px-4" : "sm:px-5"}`}
+              className={`flex shrink-0 flex-wrap items-center justify-between gap-2.5 border-t px-4 py-2 sm:px-4 ${compact ? "" : "sm:px-5"}`}
               style={{ borderColor: borderNavySoft, backgroundColor: "#f8fafc" }}
             >
               <div className="flex items-center gap-2">
@@ -1829,7 +1861,7 @@ function BillboardCard({
                     className="h-2 rounded-full transition-all"
                     style={{
                       width: index === activeIndex ? "1.5rem" : "0.5rem",
-                      backgroundColor: index === activeIndex ? navyBright : "rgba(8, 31, 92, 0.2)",
+                      backgroundColor: index === activeIndex ? activeDotColor : inactiveDotColor,
                     }}
                     onClick={() => goTo(index)}
                   />
@@ -1845,7 +1877,8 @@ function BillboardCard({
 
 export default function LandingPage() {
   const location = useLocation()
-  const [announcements, setAnnouncements] = useState([])
+  const [bulletins, setBulletins] = useState([])
+  const [featuredStories, setFeaturedStories] = useState([])
   const [announcementRecords, setAnnouncementRecords] = useState([])
   const { batches: publishedLandingBatches, loading: landingBatchesLoading } = usePublishedLandingBatches()
   const { programs } = useOsgfaPrograms()
@@ -1902,27 +1935,18 @@ export default function LandingPage() {
             const bStart = resolveAnnouncementDates(b).startDate
             return new Date(bStart || b.createdAt || 0) - new Date(aStart || a.createdAt || 0)
           })
-        setAnnouncementRecords(activeRecords)
-        setAnnouncements(
-          activeRecords.map((item, index) => {
-            const { startDate, endDate } = resolveAnnouncementDates(item)
-            const id = item.id || item._id || `announcement-${index}`
-            const imageUrls = resolveAnnouncementImageUrls({ ...item, id })
-            return {
-              id,
-              tag: getAnnouncementTypeLabel(item),
-              dateIso: startDate || "",
-              dateLabel: formatAnnouncementDurationLabel(startDate, endDate),
-              title: item.title || "Untitled bulletin",
-              message: item.description || "",
-              imageUrls,
-              imageUrl: imageUrls[0] ?? null,
-            }
-          }),
+        const { featuredStories: featuredRecords, bulletins: bulletinRecords } =
+          partitionAnnouncementsByContentKind(activeRecords)
+
+        setAnnouncementRecords(bulletinRecords)
+        setFeaturedStories(
+          featuredRecords.map((item, index) => mapRecordToBillboardItem(item, index, { isFeatured: true })),
         )
+        setBulletins(bulletinRecords.map((item, index) => mapRecordToBillboardItem(item, index)))
       } catch (error) {
         console.error("Failed to load landing announcements:", error)
-        setAnnouncements([])
+        setBulletins([])
+        setFeaturedStories([])
         setAnnouncementRecords([])
       }
     }
@@ -2203,18 +2227,31 @@ export default function LandingPage() {
                 </span>
               </h2>
               <p className="mt-2 max-w-none text-justify text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
-                Access the latest scholarship bulletins, application updates, schedules, and important notices posted by the MARSU - Office of the Scholarship Grants and Financial Assistance.
+                Access the latest scholarship bulletins, application updates, schedules, and important notices — plus
+                featured spotlight stories from the MARSU - Office of the Scholarship Grants and Financial Assistance.
               </p>
             </div>
             <div className="grid w-full grid-cols-1 items-stretch gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,19rem)] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,21rem)] xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
-              <BillboardCard
-                title="Bulletin"
-                subtitle="Official notices"
-                items={announcements}
-                slideAriaLabelPrefix="bulletin"
-                emptyMessage="No active bulletins at the moment."
-                className="min-w-0 w-full"
-              />
+              <div className="flex min-w-0 w-full flex-col gap-3 sm:gap-4">
+                <BillboardCard
+                  title="Announcements and Advisory"
+                  subtitle="Official notices"
+                  items={bulletins}
+                  slideAriaLabelPrefix="bulletin"
+                  emptyMessage="No active bulletins at the moment."
+                  className="min-w-0 w-full"
+                />
+                {featuredStories.length > 0 ? (
+                  <BillboardCard
+                    title="Featured story"
+                    subtitle="Spotlight"
+                    items={featuredStories}
+                    slideMode="featured"
+                    slideAriaLabelPrefix="featured story"
+                    className="min-w-0 w-full"
+                  />
+                ) : null}
+              </div>
               <BillboardCard title="Facebook page" subtitle="Follow us" compact className="min-w-0 w-full">
                 <FacebookPageEmbed pageUrl={FACEBOOK_PAGE_URL} />
               </BillboardCard>
