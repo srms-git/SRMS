@@ -30,6 +30,7 @@ import {
 import { useGranteesQuery } from "@/hooks/useSrmsQueries"
 import { useCashierPrivacySettings } from "@/hooks/useCashierPrivacySettings"
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
+import { getBatchLandingKey, isBatchVisibleOnLanding, useLandingBatchVisibility } from "@/lib/landingFeaturedBatches"
 import {
   ChartAreaSkeleton,
   ChartDonutSkeleton,
@@ -102,19 +103,36 @@ export default function CashierDashboard() {
     refetch: loadRecords,
   } = useGranteesQuery()
   const fetchError = granteesError?.message ?? null
+  const landingVisibility = useLandingBatchVisibility()
 
   const { contentRevealed, skeletonLeaving } = useContentReveal(isLoading)
 
   const batches = useMemo(() => buildBatchesFromGrantees(records), [records])
+  const publishedBatches = useMemo(
+    () => batches.filter((batch) => isBatchVisibleOnLanding(batch, landingVisibility)),
+    [batches, landingVisibility],
+  )
+  const publishedRecords = useMemo(() => {
+    const publishedKeys = new Set(publishedBatches.map((batch) => getBatchLandingKey(batch)))
+    return records.filter((row) =>
+      publishedKeys.has(
+        getBatchLandingKey({
+          batchNo: row?.batchNo,
+          program: row?.program,
+          schoolYear: row?.academicYear ?? row?.schoolYear,
+        }),
+      ),
+    )
+  }, [records, publishedBatches])
 
   useEffect(() => {
     setTrendSemestralFilter(TREND_SEMESTRAL_ALL)
   }, [trendBatchFilter])
 
-  const batchFilterOptions = useMemo(() => buildBatchFilterOptions(batches), [batches])
+  const batchFilterOptions = useMemo(() => buildBatchFilterOptions(publishedBatches), [publishedBatches])
   const trendRows = useMemo(
-    () => filterRecordsForTrendBatch(records, trendBatchFilter),
-    [records, trendBatchFilter],
+    () => filterRecordsForTrendBatch(publishedRecords, trendBatchFilter),
+    [publishedRecords, trendBatchFilter],
   )
   const selectedBatchYear = useMemo(() => parseTrendBatchFilter(trendBatchFilter)?.schoolYear ?? "", [trendBatchFilter])
   const semestralOptions = useMemo(
@@ -125,7 +143,7 @@ export default function CashierDashboard() {
     () => claimTrendForRange(trendRows, trendRange, trendSemestralFilter, selectedBatchYear),
     [trendRows, trendRange, trendSemestralFilter, selectedBatchYear],
   )
-  const yearLevelDonut = useMemo(() => enrichYearLevelDonut(buildYearLevelDonut(records)), [records])
+  const yearLevelDonut = useMemo(() => enrichYearLevelDonut(buildYearLevelDonut(publishedRecords)), [publishedRecords])
   const yearLevelTotal = useMemo(() => yearLevelDonut.reduce((s, d) => s + d.value, 0), [yearLevelDonut])
   const donutChartConfig = useMemo(
     () => Object.fromEntries(yearLevelDonut.map((d) => [d.name, { label: d.name, color: d.color }])),
@@ -133,19 +151,19 @@ export default function CashierDashboard() {
   )
 
   const overview = useMemo(() => {
-    const claimed = records.filter((r) => String(r?.status ?? "") === "Claimed").length
-    const unclaimed = records.filter((r) => String(r?.status ?? "") === "Unclaimed").length
+    const claimed = publishedRecords.filter((r) => String(r?.status ?? "") === "Claimed").length
+    const unclaimed = publishedRecords.filter((r) => String(r?.status ?? "") === "Unclaimed").length
     return {
-      totalBatches: batches.length,
-      totalGrantees: records.length,
+      totalBatches: publishedBatches.length,
+      totalGrantees: publishedRecords.length,
       claimed,
       unclaimed,
     }
-  }, [batches.length, records])
+  }, [publishedBatches.length, publishedRecords])
 
   const programBars = useMemo(
-    () => buildProgramQuantityBars(records, activePrograms),
-    [records, activePrograms],
+    () => buildProgramQuantityBars(publishedRecords, activePrograms),
+    [publishedRecords, activePrograms],
   )
   const programScaleSubtitle = useMemo(
     () => programQuantityScaleSubtitle(activePrograms),
@@ -153,7 +171,7 @@ export default function CashierDashboard() {
   )
 
   const recentBatches = useMemo(() => {
-    const items = [...batches]
+    const items = [...publishedBatches]
       .sort((a, b) => new Date(b?.createdAt || 0) - new Date(a?.createdAt || 0))
       .slice(0, 4)
 
@@ -176,7 +194,7 @@ export default function CashierDashboard() {
         when,
       }
     })
-  }, [batches])
+  }, [publishedBatches])
 
   const quickActions = useMemo(
     () => [
@@ -543,7 +561,7 @@ export default function CashierDashboard() {
         </div>
 
         <RequirementsCompletionCard
-          records={records}
+          records={publishedRecords}
           activePrograms={activePrograms}
           hideSensitiveStats={hideSensitiveStats}
           isLoading={isLoading}
@@ -586,7 +604,7 @@ export default function CashierDashboard() {
             )}
             {!isLoading && recentBatches.length === 0 ? (
               <div className="rounded-xl border border-dashed border-slate-200/80 bg-slate-50/70 p-4 text-sm text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-200">
-                No recent batch activity yet.
+                No published batches are available yet.
               </div>
             ) : !isLoading ? (
               recentBatches.map((item, index) => (

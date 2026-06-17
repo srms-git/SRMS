@@ -173,8 +173,8 @@ const ADMIN_PAGE_META = {
     description: "Register scholarship grantees.",
   },
   "/osgfa/announcement": {
-    title: "Announcements",
-    description: "Create and manage official announcement posts for students and campus updates.",
+    title: "Bulletin",
+    description: "Create and manage official bulletin posts for students and campus updates.",
   },
   "/osgfa/archive": {
     title: "Archive",
@@ -888,12 +888,12 @@ export default function Osgfa() {
                       <SidebarMenuButton
                         asChild
                         isActive={isAnnouncementActive}
-                        tooltip="Announcement"
+                        tooltip="Bulletin"
                         className={sidebarMenuButtonClass}
                       >
                         <NavLink className="flex w-full min-w-0 items-center justify-start gap-2" to="/osgfa/announcement">
                           <Megaphone className="size-[22px] shrink-0 opacity-90" />
-                          <span className="whitespace-nowrap group-data-[collapsible=icon]:hidden">Announcement</span>
+                          <span className="whitespace-nowrap group-data-[collapsible=icon]:hidden">Bulletin</span>
                         </NavLink>
                       </SidebarMenuButton>
                     </SidebarMenuItem>

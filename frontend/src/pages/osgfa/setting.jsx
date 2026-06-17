@@ -20,6 +20,8 @@ import {
 } from "lucide-react"
 import PasswordField from "@/components/PasswordField"
 import AuditLogsPanel from "@/components/settings/AuditLogsPanel"
+import FaqPanel from "@/components/settings/FaqPanel"
+import HelpCenterPanel from "@/components/settings/HelpCenterPanel"
 import {
   Dialog,
   DialogContent,
@@ -39,7 +41,6 @@ import {
   DEFAULT_WORKFLOW_STEP_COLOR,
   DEFAULT_WORKFLOW_STEP_COLOR_LIGHT,
   getWorkflowStepsForProgram,
-  normalizeProcessWorkflowSteps,
   PROCESS_WORKFLOW_DEFAULT_PROGRAM_ORDER,
   PROCESS_WORKFLOW_ICON_OPTIONS,
   loadProcessWorkflow,
@@ -66,6 +67,7 @@ const SECTIONS = {
   NOTIFICATIONS: "notifications",
   OSGFA_PRIVACY: "osgfa-privacy",
   SUPPORT: "support",
+  FAQ: "faq",
   AUDIT_LOGS: "audit-logs",
 }
 
@@ -250,7 +252,7 @@ function WorkflowStepEditor({
         aria-hidden={!isEditing}
       >
         <div className={cn("min-h-0 overflow-hidden", !isEditing && "pointer-events-none")}>
-          <div className="space-y-4 p-4">
+          <div className="space-y-4 p-4" onClick={(event) => event.stopPropagation()}>
             <div className="rounded-lg border border-dashed border-[#081F5C]/15 bg-slate-50/80 p-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-[#081F5C]/55">Preview</p>
               <p className="mt-1 text-sm font-semibold text-[#081F5C]">{headingPreview}</p>
@@ -523,7 +525,12 @@ export default function Setting() {
       return {
         byProgram: {
           ...prev.byProgram,
-          [programCode]: { steps: normalizeProcessWorkflowSteps(nextSteps) },
+          [programCode]: {
+            steps: nextSteps.map((step, index) => ({
+              ...step,
+              step: String(index + 1).padStart(2, "0"),
+            })),
+          },
         },
       }
     })
@@ -965,6 +972,15 @@ export default function Setting() {
                     }`}
                   >
                     Help Center
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActive(SECTIONS.FAQ)}
+                    className={`block w-full rounded-md py-1 text-left transition ${
+                      active === SECTIONS.FAQ ? "font-semibold text-[#081F5C]" : "text-gray-700 hover:text-[#081F5C]"
+                    }`}
+                  >
+                    FAQ
                   </button>
                   <button
                     type="button"
@@ -1820,21 +1836,9 @@ export default function Setting() {
             </section>
           )}
 
-          {active === SECTIONS.SUPPORT && (
-            <section className="space-y-3">
-              <div className="flex items-center gap-2">
-                <HelpCircle className="h-4 w-4 text-blue-700" />
-                <h3 className="text-base font-semibold text-gray-900">Help Center</h3>
-              </div>
-              <p className="text-sm text-gray-700">
-                For SRMS concerns, coordinate with your school focal person or open the internal support channel for
-                TES/TDP reporting issues.
-              </p>
-              <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                Tip: Include batch number and scholarship type when reporting an issue for faster resolution.
-              </div>
-            </section>
-          )}
+          {active === SECTIONS.SUPPORT && <HelpCenterPanel workspace="osgfa" />}
+
+          {active === SECTIONS.FAQ && <FaqPanel workspace="osgfa" />}
 
           {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="OSGFA" />}
           </div>

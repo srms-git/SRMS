@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import {
   CalendarDays,
@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   Newspaper,
   Plus,
+  Sparkles,
   Radio,
   RotateCcw,
   Search,
@@ -148,7 +149,7 @@ function getAnnouncementSaveError(err) {
   return (
     err?.response?.data?.message ||
     err?.userMessage ||
-    "Failed to save announcement. Please try again."
+    "Failed to save bulletin. Please try again."
   )
 }
 
@@ -307,13 +308,189 @@ function SummaryStatCard({ label, value, accentBar, glow, iconBg, Icon, classNam
   )
 }
 
+const CONTENT_KIND_BULLETIN = "bulletin"
+const CONTENT_KIND_FEATURED_STORY = "featured_story"
+const FEATURED_STORY_CUSTOM_TYPE = "Featured story"
+
+function isFeaturedStoryAnnouncement(item) {
+  if (!item) return false
+  if (item.contentKind === CONTENT_KIND_FEATURED_STORY) return true
+  return (
+    isOtherAnnouncementType(item.type) &&
+    String(item.customType ?? "")
+      .trim()
+      .toLowerCase() === FEATURED_STORY_CUSTOM_TYPE.toLowerCase()
+  )
+}
+
+function resolveAnnouncementContentKind(item) {
+  return isFeaturedStoryAnnouncement(item) ? CONTENT_KIND_FEATURED_STORY : CONTENT_KIND_BULLETIN
+}
+
+const CREATE_CONTENT_OPTIONS = [
+  {
+    kind: CONTENT_KIND_BULLETIN,
+    label: "Bulletin",
+    Icon: Megaphone,
+    bubbleClass:
+      "bg-linear-to-br from-[#04133d] via-[#081F5C] to-[#1447a6] shadow-[#081F5C]/30 hover:shadow-[#081F5C]/40 focus-visible:ring-[#081F5C]/35",
+    ringClass: "ring-[#081F5C]/15",
+  },
+  {
+    kind: CONTENT_KIND_FEATURED_STORY,
+    label: "Featured story",
+    Icon: Sparkles,
+    bubbleClass:
+      "bg-linear-to-br from-violet-600 via-fuchsia-600 to-rose-500 shadow-fuchsia-500/30 hover:shadow-fuchsia-500/45 focus-visible:ring-fuchsia-500/35",
+    ringClass: "ring-fuchsia-500/20",
+  },
+]
+
+function CreateContentBubble({ label, Icon, onClick, bubbleClass, ringClass, className, style }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "group/bubble inline-flex h-11 min-w-11 items-center justify-center gap-0 overflow-hidden rounded-full px-0 text-white shadow-lg ring-1 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        "hover:-translate-y-0.5 hover:gap-2 hover:px-3.5 hover:shadow-xl",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+        bubbleClass,
+        ringClass,
+        className,
+      )}
+      style={style}
+      aria-label={label}
+      title={label}
+    >
+      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/12 ring-1 ring-white/20">
+        <Icon className="size-4" strokeWidth={2.25} aria-hidden />
+      </span>
+      <span className="pointer-events-none max-w-0 overflow-hidden whitespace-nowrap pr-0 text-sm font-semibold tracking-tight opacity-0 transition-all duration-300 group-hover/bubble:max-w-[9.5rem] group-hover/bubble:pr-1 group-hover/bubble:opacity-100 group-focus-visible/bubble:max-w-[9.5rem] group-focus-visible/bubble:pr-1 group-focus-visible/bubble:opacity-100">
+        {label}
+      </span>
+    </button>
+  )
+}
+
+function CreateContentMenu({ onSelect, trigger = "fab", className }) {
+  const isFab = trigger === "fab"
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef(null)
+
+  const closeMenu = () => setOpen(false)
+
+  const handleSelect = (kind) => {
+    closeMenu()
+    onSelect(kind)
+  }
+
+  useEffect(() => {
+    if (!open) return undefined
+
+    const handlePointerDown = (event) => {
+      if (!rootRef.current?.contains(event.target)) {
+        closeMenu()
+      }
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") closeMenu()
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    document.addEventListener("keydown", handleKeyDown)
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown)
+      document.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [open])
+
+  const bubbleStack = (
+    <div
+      className={cn(
+        "flex flex-col-reverse gap-2.5",
+        isFab ? "items-end" : "items-center",
+        open
+          ? "pointer-events-auto translate-y-0 scale-100 opacity-100"
+          : "pointer-events-none translate-y-2 scale-95 opacity-0",
+        "transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]",
+      )}
+      aria-hidden={!open}
+    >
+      {CREATE_CONTENT_OPTIONS.map((option, index) => (
+        <CreateContentBubble
+          key={option.kind}
+          label={option.label}
+          Icon={option.Icon}
+          bubbleClass={option.bubbleClass}
+          ringClass={option.ringClass}
+          onClick={() => handleSelect(option.kind)}
+          className={open ? "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:zoom-in-95" : undefined}
+          style={
+            open
+              ? {
+                  animationDelay: `${index * 70}ms`,
+                  animationFillMode: "backwards",
+                }
+              : undefined
+          }
+        />
+      ))}
+    </div>
+  )
+
+  if (isFab) {
+    return (
+      <div ref={rootRef} className={cn("fixed bottom-8 right-8 z-50 flex flex-col items-end gap-3", className)}>
+        {bubbleStack}
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label={open ? "Close create menu" : "Create content"}
+          title={open ? "Close" : "Create"}
+          className={cn(
+            "inline-flex h-12 w-12 items-center justify-center rounded-full bg-linear-to-r from-[#081F5C] to-[#1447a6] text-white shadow-lg shadow-[#081F5C]/25 transition-all duration-300",
+            "hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white",
+            open && "rotate-0 bg-linear-to-br from-slate-700 to-slate-900 shadow-slate-900/30",
+          )}
+        >
+          <Plus
+            className={cn("size-5 shrink-0 transition-transform duration-300", open && "rotate-45")}
+            strokeWidth={3}
+            aria-hidden
+          />
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={rootRef} className={cn("relative mt-6 flex flex-col items-center", className)}>
+      <div className="absolute bottom-full left-1/2 mb-3 w-max -translate-x-1/2">{bubbleStack}</div>
+      <Button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className="bg-[#081F5C] hover:bg-[#0b2d83]"
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <Plus className={cn("mr-2 h-4 w-4 transition-transform duration-300", open && "rotate-45")} aria-hidden />
+        {open ? "Choose type" : "Create"}
+      </Button>
+    </div>
+  )
+}
+
 function AnnouncementsEmptyState({ variant, errorMessage, onClearFilters, onCreate, onRetry, className, style }) {
   if (variant === "error") {
     return (
       <ConnectionProblemState
         error={errorMessage}
         onRetry={onRetry}
-        subject="announcements"
+        subject="bulletins"
         variant="card"
         className={cn("min-h-[280px] justify-center", className)}
         style={style}
@@ -333,10 +510,10 @@ function AnnouncementsEmptyState({ variant, errorMessage, onClearFilters, onCrea
         <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/10 dark:text-slate-300">
           <SearchX className="h-6 w-6" aria-hidden />
         </span>
-        <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">No matching announcements</p>
+        <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">No matching bulletins</p>
         <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600 dark:text-slate-300">
           Nothing matches your current search or filters. Try different keywords, or reset the filters to see all
-          announcements.
+          bulletins.
         </p>
         <Button type="button" variant="outline" className="mt-6" onClick={onClearFilters}>
           Clear filters
@@ -356,15 +533,12 @@ function AnnouncementsEmptyState({ variant, errorMessage, onClearFilters, onCrea
       <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-[#081F5C]/8 text-[#081F5C] dark:bg-[#1447a6]/20 dark:text-sky-200">
         <Megaphone className="h-6 w-6" aria-hidden />
       </span>
-      <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">No announcements yet</p>
+      <p className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">No bulletins yet</p>
       <p className="mt-2 max-w-md text-sm leading-relaxed text-slate-600 dark:text-slate-300">
         Publish notices for new batches, requirement schedules, payouts, and other updates. They appear on the landing
         page while active and within their date range.
       </p>
-      <Button type="button" className="mt-6 bg-[#081F5C] hover:bg-[#0b2d83]" onClick={onCreate}>
-        <Plus className="mr-2 h-4 w-4" aria-hidden />
-        Create announcement
-      </Button>
+      <CreateContentMenu onSelect={onCreate} trigger="button" />
     </div>
   )
 }
@@ -487,7 +661,7 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
                 aria-hidden
               />
               <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white">
-                {getAnnouncementTypeLabel(item)}
+                {isFeaturedStoryAnnouncement(item) ? FEATURED_STORY_CUSTOM_TYPE : getAnnouncementTypeLabel(item)}
               </span>
               <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${scheduleMeta.className}`}>
                 {scheduleMeta.label}
@@ -500,7 +674,7 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
                 return autoDeleteLabel ? (
                   <span
                     className="rounded-full bg-white/10 px-2 py-0.5 text-[9px] font-medium text-amber-100"
-                    title="Inactive announcements are removed automatically after 3 days"
+                    title="Inactive bulletins are removed automatically after 3 days"
                   >
                     {autoDeleteLabel}
                   </span>
@@ -516,7 +690,7 @@ function AnnouncementCard({ item, onEdit, onDelete, onToggleActive, muted = fals
                 <button
                   type="button"
                   className="inline-flex shrink-0 items-center justify-center p-0 text-white hover:text-white/90"
-                  aria-label="Open announcement options"
+                  aria-label="Open bulletin options"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </button>
@@ -603,6 +777,7 @@ export default function AnnouncementPage() {
   const [dateRange, setDateRange] = useState("__")
   const [error, setError] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [draftContentKind, setDraftContentKind] = useState(CONTENT_KIND_BULLETIN)
   const [editingId, setEditingId] = useState(null)
   const [draftTitle, setDraftTitle] = useState("")
   const [draftDescription, setDraftDescription] = useState("")
@@ -692,6 +867,7 @@ export default function AnnouncementPage() {
       return []
     })
     setEditingId(null)
+    setDraftContentKind(CONTENT_KIND_BULLETIN)
     setDraftTitle("")
     setDraftDescription("")
     setDraftType("new_batch")
@@ -713,7 +889,9 @@ export default function AnnouncementPage() {
 
   const openEditAnnouncement = (item) => {
     const imageUrls = item.imageUrls ?? []
+    const contentKind = resolveAnnouncementContentKind(item)
     setEditingId(item.id)
+    setDraftContentKind(contentKind)
     setDraftTitle(item.title)
     setDraftDescription(item.description)
     setDraftType(item.type || "new_batch")
@@ -752,7 +930,7 @@ export default function AnnouncementPage() {
       setImageError("")
       const availableSlots = MAX_ANNOUNCEMENT_IMAGES - draftImages.length
       if (availableSlots <= 0) {
-        throw new Error(`You can upload up to ${MAX_ANNOUNCEMENT_IMAGES} pictures per announcement.`)
+        throw new Error(`You can upload up to ${MAX_ANNOUNCEMENT_IMAGES} pictures per bulletin.`)
       }
 
       const nextFiles = selectedFiles.slice(0, availableSlots)
@@ -859,9 +1037,9 @@ export default function AnnouncementPage() {
     } catch (err) {
       console.error("Failed to confirm announcement action:", err)
       if (confirmAction.type === "delete") {
-        setError("Failed to delete announcement. Please try again.")
+        setError("Failed to delete bulletin. Please try again.")
       } else {
-        setError("Failed to toggle announcement status. Please try again.")
+        setError("Failed to toggle bulletin status. Please try again.")
       }
     } finally {
       setIsConfirming(false)
@@ -898,7 +1076,11 @@ export default function AnnouncementPage() {
       }
     }
 
-    if (isOtherAnnouncementType(draftType) && !draftCustomType.trim()) {
+    if (
+      !isFeaturedStoryDraft &&
+      isOtherAnnouncementType(draftType) &&
+      !draftCustomType.trim()
+    ) {
       setTypeError("Please enter a custom type. This field is required when Other is selected.")
       markInvalid("type")
     }
@@ -944,11 +1126,14 @@ export default function AnnouncementPage() {
           imageFiles = await draftImagesToUploadFiles(draftImages, editingId)
         }
 
+        const resolvedType = isFeaturedStoryDraft ? "other" : draftType
+        const resolvedCustomType = isFeaturedStoryDraft ? FEATURED_STORY_CUSTOM_TYPE : draftCustomType
+
         const formData = buildAnnouncementFormData({
           title,
           description,
-          type: draftType,
-          customType: draftCustomType,
+          type: resolvedType,
+          customType: resolvedCustomType,
           startDate: draftStartDate,
           endDate: draftEndDate,
           active: editingId ? existingActive : true,
@@ -1041,10 +1226,17 @@ export default function AnnouncementPage() {
     setDateRange("__")
   }
 
-  const openCreateDialog = () => {
+  const openCreateDialog = (contentKind = CONTENT_KIND_BULLETIN) => {
     resetDraft()
+    setDraftContentKind(contentKind)
+    if (contentKind === CONTENT_KIND_FEATURED_STORY) {
+      setDraftType("other")
+      setDraftCustomType(FEATURED_STORY_CUSTOM_TYPE)
+    }
     setDialogOpen(true)
   }
+
+  const isFeaturedStoryDraft = draftContentKind === CONTENT_KIND_FEATURED_STORY
 
   const stats = useMemo(
     () => ({
@@ -1093,7 +1285,7 @@ export default function AnnouncementPage() {
         {!isLoading && (
           <div className="relative z-10 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <SummaryStatCard
-              label="Total announcements"
+              label="Total bulletins"
               value={stats.total}
               accentBar="border-l-[3px] border-l-[#081F5C]"
               glow="bg-[#081F5C]/25"
@@ -1230,7 +1422,7 @@ export default function AnnouncementPage() {
             )}
             aria-busy={isLoading}
             aria-hidden={!isLoading}
-            aria-label="Loading announcements"
+            aria-label="Loading bulletins"
           >
             {Array.from({ length: 3 }, (_, index) => (
               <AnnouncementCardSkeleton key={index} />
@@ -1266,7 +1458,7 @@ export default function AnnouncementPage() {
         >
           <section className="flex min-w-0 flex-col gap-4 pb-2" aria-labelledby="active-announcements-heading">
             <AnnouncementSectionHeader
-              title="Active announcements"
+              title="Active bulletins"
               description="Marked active and within their start–end duration on the landing page."
               count={activeFiltered.length}
               variant="active"
@@ -1278,8 +1470,8 @@ export default function AnnouncementPage() {
                 variant="active"
                 message={
                   hasActiveFilters
-                    ? "No active announcements match your filters."
-                    : "No active announcements right now. Inactive or ended notices appear below."
+                    ? "No active bulletins match your filters."
+                    : "No active bulletins right now. Inactive or ended notices appear below."
                 }
               />
             )}
@@ -1287,7 +1479,7 @@ export default function AnnouncementPage() {
 
           <section className="flex min-w-0 flex-col gap-4 border-t border-slate-200/80 pt-10" aria-labelledby="inactive-announcements-heading">
             <AnnouncementSectionHeader
-              title="Inactive announcements"
+              title="Inactive bulletins"
               description="Hidden from the landing page — manually inactive or past the end date. Removed automatically after 3 days inactive."
               count={inactiveFiltered.length}
               variant="inactive"
@@ -1299,8 +1491,8 @@ export default function AnnouncementPage() {
                 variant="inactive"
                 message={
                   hasActiveFilters
-                    ? "No inactive announcements match your filters."
-                    : "No inactive announcements. Manually hidden or past end date notices appear here."
+                    ? "No inactive bulletins match your filters."
+                    : "No inactive bulletins. Manually hidden or past end date notices appear here."
                 }
               />
             )}
@@ -1308,20 +1500,7 @@ export default function AnnouncementPage() {
         </div>
       )}
 
-      {announcements.length > 0 ? (
-        <button
-          type="button"
-          onClick={openCreateDialog}
-          className="group fixed bottom-8 right-8 z-50 inline-flex h-12 w-12 items-center justify-center gap-0 overflow-hidden rounded-full bg-linear-to-r from-[#081F5C] to-[#1447a6] px-0 text-white shadow-lg shadow-[#081F5C]/25 transition-all duration-200 hover:-translate-y-0.5 hover:w-52 hover:justify-start hover:gap-2 hover:px-3 hover:shadow-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#081F5C]/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-          aria-label="Add announcement"
-          title="Add announcement"
-        >
-          <Plus className="size-5 shrink-0 text-white" strokeWidth={3} aria-hidden />
-          <span className="pointer-events-none max-w-0 overflow-hidden whitespace-nowrap text-sm font-semibold opacity-0 transition-all duration-200 group-hover:max-w-[190px] group-hover:opacity-100 group-focus-visible:max-w-[190px] group-focus-visible:opacity-100">
-            Add Announcement
-          </span>
-        </button>
-      ) : null}
+      {announcements.length > 0 ? <CreateContentMenu onSelect={openCreateDialog} /> : null}
 
       <Dialog
         open={dialogOpen}
@@ -1332,15 +1511,28 @@ export default function AnnouncementPage() {
       >
         <DialogContent className="!flex max-h-[min(92vh,900px)] flex-col gap-0 overflow-hidden border border-slate-200 bg-white p-0 shadow-xl sm:max-w-3xl">
           <DialogHeader className="shrink-0 border-b border-slate-100 px-6 py-4">
-            <DialogTitle>{editingId ? "Edit announcement" : "Create announcement"}</DialogTitle>
+            <DialogTitle>
+              {editingId
+                ? isFeaturedStoryDraft
+                  ? "Edit featured story"
+                  : "Edit bulletin"
+                : isFeaturedStoryDraft
+                  ? "Create featured story"
+                  : "Create bulletin"}
+            </DialogTitle>
             <DialogDescription>
               {editingId
-                ? "Update the announcement details and save your changes."
-                : "Fill in the announcement details and save it to publish."}
+                ? isFeaturedStoryDraft
+                  ? "Update the featured story details and save your changes."
+                  : "Update the bulletin details and save your changes."
+                : isFeaturedStoryDraft
+                  ? "Share a highlight or spotlight story for the landing page."
+                  : "Fill in the bulletin details and save it to publish."}
             </DialogDescription>
           </DialogHeader>
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleCreateAnnouncement}>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+            {!isFeaturedStoryDraft ? (
             <div
               ref={(node) => {
                 formFieldRefs.current.type = node
@@ -1396,7 +1588,7 @@ export default function AnnouncementPage() {
                       setDraftCustomType(event.target.value)
                       setTypeError("")
                     }}
-                    placeholder="Enter announcement type"
+                    placeholder="Enter bulletin type"
                     maxLength={80}
                     aria-invalid={Boolean(typeError)}
                     aria-describedby={typeError ? "announcement-type-error" : undefined}
@@ -1406,6 +1598,7 @@ export default function AnnouncementPage() {
               ) : null}
               <FormFieldError id="announcement-type-error" message={typeError} />
             </div>
+            ) : null}
 
             {draftType === PAYOUT_SCHEDULE_TYPE ? (
               <div
@@ -1554,7 +1747,7 @@ export default function AnnouncementPage() {
                     className={cn("h-8", durationError && formInputErrorClass)}
                   />
                   <p className="text-[11px] leading-snug text-slate-500">
-                    The announcement auto-inactivates after this date.
+                    The bulletin auto-inactivates after this date.
                   </p>
                 </div>
               </div>
@@ -1579,7 +1772,7 @@ export default function AnnouncementPage() {
                   setDraftTitle(event.target.value)
                   setTitleError("")
                 }}
-                placeholder="Enter announcement title"
+                placeholder={isFeaturedStoryDraft ? "Enter story title" : "Enter bulletin title"}
                 aria-invalid={Boolean(titleError)}
                 aria-describedby={titleError ? "announcement-title-error" : undefined}
                 className={cn(titleError && formInputErrorClass)}
@@ -1590,7 +1783,7 @@ export default function AnnouncementPage() {
             <div className="grid gap-2">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <label htmlFor="announcement-description" className="text-sm font-semibold text-slate-700">
-                  Description
+                  {isFeaturedStoryDraft ? "Story" : "Description"}
                 </label>
                 <span className="text-xs text-slate-500">Optional</span>
               </div>
@@ -1600,7 +1793,9 @@ export default function AnnouncementPage() {
                 onChange={(event) => setDraftDescription(event.target.value)}
                 rows={4}
                 className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none transition focus:border-[#081F5C] focus:ring-2 focus:ring-[#081F5C]/20"
-                placeholder="Enter announcement details (optional)"
+                placeholder={
+                  isFeaturedStoryDraft ? "Write the featured story (optional)" : "Enter bulletin details (optional)"
+                }
               />
             </div>
 
@@ -1628,7 +1823,7 @@ export default function AnnouncementPage() {
                     <div key={image.key} className="relative aspect-[3/4] w-full">
                       <AnnouncementPhotoFrame
                         url={image.previewUrl}
-                        alt={image.fileName || "Announcement preview"}
+                        alt={image.fileName || "Bulletin preview"}
                         compact
                         interactive={false}
                         className="h-full w-full"
@@ -1710,7 +1905,9 @@ export default function AnnouncementPage() {
                     ? "Uploading…"
                     : editingId
                       ? "Save changes"
-                      : "Create announcement"}
+                      : isFeaturedStoryDraft
+                        ? "Create featured story"
+                        : "Create bulletin"}
               </button>
             </DialogFooter>
           </form>
@@ -1729,7 +1926,7 @@ export default function AnnouncementPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>
                 {confirmAction.type === "delete"
-                  ? "Delete announcement?"
+                  ? "Delete bulletin?"
                   : confirmAction.item?.active === false
                     ? "Mark as active?"
                     : "Mark as inactive?"}
@@ -1739,7 +1936,7 @@ export default function AnnouncementPage() {
                   <>
                     Are you sure you want to delete{" "}
                     <span className="font-semibold text-slate-900">
-                      {confirmAction.item?.title || "this announcement"}
+                      {confirmAction.item?.title || "this bulletin"}
                     </span>
                     ? This action cannot be undone.
                   </>
@@ -1747,7 +1944,7 @@ export default function AnnouncementPage() {
                   <>
                     Are you sure you want to mark{" "}
                     <span className="font-semibold text-slate-900">
-                      {confirmAction.item?.title || "this announcement"}
+                      {confirmAction.item?.title || "this bulletin"}
                     </span>{" "}
                     as active? It will be eligible to appear on the landing page within its date range.
                   </>
@@ -1755,7 +1952,7 @@ export default function AnnouncementPage() {
                   <>
                     Are you sure you want to mark{" "}
                     <span className="font-semibold text-slate-900">
-                      {confirmAction.item?.title || "this announcement"}
+                      {confirmAction.item?.title || "this bulletin"}
                     </span>{" "}
                     as inactive? It will be hidden from the landing page.
                   </>

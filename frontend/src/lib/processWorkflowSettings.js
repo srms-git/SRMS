@@ -195,8 +195,8 @@ function sanitizeStep(raw, index) {
   return {
     id: String(raw?.id ?? createStepId()),
     step: String(raw?.step ?? String(index + 1).padStart(2, "0")),
-    title: String(raw?.title ?? "").trim(),
-    description: String(raw?.description ?? "").trim(),
+    title: String(raw?.title ?? ""),
+    description: String(raw?.description ?? ""),
     icon,
     color: DEFAULT_WORKFLOW_STEP_COLOR,
     colorLight: DEFAULT_WORKFLOW_STEP_COLOR_LIGHT,
@@ -207,6 +207,14 @@ export function normalizeProcessWorkflowSteps(steps) {
   return (Array.isArray(steps) ? steps : []).map((step, index) => ({
     ...sanitizeStep(step, index),
     step: String(index + 1).padStart(2, "0"),
+  }))
+}
+
+export function finalizeProcessWorkflowSteps(steps) {
+  return normalizeProcessWorkflowSteps(steps).map((step) => ({
+    ...step,
+    title: step.title.trim(),
+    description: step.description.trim(),
   }))
 }
 
@@ -395,19 +403,23 @@ export function validateProcessWorkflow(config, programCodes) {
     ? normalizeProcessWorkflowByProgram(config.byProgram, programCodes)
     : migrateStoredWorkflowPayload(config, programCodes).byProgram
   const errors = []
+  const finalizedByProgram = {}
 
   for (const [programCode, { steps }] of Object.entries(byProgram)) {
-    if (!steps.length) {
+    const finalizedSteps = finalizeProcessWorkflowSteps(steps)
+    finalizedByProgram[programCode] = { steps: finalizedSteps }
+
+    if (!finalizedSteps.length) {
       errors.push(`${programCode}: add at least one timeline step before saving.`)
       continue
     }
 
-    steps.forEach((step, index) => {
+    finalizedSteps.forEach((step, index) => {
       const label = `${programCode} — Step ${index + 1}`
       if (!step.title) errors.push(`${label}: add a heading.`)
       if (!step.description) errors.push(`${label}: add instructions for students.`)
     })
   }
 
-  return { valid: errors.length === 0, errors, normalized: { byProgram } }
+  return { valid: errors.length === 0, errors, normalized: { byProgram: finalizedByProgram } }
 }

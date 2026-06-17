@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils"
 export const LANDING_PUBLIC_NAV_ITEMS = [
   { label: "Home", target: "hero", icon: Home },
   { label: "About", target: "about", icon: Info },
-  { label: "Announcements", target: "announcements", icon: Megaphone },
+  { label: "Bulletin", target: "announcements", icon: Megaphone },
   { label: "Batch List", target: "batch-list", icon: ListChecks },
   { label: "Process", target: "process", icon: ClipboardList },
 ]

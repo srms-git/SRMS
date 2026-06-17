@@ -123,7 +123,7 @@ const HERO_TYPEWRITER_TITLES = [
   },
   {
     line1: "Stay Updated with",
-    line2: "Official Announcements and Batch Records. . .",
+    line2: "Official Bulletins and Batch Records. . .",
   },
 ]
 const HERO_TYPEWRITER_CHAR_MS = 62
@@ -1751,7 +1751,7 @@ function BillboardCard({
                     Notice
                   </span>
                   <span className="text-xs font-medium" style={{ color: textBodyOnLight }}>
-                    Announcement feed
+                    Bulletin feed
                   </span>
                 </div>
                 <h3
@@ -1913,7 +1913,7 @@ export default function LandingPage() {
               tag: getAnnouncementTypeLabel(item),
               dateIso: startDate || "",
               dateLabel: formatAnnouncementDurationLabel(startDate, endDate),
-              title: item.title || "Untitled announcement",
+              title: item.title || "Untitled bulletin",
               message: item.description || "",
               imageUrls,
               imageUrl: imageUrls[0] ?? null,
@@ -1966,7 +1966,7 @@ export default function LandingPage() {
         <HeroTypewriterTitle />
 
         <p className="text-pretty text-justify text-sm leading-relaxed text-white/80 sm:text-base lg:max-w-xl lg:text-left">
-          Access scholarship announcements, application guidelines, batch information, and important updates
+          Access scholarship bulletins, application guidelines, batch information, and important updates
           from the MARSU – Office of the Scholarship Grants and Financial Assistance in one centralized
           platform.
         </p>
@@ -1979,7 +1979,7 @@ export default function LandingPage() {
             onClick={() => scrollToSection("announcements")}
           >
             <Megaphone className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" aria-hidden />
-            <span className="min-w-0 flex-1">View announcements</span>
+            <span className="min-w-0 flex-1">View bulletins</span>
             <ChevronRight className="hidden h-4 w-4 shrink-0 opacity-90 sm:block" aria-hidden />
           </Button>
           <Button
@@ -2028,7 +2028,7 @@ export default function LandingPage() {
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-white sm:text-base">Accessible</p>
               <p className="mt-1 text-justify text-xs leading-relaxed text-white/72 sm:text-sm">
-                Quick access to scholarship information, announcements, and application updates.
+                Quick access to scholarship information, bulletins, and application updates.
               </p>
             </div>
           </div>
@@ -2130,7 +2130,7 @@ export default function LandingPage() {
                 </p>
                 <p className="mt-4 text-justify text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
                   The office manages scholarship applications, student requirements verification, beneficiary monitoring,
-                  announcements, and student inquiries to ensure an organized and efficient scholarship process. It also
+                  bulletins, and student inquiries to ensure an organized and efficient scholarship process. It also
                   coordinates payout verification and related documentation to support the proper distribution of
                   financial assistance to qualified beneficiaries.
                 </p>
@@ -2159,7 +2159,7 @@ export default function LandingPage() {
                     backgroundImage: `linear-gradient(105deg, ${navyDeep} 0%, ${navy} 32%, ${navyBright} 62%, ${bvViolet} 100%)`,
                   }}
                 >
-                  Announcements
+                  Bulletin
                 </span>
                 <span
                   className="relative inline-flex shrink-0 items-center justify-center self-center pl-0.5"
@@ -2203,7 +2203,7 @@ export default function LandingPage() {
                 </span>
               </h2>
               <p className="mt-2 max-w-none text-justify text-sm leading-relaxed sm:text-base" style={{ color: "#000" }}>
-                Access the latest scholarship announcements, application updates, schedules, and important notices posted by the MARSU - Office of the Scholarship Grants and Financial Assistance.
+                Access the latest scholarship bulletins, application updates, schedules, and important notices posted by the MARSU - Office of the Scholarship Grants and Financial Assistance.
               </p>
             </div>
             <div className="grid w-full grid-cols-1 items-stretch gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,19rem)] lg:grid-cols-[minmax(0,1fr)_minmax(17rem,21rem)] xl:grid-cols-[minmax(0,1fr)_22rem] 2xl:grid-cols-[minmax(0,1fr)_24rem]">
@@ -2211,8 +2211,8 @@ export default function LandingPage() {
                 title="Bulletin"
                 subtitle="Official notices"
                 items={announcements}
-                slideAriaLabelPrefix="announcement"
-                emptyMessage="No active announcements at the moment."
+                slideAriaLabelPrefix="bulletin"
+                emptyMessage="No active bulletins at the moment."
                 className="min-w-0 w-full"
               />
               <BillboardCard title="Facebook page" subtitle="Follow us" compact className="min-w-0 w-full">
@@ -2386,7 +2386,7 @@ export default function LandingPage() {
                 {[
                   { label: "Home", target: "hero" },
                   { label: "About", target: "about" },
-                  { label: "Announcements", target: "announcements" },
+                  { label: "Bulletin", target: "announcements" },
                   { label: "Batch List", target: "batch-list" },
                   { label: "Process", target: "process" },
                 ].map((item) => (

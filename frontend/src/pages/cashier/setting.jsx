@@ -12,6 +12,8 @@ import {
 } from "lucide-react"
 import PasswordField from "@/components/PasswordField"
 import AuditLogsPanel from "@/components/settings/AuditLogsPanel"
+import FaqPanel from "@/components/settings/FaqPanel"
+import HelpCenterPanel from "@/components/settings/HelpCenterPanel"
 import {
   CASHIER_SETTINGS_CHANGED_EVENT,
   readStoredSettings,
@@ -27,6 +29,7 @@ const SECTIONS = {
   NOTIFICATIONS: "notifications",
   PRIVACY: "privacy",
   SUPPORT: "support",
+  FAQ: "faq",
   AUDIT_LOGS: "audit-logs",
 }
 
@@ -490,6 +493,17 @@ export default function CashierSetting() {
                     </button>
                     <button
                       type="button"
+                      onClick={() => setActive(SECTIONS.FAQ)}
+                      className={`block w-full rounded-md py-1 text-left transition ${
+                        active === SECTIONS.FAQ
+                          ? "font-semibold text-[#081F5C]"
+                          : "text-gray-700 hover:text-[#081F5C]"
+                      }`}
+                    >
+                      FAQ
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setActive(SECTIONS.AUDIT_LOGS)}
                       className={`block w-full rounded-md py-1 text-left transition ${
                         active === SECTIONS.AUDIT_LOGS
@@ -825,21 +839,9 @@ export default function CashierSetting() {
               </section>
             )}
 
-            {active === SECTIONS.SUPPORT && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2">
-                  <HelpCircle className="h-4 w-4 text-blue-700" />
-                  <h3 className="text-base font-semibold text-gray-900">Help Center</h3>
-                </div>
-                <p className="text-sm text-gray-700">
-                  For SRMS cashier concerns, coordinate with your school focal person or the OSGFA office for batch,
-                  claim, and disbursement issues.
-                </p>
-                <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                  Tip: Include batch number, grantee name, and claim date when reporting an issue for faster resolution.
-                </div>
-              </section>
-            )}
+            {active === SECTIONS.SUPPORT && <HelpCenterPanel workspace="cashier" />}
+
+            {active === SECTIONS.FAQ && <FaqPanel workspace="cashier" />}
 
             {active === SECTIONS.AUDIT_LOGS && <AuditLogsPanel workspaceLabel="cashier" scope="cashier" />}
           </div>
