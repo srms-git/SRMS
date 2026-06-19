@@ -48,8 +48,10 @@ app.config["OUTPUT_FOLDER"] = OUTPUT_FOLDER
 
 YEAR_PATTERNS = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
 
+# Student ID: any non-whitespace token (any format/length) before the award number.
 LINE_RE = re.compile(
-    r"^(\d{5})\s+(\d+)\s+([A-Z0-9]+)\s+((?:TDP|TES)-[\d\-]+)\s+(.*)$",
+    r"^(\d{5})\s+(\d+)\s+(\S+)\s+((?:TDP|TES)-[\d\-]+)\s+(.*)$",
+    re.IGNORECASE,
 )
 
 
@@ -86,7 +88,7 @@ def extract_rows_from_pdf(pdf_path: str) -> list[dict[str, str]]:
 
                 seq_no = seq_match.group(1)
                 index_no = seq_match.group(2)
-                student_id = seq_match.group(3)
+                student_id = seq_match.group(3).strip()
                 award_number = seq_match.group(4)
                 remaining = seq_match.group(5).strip()
 
@@ -264,7 +266,7 @@ def upload_pdf():
                     jsonify(
                         {
                             "error": "No rows detected from PDF.",
-                            "hint": "Expected lines like: 5-digit SEQ, index, student ID, TDP-… award, name, program, year level.",
+                            "hint": "Expected lines like: 5-digit SEQ, index, student ID, TDP/TES award number, name, program, year level.",
                         }
                     )
                 ),
