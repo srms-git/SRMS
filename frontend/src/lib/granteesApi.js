@@ -260,6 +260,34 @@ export function buildBatchesFromGrantees(records) {
   return Array.from(uniqueMap.values())
 }
 
+export function compareBatchNumbers(left, right) {
+  const a = String(left ?? "").trim()
+  const b = String(right ?? "").trim()
+  if (!a && !b) return 0
+  if (!a) return 1
+  if (!b) return -1
+
+  const na = Number.parseFloat(a)
+  const nb = Number.parseFloat(b)
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) {
+    return na - nb
+  }
+
+  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+}
+
+export function compareBatchesByBatchNo(a, b) {
+  const byBatch = compareBatchNumbers(a?.batchNo, b?.batchNo)
+  if (byBatch !== 0) return byBatch
+
+  const byProgram = String(a?.program ?? "").trim().localeCompare(String(b?.program ?? "").trim())
+  if (byProgram !== 0) return byProgram
+
+  return String(a?.schoolYear ?? a?.academicYear ?? "").localeCompare(
+    String(b?.schoolYear ?? b?.academicYear ?? ""),
+  )
+}
+
 export function sortGranteesBySeqNo(rows) {
   return [...(rows ?? [])].sort((a, b) => {
     const seqA = String(a?.seqNo ?? "").trim()

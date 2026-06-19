@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { ArrowLeft, Layers, Search, SlidersHorizontal } from "lucide-react"
 
 import { useOsgfaPrograms } from "@/hooks/useOsgfaPrograms"
+import { compareBatchesByBatchNo } from "@/lib/granteesApi"
 import { usePublishedLandingBatches } from "@/lib/landingFeaturedBatches"
 import { useLandingPageSettings, maskBatchNumber } from "@/lib/landingPageSettings"
 import { isActiveProgramCode } from "@/lib/osgfaPrograms"
@@ -207,25 +208,27 @@ export default function ViewAllBatch() {
   const filteredBatches = useMemo(() => {
     const q = searchTerm.trim().toLowerCase()
 
-    return landingBatches.filter((batch) => {
-      if (programFilter !== "__" && programFilter !== "" && String(batch.program ?? "") !== programFilter) return false
-      if (academicYearFilter !== "__" && academicYearFilter !== "" && String(batch.schoolYear ?? "") !== academicYearFilter) {
-        return false
-      }
-      if (batchSeriesFilter !== "__" && batchSeriesFilter !== "") {
-        const series = String(batch.batchNo ?? "").split(".")[0]?.trim()
-        if (series !== batchSeriesFilter) return false
-      }
-      if (!q) return true
+    return landingBatches
+      .filter((batch) => {
+        if (programFilter !== "__" && programFilter !== "" && String(batch.program ?? "") !== programFilter) return false
+        if (academicYearFilter !== "__" && academicYearFilter !== "" && String(batch.schoolYear ?? "") !== academicYearFilter) {
+          return false
+        }
+        if (batchSeriesFilter !== "__" && batchSeriesFilter !== "") {
+          const series = String(batch.batchNo ?? "").split(".")[0]?.trim()
+          if (series !== batchSeriesFilter) return false
+        }
+        if (!q) return true
 
-      return (
-        String(batch.batchNo ?? "").toLowerCase().includes(q) ||
-        String(batch.program ?? "").toLowerCase().includes(q) ||
-        String(batch.schoolYear ?? "").toLowerCase().includes(q) ||
-        String(batch.createdAt ?? "").toLowerCase().includes(q) ||
-        String(batch.grantees ?? "").includes(q)
-      )
-    })
+        return (
+          String(batch.batchNo ?? "").toLowerCase().includes(q) ||
+          String(batch.program ?? "").toLowerCase().includes(q) ||
+          String(batch.schoolYear ?? "").toLowerCase().includes(q) ||
+          String(batch.createdAt ?? "").toLowerCase().includes(q) ||
+          String(batch.grantees ?? "").includes(q)
+        )
+      })
+      .sort(compareBatchesByBatchNo)
   }, [searchTerm, programFilter, academicYearFilter, batchSeriesFilter, landingBatches])
 
   return (

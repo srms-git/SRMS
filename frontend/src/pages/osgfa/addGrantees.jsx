@@ -802,22 +802,33 @@ export default function AddGrantees() {
 
   const summary = useMemo(() => {
     const allBatches = buildBatchesFromGrantees(granteeRecords)
-    let tesBatches = 0
-    let tdpBatches = 0
     let publishedBatches = 0
+    const programBatchCounts = new Map()
 
     for (const batch of allBatches) {
       const program = String(batch.program ?? "").trim().toUpperCase()
-      if (program === "TES") tesBatches += 1
-      else if (program === "TDP") tdpBatches += 1
+      if (program) {
+        programBatchCounts.set(program, (programBatchCounts.get(program) ?? 0) + 1)
+      }
       if (isBatchVisibleOnLanding(batch, landingVisibility)) publishedBatches += 1
+    }
+
+    let topProgramCode = "—"
+    let topProgramBatches = 0
+    for (const [code, count] of programBatchCounts) {
+      if (count > topProgramBatches) {
+        topProgramCode = code
+        topProgramBatches = count
+      }
     }
 
     return {
       totalBatches: allBatches.length,
-      tesBatches,
-      tdpBatches,
+      programsWithRecords: programBatchCounts.size,
+      topProgramCode,
+      topProgramBatches,
       publishedBatches,
+      unpublishedBatches: Math.max(0, allBatches.length - publishedBatches),
     }
   }, [granteeRecords, landingVisibility])
 
@@ -1003,18 +1014,18 @@ export default function AddGrantees() {
               style={revealItemStyle(contentRevealed, 0, 60)}
             />
             <SummaryStatCard
-              label="TES Records"
-              value={statDisplay(summary.tesBatches, "TES Records")}
+              label="Programs with Records"
+              value={statDisplay(summary.programsWithRecords, "Programs with Records")}
               accentBar="border-l-[3px] border-l-emerald-500"
               glow="bg-emerald-400/30"
               iconBg="bg-linear-to-br from-emerald-500 to-teal-600 text-white"
-              Icon={CircleCheck}
+              Icon={GraduationCap}
               className={revealItemClass(contentRevealed, 1, 60)}
               style={revealItemStyle(contentRevealed, 1, 60)}
             />
             <SummaryStatCard
-              label="TDP Records"
-              value={statDisplay(summary.tdpBatches, "TDP Records")}
+              label={`Top Program (${summary.topProgramCode})`}
+              value={statDisplay(summary.topProgramBatches, "Top Program")}
               accentBar="border-l-[3px] border-l-amber-500"
               glow="bg-amber-400/30"
               iconBg="bg-linear-to-br from-amber-500 to-orange-500 text-white"
@@ -1023,8 +1034,8 @@ export default function AddGrantees() {
               style={revealItemStyle(contentRevealed, 2, 60)}
             />
             <SummaryStatCard
-              label="Published Batches"
-              value={statDisplay(summary.publishedBatches, "Published Batches")}
+              label="Unpublished Batches"
+              value={statDisplay(summary.unpublishedBatches, "Unpublished Batches")}
               accentBar="border-l-[3px] border-l-violet-500"
               glow="bg-violet-400/30"
               iconBg="bg-linear-to-br from-violet-500 to-fuchsia-600 text-white"

@@ -37,6 +37,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Input } from "@/components/ui/input"
 import {
   batchNumberConflictsInProgram,
+  compareBatchesByBatchNo,
+  compareBatchNumbers,
   isGranteeRecordActive,
   updateBatchMetadata,
 } from "@/lib/granteesApi"
@@ -354,7 +356,10 @@ export default function Batches() {
   }, [granteesRawData])
 
   const uniqueBatchNos = useMemo(
-    () => [...new Set(visibleBatches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(),
+    () =>
+      [...new Set(visibleBatches.map((row) => String(row.batchNo ?? "").trim()).filter(Boolean))].sort(
+        compareBatchNumbers,
+      ),
     [visibleBatches],
   )
   const uniqueYears = useMemo(
@@ -412,11 +417,6 @@ export default function Batches() {
       )
     }
 
-    const parseBatch = (row) => {
-      const n = Number.parseFloat(String(row?.batchNo ?? "").trim())
-      return Number.isFinite(n) ? n : Number.POSITIVE_INFINITY
-    }
-
     const parseYear = (row) => {
       const text = String(row?.schoolYear ?? "").trim()
       const start = Number.parseInt(text.split("-")[0] ?? "", 10)
@@ -426,12 +426,12 @@ export default function Batches() {
     const rows = [...filteredBatches]
     rows.sort((a, b) => {
       if (sortMode === "most-grantees") {
-        return getGrantees(b) - getGrantees(a) || parseBatch(a) - parseBatch(b)
+        return getGrantees(b) - getGrantees(a) || compareBatchesByBatchNo(a, b)
       }
       if (sortMode === "academic-year") {
-        return parseYear(b) - parseYear(a) || parseBatch(a) - parseBatch(b)
+        return parseYear(b) - parseYear(a) || compareBatchesByBatchNo(a, b)
       }
-      return parseBatch(a) - parseBatch(b) || String(a.batchNo).localeCompare(String(b.batchNo))
+      return compareBatchesByBatchNo(a, b)
     })
     return rows
   }, [filteredBatches, granteeCountsByBatchProgram, sortMode])

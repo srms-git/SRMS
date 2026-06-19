@@ -2238,7 +2238,7 @@ export default function LandingPage() {
                   subtitle="Official notices"
                   items={bulletins}
                   slideAriaLabelPrefix="bulletin"
-                  emptyMessage="No active bulletins at the moment."
+                  emptyMessage="No active announcement at the moment."
                   className="min-w-0 w-full"
                 />
                 {featuredStories.length > 0 ? (
